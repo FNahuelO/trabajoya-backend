@@ -1,0 +1,13 @@
+{
+  "success": "Operação bem-sucedida",
+  "error": "Ocorreu um erro",
+  "notFound": "Recurso não encontrado",
+  "badRequest": "Solicitação incorreta",
+  "forbidden": "Acesso proibido",
+  "internalServerError": "Erro interno do servidor",
+  "created": "Criado com sucesso",
+  "updated": "Atualizado com sucesso",
+  "deleted": "Excluído com sucesso",
+  "welcome": "Bem-vindo à API do TrabalhoJá",
+  "apiVersion": "Versão da API"
+}

@@ -1,0 +1,14 @@
+{
+  "profileNotFound": "Applicant profile not found",
+  "profileCreated": "Applicant profile created",
+  "profileUpdated": "Applicant profile updated",
+  "experienceAdded": "Experience added",
+  "experienceUpdated": "Experience updated",
+  "experienceDeleted": "Experience deleted",
+  "educationAdded": "Education added",
+  "educationUpdated": "Education updated",
+  "educationDeleted": "Education deleted",
+  "applicationSubmitted": "Application submitted",
+  "applicationAlreadyExists": "You have already applied to this job",
+  "invalidSkills": "Skills must be an array of strings"
+}

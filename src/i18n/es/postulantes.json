@@ -1,0 +1,14 @@
+{
+  "profileNotFound": "Perfil de postulante no encontrado",
+  "profileCreated": "Perfil de postulante creado",
+  "profileUpdated": "Perfil de postulante actualizado",
+  "experienceAdded": "Experiencia agregada",
+  "experienceUpdated": "Experiencia actualizada",
+  "experienceDeleted": "Experiencia eliminada",
+  "educationAdded": "Educación agregada",
+  "educationUpdated": "Educación actualizada",
+  "educationDeleted": "Educación eliminada",
+  "applicationSubmitted": "Postulación enviada",
+  "applicationAlreadyExists": "Ya te has postulado a este trabajo",
+  "invalidSkills": "Las habilidades deben ser un arreglo de textos"
+}

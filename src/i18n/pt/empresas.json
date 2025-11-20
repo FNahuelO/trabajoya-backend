@@ -1,0 +1,7 @@
+{
+  "profileNotFound": "Perfil da empresa não encontrado",
+  "profileCreated": "Perfil da empresa criado",
+  "profileUpdated": "Perfil da empresa atualizado",
+  "cuitAlreadyExists": "O CUIT já está registrado",
+  "invalidCuit": "CUIT inválido"
+}

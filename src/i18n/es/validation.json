@@ -1,0 +1,15 @@
+{
+  "isNotEmpty": "{{field}} no debe estar vacío",
+  "isEmail": "{{field}} debe ser un email válido",
+  "isString": "{{field}} debe ser un texto",
+  "minLength": "{{field}} debe tener al menos {{min}} caracteres",
+  "maxLength": "{{field}} debe tener máximo {{max}} caracteres",
+  "isEnum": "{{field}} debe ser uno de los siguientes valores: {{values}}",
+  "isInt": "{{field}} debe ser un número entero",
+  "isPositive": "{{field}} debe ser un número positivo",
+  "isArray": "{{field}} debe ser un arreglo",
+  "isBoolean": "{{field}} debe ser verdadero o falso",
+  "isDate": "{{field}} debe ser una fecha válida",
+  "isUrl": "{{field}} debe ser una URL válida",
+  "matches": "{{field}} no cumple con el formato requerido"
+}

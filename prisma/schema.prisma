@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  passwordHash      String
+  userType          UserType
+  googleId          String?            @unique
+  appleId           String?            @unique
+  isVerified        Boolean            @default(false)
+  language          String             @default("es")
+  resetToken        String?            @unique
+  resetTokenExpiry  DateTime?
+  verificationToken String?            @unique
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  empresa           EmpresaProfile?
+  postulante        PostulanteProfile?
+  refreshTokens     RefreshToken[]
+  sentMessages      Message[]          @relation("SentMessages")
+  receivedMessages  Message[]          @relation("ReceivedMessages")
+  callsMade         Call[]             @relation("CallsMade")
+  callsReceived     Call[]             @relation("CallsReceived")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PostulanteProfile {
+  id                      String              @id @default(uuid())
+  userId                  String              @unique
+  fullName                String
+  city                    String?
+  country                 String?
+  skills                  String[]
+  profilePicture          String?
+  cvUrl                   String?
+  videoUrl                String?
+  notificationPreferences Json?
+  birthDate               DateTime?
+  gender                  String?
+  nationality             String?
+  maritalStatus           String?
+  documentType            String?
+  documentNumber          String?
+  hasOwnVehicle           Boolean             @default(false)
+  hasDriverLicense        Boolean             @default(false)
+  phone                   String?
+  alternatePhone          String?
+  address                 String?
+  province                String?
+  postalCode              String?
+  // Professional profile
+  searchingFirstJob       Boolean             @default(false)
+  resumeTitle             String?
+  professionalDescription String?
+  employmentStatus        String?
+  minimumSalary           Float?
+  additionalInformation   String?
+  // Relations
+  applications            Application[]
+  education               Education[]
+  experiences             Experience[]
+  user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobFavorites            JobFavorite[]
+  companyFavorites        CompanyFavorite[]
+}
+
+model Experience {
+  id                    String               @id @default(uuid())
+  postulanteId          String
+  position               String
+  company                String
+  startDate              DateTime
+  endDate                DateTime?
+  isCurrent              Boolean              @default(false)
+  experienceLevel        ExperienceLevel?
+  companyCountry         String?
+  jobArea                String?
+  companyActivity        String?
+  description            String?
+  peopleInCharge         String?
+  postulante             PostulanteProfile    @relation(fields: [postulanteId], references: [id], onDelete: Cascade)
+}
+
+model Education {
+  id              String            @id @default(uuid())
+  postulanteId    String
+  degree          String
+  institution     String
+  country         String?
+  studyArea       String?
+  studyType       String?
+  status          String?
+  startDate       DateTime
+  endDate         DateTime?
+  isCurrent       Boolean           @default(false)
+  description     String?
+  postulante      PostulanteProfile @relation(fields: [postulanteId], references: [id], onDelete: Cascade)
+}
+
+model EmpresaProfile {
+  id                          String  @id @default(uuid())
+  userId                      String  @unique
+  companyName                 String
+  razonSocial                 String?
+  cuit                        String  @unique
+  documento                   String? // Alias para cuit
+  email                       String
+  phone                       String?
+  sitioWeb                    String?
+  descripcion                 String?
+  sector                      String?
+  industria                   String? // Alias para sector
+  tamano                      String?
+  cantidadEmpleados           String? // Alias para tamano
+  condicionFiscal             String?
+  contribuyenteIngresosBrutos Boolean  @default(false)
+  // Dirección
+  calle                       String?
+  numero                      String?
+  piso                        String?
+  depto                       String?
+  codigoPostal                String?
+  localidad                   String?
+  ciudad                      String?
+  provincia                   String?
+  pais                        String?
+  // Contacto
+  nombreContacto              String?
+  apellidoContacto            String?
+  // Encabezados de avisos y beneficios
+  encabezadosAvisos           String[] // Array de encabezados que aparecerán en los avisos
+  beneficiosEmpresa           String[] // Array de beneficios que aparecerán en los avisos
+  // Otros
+  logo                        String?
+  user                        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs                        Job[]
+  favorites                   CompanyFavorite[]
+}
+
+model Job {
+  id                String            @id @default(uuid())
+  empresaId         String
+  title             String
+  description       String
+  requirements      String
+  location          String
+  city              String?
+  state             String?
+  jobType           JobType
+  workMode          String?
+  category          String
+  experienceLevel   ExperienceLevel
+  status            String            @default("active")
+  publishedAt       DateTime          @default(now())
+  // Moderation fields
+  moderationStatus  ModerationStatus  @default(PENDING)
+  moderationReason  String?
+  moderatedBy       String?
+  moderatedAt       DateTime?
+  autoRejectionReason String?
+  applications      Application[]
+  empresa           EmpresaProfile    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  favorites         JobFavorite[]
+}
+
+model Application {
+  id           String            @id @default(uuid())
+  postulanteId String
+  jobId        String
+  status       ApplicationStatus @default(PENDING)
+  appliedAt    DateTime          @default(now())
+  coverLetter  String?
+  isRead       Boolean           @default(false)
+  job          Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  postulante   PostulanteProfile @relation(fields: [postulanteId], references: [id], onDelete: Cascade)
+
+  @@unique([postulanteId, jobId])
+}
+
+model JobFavorite {
+  id             String            @id @default(uuid())
+  postulanteId   String
+  jobId          String
+  createdAt      DateTime          @default(now())
+  postulante     PostulanteProfile @relation(fields: [postulanteId], references: [id], onDelete: Cascade)
+  job            Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([postulanteId, jobId])
+  @@index([postulanteId])
+  @@index([jobId])
+}
+
+model CompanyFavorite {
+  id             String            @id @default(uuid())
+  postulanteId   String
+  empresaId      String
+  createdAt      DateTime          @default(now())
+  postulante     PostulanteProfile @relation(fields: [postulanteId], references: [id], onDelete: Cascade)
+  empresa        EmpresaProfile    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([postulanteId, empresaId])
+  @@index([postulanteId])
+  @@index([empresaId])
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  fromUserId  String
+  toUserId    String
+  content     String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  fromUser    User     @relation("SentMessages", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser      User     @relation("ReceivedMessages", fields: [toUserId], references: [id], onDelete: Cascade)
+}
+
+enum UserType {
+  POSTULANTE
+  EMPRESA
+}
+
+enum ApplicationStatus {
+  PENDING
+  REVIEWED
+  ACCEPTED
+  REJECTED
+  INTERVIEW
+}
+
+enum JobType {
+  TIEMPO_COMPLETO
+  MEDIO_TIEMPO
+  REMOTO
+  HIBRIDO
+  FREELANCE
+}
+
+enum ExperienceLevel {
+  JUNIOR
+  SEMISENIOR
+  SENIOR
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  AUTO_REJECTED
+}
+
+model Call {
+  id             String     @id @default(uuid())
+  fromUserId     String
+  toUserId       String
+  status         CallStatus @default(PENDING)
+  startedAt      DateTime?
+  endedAt        DateTime?
+  duration       Int?       // Duración en segundos
+  createdAt      DateTime   @default(now())
+  fromUser       User       @relation("CallsMade", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser         User       @relation("CallsReceived", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([fromUserId])
+  @@index([toUserId])
+}
+
+enum CallStatus {
+  PENDING      // Llamada iniciada, esperando respuesta
+  ACCEPTED     // Llamada aceptada
+  REJECTED     // Llamada rechazada
+  MISSED       // Llamada perdida
+  ENDED        // Llamada finalizada normalmente
+  CANCELLED    // Llamada cancelada por el llamador
+}

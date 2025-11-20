@@ -1,0 +1,14 @@
+{
+  "jobNotFound": "Trabajo no encontrado",
+  "jobCreated": "Trabajo creado exitosamente",
+  "jobUpdated": "Trabajo actualizado exitosamente",
+  "jobDeleted": "Trabajo eliminado exitosamente",
+  "jobPublished": "Trabajo publicado exitosamente",
+  "jobUnpublished": "Trabajo despublicado exitosamente",
+  "unauthorized": "No tienes permiso para realizar esta acción",
+  "invalidJobType": "Tipo de trabajo inválido",
+  "invalidExperienceLevel": "Nivel de experiencia inválido",
+  "applicationReceived": "Postulación recibida",
+  "applicationNotFound": "Postulación no encontrada",
+  "applicationStatusUpdated": "Estado de postulación actualizado"
+}

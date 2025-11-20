@@ -1,0 +1,22 @@
+FROM node:20-alpine AS base
+
+# Instalar OpenSSL y otras dependencias necesarias para Prisma
+RUN apk add --no-cache openssl libc6-compat
+
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copiar código fuente
+COPY . .
+
+# Generar cliente de Prisma
+RUN npx prisma generate
+
+# Compilar la aplicación
+RUN npm run build
+
+EXPOSE 4000
+CMD ["npm", "run", "start:prod"]

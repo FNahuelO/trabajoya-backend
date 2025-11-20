@@ -1,0 +1,13 @@
+{
+  "success": "Operation successful",
+  "error": "An error has occurred",
+  "notFound": "Resource not found",
+  "badRequest": "Bad request",
+  "forbidden": "Access forbidden",
+  "internalServerError": "Internal server error",
+  "created": "Successfully created",
+  "updated": "Successfully updated",
+  "deleted": "Successfully deleted",
+  "welcome": "Welcome to TrabajoYa API",
+  "apiVersion": "API Version"
+}

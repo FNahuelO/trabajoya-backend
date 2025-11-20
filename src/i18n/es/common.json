@@ -1,0 +1,13 @@
+{
+  "success": "Operación exitosa",
+  "error": "Ha ocurrido un error",
+  "notFound": "Recurso no encontrado",
+  "badRequest": "Solicitud incorrecta",
+  "forbidden": "Acceso prohibido",
+  "internalServerError": "Error interno del servidor",
+  "created": "Creado exitosamente",
+  "updated": "Actualizado exitosamente",
+  "deleted": "Eliminado exitosamente",
+  "welcome": "Bienvenido a TrabajoYa API",
+  "apiVersion": "Versión de la API"
+}

@@ -1,0 +1,85 @@
+{
+  "jobTypes": {
+    "TIEMPO_COMPLETO": "Full time",
+    "MEDIO_TIEMPO": "Part time",
+    "REMOTO": "Remote",
+    "HIBRIDO": "Hybrid",
+    "FREELANCE": "Freelance"
+  },
+  "experienceLevels": {
+    "JUNIOR": "Junior",
+    "SEMISENIOR": "Semi Senior",
+    "SENIOR": "Senior"
+  },
+  "applicationStatuses": {
+    "PENDING": "Pending",
+    "REVIEWED": "Reviewed",
+    "ACCEPTED": "Accepted",
+    "REJECTED": "Rejected",
+    "INTERVIEW": "Interview"
+  },
+  "modalities": {
+    "PRESENCIAL": "On-site",
+    "REMOTO": "Remote",
+    "HIBRIDO": "Hybrid"
+  },
+  "languageLevels": {
+    "BASICO": "Basic",
+    "INTERMEDIO": "Intermediate",
+    "AVANZADO": "Advanced",
+    "NATIVO": "Native"
+  },
+  "companySizes": {
+    "MICRO": "Micro (1-10 employees)",
+    "PEQUENA": "Small (11-50 employees)",
+    "MEDIANA": "Medium (51-250 employees)",
+    "GRANDE": "Large (251-1000 employees)",
+    "EMPRESA": "Enterprise (1000+ employees)"
+  },
+  "sectors": {
+    "TECNOLOGIA": "Technology",
+    "SALUD": "Healthcare",
+    "EDUCACION": "Education",
+    "FINANZAS": "Finance",
+    "RETAIL": "Retail",
+    "MANUFACTURA": "Manufacturing",
+    "CONSTRUCCION": "Construction",
+    "TURISMO": "Tourism",
+    "TRANSPORTE": "Transportation",
+    "ENERGIA": "Energy",
+    "TELECOMUNICACIONES": "Telecommunications",
+    "INMOBILIARIA": "Real Estate",
+    "ALIMENTACION": "Food & Beverage",
+    "MARKETING": "Marketing & Advertising",
+    "CONSULTORIA": "Consulting",
+    "LEGAL": "Legal",
+    "RECURSOS_HUMANOS": "Human Resources",
+    "AGRICULTURA": "Agriculture",
+    "MEDIOS": "Media",
+    "ENTRETENIMIENTO": "Entertainment",
+    "OTRO": "Other"
+  },
+  "studyTypes": {
+    "SECUNDARIO": "Secondary",
+    "TERCIARIO": "Tertiary",
+    "UNIVERSITARIO": "University",
+    "POSGRADO": "Postgraduate",
+    "MAESTRIA": "Master's",
+    "DOCTORADO": "Doctorate",
+    "CURSO": "Course",
+    "CERTIFICACION": "Certification"
+  },
+  "studyStatuses": {
+    "EN_CURSO": "In progress",
+    "COMPLETO": "Completed",
+    "INCOMPLETO": "Incomplete",
+    "ABANDONADO": "Abandoned"
+  },
+  "maritalStatuses": {
+    "SOLTERO": "Single",
+    "CASADO": "Married",
+    "DIVORCIADO": "Divorced",
+    "VIUDO": "Widowed",
+    "UNION_LIBRE": "Common-law"
+  }
+}

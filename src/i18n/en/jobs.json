@@ -1,0 +1,14 @@
+{
+  "jobNotFound": "Job not found",
+  "jobCreated": "Job created successfully",
+  "jobUpdated": "Job updated successfully",
+  "jobDeleted": "Job deleted successfully",
+  "jobPublished": "Job published successfully",
+  "jobUnpublished": "Job unpublished successfully",
+  "unauthorized": "You don't have permission to perform this action",
+  "invalidJobType": "Invalid job type",
+  "invalidExperienceLevel": "Invalid experience level",
+  "applicationReceived": "Application received",
+  "applicationNotFound": "Application not found",
+  "applicationStatusUpdated": "Application status updated"
+}

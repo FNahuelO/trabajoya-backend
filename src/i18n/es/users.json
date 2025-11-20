@@ -1,0 +1,9 @@
+{
+  "userNotFound": "Usuario no encontrado",
+  "userUpdated": "Usuario actualizado",
+  "userDeleted": "Usuario eliminado",
+  "emailInUse": "El email ya está en uso",
+  "passwordUpdated": "Contraseña actualizada",
+  "invalidPassword": "Contraseña inválida",
+  "passwordTooWeak": "La contraseña es muy débil"
+}

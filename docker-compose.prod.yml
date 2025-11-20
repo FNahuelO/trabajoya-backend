@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: trabajoya_db_prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # En prod NO expongas el puerto públicamente (comentado):
+    # ports: ["5444:5432"]
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: trabajoya_api_prod
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+
+      # DB interna por red de docker
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+
+      # JWT
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+
+      # CORS / Swagger
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:false}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-5242880}
+
+      # FRONT URL para armar links en emails
+      APP_WEB_URL: ${APP_WEB_URL}
+
+      # MAIL: SES en producción
+      MAIL_PROVIDER: ses
+      MAIL_FROM: ${MAIL_FROM}
+
+      AWS_REGION: ${AWS_REGION}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+
+    ports: ["4000:4000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    # Prisma migraciones y arranque
+    command: ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+    restart: unless-stopped
+
+volumes:
+  pgdata_prod:

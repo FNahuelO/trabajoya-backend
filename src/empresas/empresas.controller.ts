@@ -1,0 +1,164 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Put,
+  Post,
+  Delete,
+  Param,
+  Req,
+  UseGuards,
+  Patch,
+} from "@nestjs/common";
+import { EmpresasService } from "./empresas.service";
+import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
+import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { createResponse } from "src/common/mapper/api-response.mapper";
+
+@ApiTags("empresas")
+@Controller("api/empresas")
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class EmpresasController {
+  constructor(private service: EmpresasService) {}
+
+  @Get("profile")
+  async me(@Req() req: any) {
+    return createResponse({
+      success: true,
+      message: "Perfil de empresa obtenido correctamente",
+      data: await this.service.getByUser(req.user?.sub),
+    });
+  }
+
+  @Put("profile")
+  async update(@Req() req: any, @Body() dto: any) {
+    return createResponse({
+      success: true,
+      message: "Perfil de empresa actualizado correctamente",
+      data: await this.service.updateByUser(req.user?.sub, dto),
+    });
+  }
+
+  @Get("jobs")
+  async getJobs(@Req() req: any) {
+    return createResponse({
+      success: true,
+      message: "Trabajos obtenidos correctamente",
+      data: await this.service.getJobs(req.user?.sub),
+    });
+  }
+
+  @Post("jobs")
+  async createJob(@Req() req: any, @Body() dto: any) {
+    return createResponse({
+      success: true,
+      message: "Trabajo creado correctamente",
+      data: await this.service.createJob(req.user?.sub, dto),
+    });
+  }
+
+  @Put("jobs/:id")
+  async updateJob(@Req() req: any, @Param("id") id: string, @Body() dto: any) {
+    return createResponse({
+      success: true,
+      message: "Trabajo actualizado correctamente",
+      data: await this.service.updateJob(req.user?.sub, id, dto),
+    });
+  }
+
+  @Delete("jobs/:id")
+  async deleteJob(@Req() req: any, @Param("id") id: string) {
+    return createResponse({
+      success: true,
+      message: "Trabajo eliminado correctamente",
+      data: await this.service.deleteJob(req.user?.sub, id),
+    });
+  }
+
+  @Get("jobs/:jobId/applicants")
+  async getJobApplicants(@Req() req: any, @Param("jobId") jobId: string) {
+    return createResponse({
+      success: true,
+      message: "Postulantes obtenidos correctamente",
+      data: await this.service.getJobApplicants(req.user?.sub, jobId),
+    });
+  }
+
+  @Patch("applications/:id")
+  updateApplicationStatus(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() dto: { status: string; notes?: string }
+  ) {
+    return createResponse({
+      success: true,
+      message: "Estado de la aplicación actualizado correctamente",
+      data: this.service.updateApplicationStatus(
+        req.user?.sub,
+        id,
+        dto.status,
+        dto.notes
+      ),
+    });
+  }
+
+  // Endpoints para moderación (coordinadores)
+  @Get("moderation/pending")
+  async getPendingJobs(@Req() req: any) {
+    // TODO: Agregar verificación de rol de coordinador
+    return createResponse({
+      success: true,
+      message: "Empleos pendientes de moderación obtenidos correctamente",
+      data: await this.service.getPendingJobs(),
+    });
+  }
+
+  @Get("moderation/rejected")
+  async getRejectedJobs(@Req() req: any) {
+    // TODO: Agregar verificación de rol de coordinador
+    return createResponse({
+      success: true,
+      message: "Empleos rechazados obtenidos correctamente",
+      data: await this.service.getRejectedJobs(),
+    });
+  }
+
+  @Get("moderation/job/:id")
+  async getJobForModeration(@Req() req: any, @Param("id") id: string) {
+    // TODO: Agregar verificación de rol de coordinador
+    return createResponse({
+      success: true,
+      message: "Empleo obtenido correctamente",
+      data: await this.service.getJobForModeration(id),
+    });
+  }
+
+  @Post("moderation/job/:id/approve")
+  async approveJob(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() dto: { reason?: string }
+  ) {
+    // TODO: Agregar verificación de rol de coordinador
+    return createResponse({
+      success: true,
+      message: "Empleo aprobado correctamente",
+      data: await this.service.approveJob(id, req.user?.sub, dto.reason),
+    });
+  }
+
+  @Post("moderation/job/:id/reject")
+  async rejectJob(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() dto: { reason: string }
+  ) {
+    // TODO: Agregar verificación de rol de coordinador
+    return createResponse({
+      success: true,
+      message: "Empleo rechazado correctamente",
+      data: await this.service.rejectJob(id, req.user?.sub, dto.reason),
+    });
+  }
+}

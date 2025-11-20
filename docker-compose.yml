@@ -1,0 +1,81 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: trabajoya_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trabajoya
+    ports: ["5444:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trabajoya_api
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/trabajoya?schema=public
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:19006
+      SWAGGER_ENABLED: "true"
+      MAX_FILE_SIZE: "5242880"
+
+      # JWT (dejé ambas env por compatibilidad con tu código)
+      JWT_ACCESS_SECRET: 0ce0d87823817f5e5b708d31a9f713876c141fbcb49e853eecf58a684b74e63dae5d6e55ae1e6b486a44bb580884bdc02acffb8360ab82946ee0da90d5a010b5
+      JWT_REFRESH_SECRET: dev-refresh-secret
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      JWT_ACCESS_TTL: "900" # (segundos) si tu código lee *_TTL
+      JWT_REFRESH_TTL: "2592000" # (segundos) si tu código lee *_TTL
+
+      # MAIL dev (Resend)
+      MAIL_PROVIDER: resend
+      MAIL_FROM: "TrabajoYa <onboarding@resend.dev>"
+      RESEND_API_KEY: ${RESEND_API_KEY}
+
+      # MAIL dev alternativo (SMTP -> MailHog) - descomenta para usar MailHog
+      # MAIL_PROVIDER: smtp
+      # MAIL_FROM: "TrabajoYa <no-reply@localhost.test>"
+      # SMTP_HOST: mailhog
+      # SMTP_PORT: "1025"
+      # SMTP_SECURE: "false"
+
+      # Para correos reales con Gmail, descomenta y configura estas variables:
+      # MAIL_PROVIDER: smtp
+      # MAIL_FROM: "TrabajoYa <tu-email@gmail.com>"
+      # SMTP_HOST: smtp.gmail.com
+      # SMTP_PORT: "587"
+      # SMTP_SECURE: "false"
+      # SMTP_USER: tu-email@gmail.com
+      # SMTP_PASS: tu-app-password
+
+      # Links en emails (front)
+      APP_WEB_URL: http://localhost:3000
+
+    ports: ["4000:4000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    # En dev, no compiles y corré con watch:
+    command: >
+      sh -c "npx prisma generate &&
+             npx prisma db push --accept-data-loss &&
+             npm run dev"
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - ./uploads:/app/uploads
+      - /app/node_modules
+
+volumes:
+  pgdata:

@@ -1,0 +1,85 @@
+{
+  "jobTypes": {
+    "TIEMPO_COMPLETO": "Tempo integral",
+    "MEDIO_TIEMPO": "Meio período",
+    "REMOTO": "Remoto",
+    "HIBRIDO": "Híbrido",
+    "FREELANCE": "Freelance"
+  },
+  "experienceLevels": {
+    "JUNIOR": "Júnior",
+    "SEMISENIOR": "Semi Sênior",
+    "SENIOR": "Sênior"
+  },
+  "applicationStatuses": {
+    "PENDING": "Pendente",
+    "REVIEWED": "Revisado",
+    "ACCEPTED": "Aceito",
+    "REJECTED": "Rejeitado",
+    "INTERVIEW": "Entrevista"
+  },
+  "modalities": {
+    "PRESENCIAL": "Presencial",
+    "REMOTO": "Remoto",
+    "HIBRIDO": "Híbrido"
+  },
+  "languageLevels": {
+    "BASICO": "Básico",
+    "INTERMEDIO": "Intermediário",
+    "AVANZADO": "Avançado",
+    "NATIVO": "Nativo"
+  },
+  "companySizes": {
+    "MICRO": "Micro (1-10 funcionários)",
+    "PEQUENA": "Pequena (11-50 funcionários)",
+    "MEDIANA": "Média (51-250 funcionários)",
+    "GRANDE": "Grande (251-1000 funcionários)",
+    "EMPRESA": "Empresa (1000+ funcionários)"
+  },
+  "sectors": {
+    "TECNOLOGIA": "Tecnologia",
+    "SALUD": "Saúde",
+    "EDUCACION": "Educação",
+    "FINANZAS": "Finanças",
+    "RETAIL": "Varejo",
+    "MANUFACTURA": "Manufatura",
+    "CONSTRUCCION": "Construção",
+    "TURISMO": "Turismo",
+    "TRANSPORTE": "Transporte",
+    "ENERGIA": "Energia",
+    "TELECOMUNICACIONES": "Telecomunicações",
+    "INMOBILIARIA": "Imobiliária",
+    "ALIMENTACION": "Alimentação",
+    "MARKETING": "Marketing e Publicidade",
+    "CONSULTORIA": "Consultoria",
+    "LEGAL": "Jurídico",
+    "RECURSOS_HUMANOS": "Recursos Humanos",
+    "AGRICULTURA": "Agricultura",
+    "MEDIOS": "Mídia",
+    "ENTRETENIMIENTO": "Entretenimento",
+    "OTRO": "Outro"
+  },
+  "studyTypes": {
+    "SECUNDARIO": "Secundário",
+    "TERCIARIO": "Terciário",
+    "UNIVERSITARIO": "Universitário",
+    "POSGRADO": "Pós-graduação",
+    "MAESTRIA": "Mestrado",
+    "DOCTORADO": "Doutorado",
+    "CURSO": "Curso",
+    "CERTIFICACION": "Certificação"
+  },
+  "studyStatuses": {
+    "EN_CURSO": "Em andamento",
+    "COMPLETO": "Completo",
+    "INCOMPLETO": "Incompleto",
+    "ABANDONADO": "Abandonado"
+  },
+  "maritalStatuses": {
+    "SOLTERO": "Solteiro/a",
+    "CASADO": "Casado/a",
+    "DIVORCIADO": "Divorciado/a",
+    "VIUDO": "Viúvo/a",
+    "UNION_LIBRE": "União estável"
+  }
+}

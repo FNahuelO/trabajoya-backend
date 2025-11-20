@@ -1,0 +1,14 @@
+{
+  "profileNotFound": "Perfil do candidato não encontrado",
+  "profileCreated": "Perfil do candidato criado",
+  "profileUpdated": "Perfil do candidato atualizado",
+  "experienceAdded": "Experiência adicionada",
+  "experienceUpdated": "Experiência atualizada",
+  "experienceDeleted": "Experiência excluída",
+  "educationAdded": "Educação adicionada",
+  "educationUpdated": "Educação atualizada",
+  "educationDeleted": "Educação excluída",
+  "applicationSubmitted": "Candidatura enviada",
+  "applicationAlreadyExists": "Você já se candidatou a este trabalho",
+  "invalidSkills": "As habilidades devem ser uma lista de textos"
+}
