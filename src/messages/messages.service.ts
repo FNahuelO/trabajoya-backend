@@ -60,12 +60,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -79,12 +81,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -111,12 +115,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -138,12 +144,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -186,12 +194,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -234,12 +244,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -253,12 +265,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -310,12 +324,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -329,12 +345,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -354,6 +372,43 @@ export class MessagesService {
         isRead: false,
       },
     });
+  }
+
+  // Obtener información de un usuario para iniciar conversación
+  async getUserInfo(userId: string, currentUserId: string): Promise<any> {
+    // Validar que no se obtenga información de sí mismo
+    if (userId === currentUserId) {
+      throw new BadRequestException("No puedes obtener información de ti mismo");
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        userType: true,
+        postulante: {
+          select: {
+            id: true,
+            fullName: true,
+            profilePicture: true,
+          },
+        },
+        empresa: {
+          select: {
+            id: true,
+            companyName: true,
+            logo: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException("Usuario no encontrado");
+    }
+
+    return this.mapUserToResponse(user);
   }
 
   // Métodos de mapeo para transformar los datos de Prisma a DTOs
@@ -381,12 +436,14 @@ export class MessagesService {
       userType: user.userType,
       postulante: user.postulante
         ? {
+            id: user.postulante.id,
             fullName: user.postulante.fullName,
             profilePicture: user.postulante.profilePicture,
           }
         : undefined,
       empresa: user.empresa
         ? {
+            id: user.empresa.id,
             companyName: user.empresa.companyName,
             logo: user.empresa.logo,
           }
@@ -453,12 +510,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -472,12 +531,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -502,12 +563,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },
@@ -521,12 +584,14 @@ export class MessagesService {
             userType: true,
             postulante: {
               select: {
+                id: true,
                 fullName: true,
                 profilePicture: true,
               },
             },
             empresa: {
               select: {
+                id: true,
                 companyName: true,
                 logo: true,
               },

@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CallStatus, InitiateCallDto, CallResponseDto } from "./dto";
+import { CallStatus, CallType, InitiateCallDto, CallResponseDto } from "./dto";
 
 @Injectable()
 export class CallsService {
@@ -18,7 +18,7 @@ export class CallsService {
     fromUserId: string,
     dto: InitiateCallDto
   ): Promise<CallResponseDto> {
-    const { toUserId } = dto;
+    const { toUserId, callType = CallType.VOICE } = dto;
 
     // Validar que no se llame a sí mismo
     if (fromUserId === toUserId) {
@@ -53,6 +53,7 @@ export class CallsService {
       data: {
         fromUserId,
         toUserId,
+        callType: callType as CallType,
         status: CallStatus.PENDING,
       },
     });
@@ -280,6 +281,7 @@ export class CallsService {
       id: call.id,
       fromUserId: call.fromUserId,
       toUserId: call.toUserId,
+      callType: call.callType || CallType.VOICE,
       status: call.status,
       startedAt: call.startedAt,
       endedAt: call.endedAt,

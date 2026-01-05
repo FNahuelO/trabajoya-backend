@@ -4,14 +4,23 @@ import {
   IsString,
   IsOptional,
   IsEnum,
+  IsBoolean,
   MinLength,
+  ValidateIf,
 } from "class-validator";
 import { i18nValidationMessage } from "nestjs-i18n";
 
 export class RegisterDto {
-  @ApiProperty({ example: "usuario@ejemplo.com" })
+  @ApiProperty({ example: "usuario@ejemplo.com", required: false })
+  @ValidateIf(
+    (dto) =>
+      !dto.idToken &&
+      !dto.identityToken &&
+      !dto.authorizationCode &&
+      !dto.appleUserId
+  )
   @IsEmail({}, { message: i18nValidationMessage("validation.isEmail") })
-  email: string;
+  email?: string;
 
   @ApiProperty({ example: "Password123!", required: false })
   @IsOptional()
@@ -60,4 +69,13 @@ export class RegisterDto {
   @IsOptional()
   @IsString({ message: i18nValidationMessage("validation.isString") })
   appleUserId?: string;
+
+  @ApiProperty({
+    example: true,
+    required: false,
+    description: "Acepta términos y condiciones",
+  })
+  @IsOptional()
+  @IsBoolean({ message: i18nValidationMessage("validation.isBoolean") })
+  aceptaTerminos?: boolean;
 }

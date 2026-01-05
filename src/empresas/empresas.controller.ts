@@ -76,6 +76,32 @@ export class EmpresasController {
     });
   }
 
+  @Post("jobs/:id/payment/create-order")
+  async createJobPaymentOrder(@Req() req: any, @Param("id") id: string) {
+    return createResponse({
+      success: true,
+      message: "Orden de pago creada correctamente",
+      data: await this.service.createJobPaymentOrder(req.user?.sub, id),
+    });
+  }
+
+  @Post("jobs/:id/payment/confirm")
+  async confirmJobPayment(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() body: { orderId: string }
+  ) {
+    return createResponse({
+      success: true,
+      message: "Pago confirmado correctamente, el empleo está en revisión",
+      data: await this.service.confirmJobPayment(
+        req.user?.sub,
+        id,
+        body.orderId
+      ),
+    });
+  }
+
   @Get("jobs/:jobId/applicants")
   async getJobApplicants(@Req() req: any, @Param("jobId") jobId: string) {
     return createResponse({

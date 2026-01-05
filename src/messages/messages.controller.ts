@@ -29,6 +29,7 @@ import {
   SendMessageDto,
   MessageResponseDto,
   ConversationResponseDto,
+  UserInfoDto,
 } from "./dto";
 import { WebSocketMessageInterceptor } from "./interceptors/websocket-message.interceptor";
 
@@ -74,6 +75,27 @@ export class MessagesController {
       success: true,
       message: "Conversaciones obtenidas correctamente",
       data: conversations,
+    });
+  }
+
+  @Get("user/:userId")
+  @ApiOperation({ summary: "Obtener información de un usuario para iniciar conversación" })
+  @ApiParam({
+    name: "userId",
+    description: "ID del usuario del cual obtener información",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Información del usuario obtenida correctamente",
+    type: UserInfoDto,
+  })
+  @ApiResponse({ status: 404, description: "Usuario no encontrado" })
+  async getUserInfo(@Req() req: any, @Param("userId") userId: string) {
+    const userInfo = await this.service.getUserInfo(userId, req.user?.sub);
+    return createResponse({
+      success: true,
+      message: "Información del usuario obtenida correctamente",
+      data: userInfo,
     });
   }
 

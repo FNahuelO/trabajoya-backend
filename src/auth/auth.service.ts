@@ -14,6 +14,8 @@ import * as jwt from "jsonwebtoken";
 import { I18nService } from "nestjs-i18n";
 import { MailService } from "../mail/mail.service";
 import { RegisterEmpresaDto } from "./dto/register-empresa.dto";
+import { TermsService } from "../terms/terms.service";
+import { TermsType } from "@prisma/client";
 
 @Injectable()
 export class AuthService {
@@ -23,7 +25,8 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private i18n: I18nService,
-    private mailService: MailService
+    private mailService: MailService,
+    private termsService: TermsService
   ) {}
 
   private async getTranslation(key: string, fallback: string): Promise<string> {
@@ -75,6 +78,16 @@ export class AuthService {
         )
       );
 
+    // Validar términos y condiciones
+    if (!dto.aceptaTerminos) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "auth.termsNotAccepted",
+          "Debes aceptar los términos y condiciones"
+        )
+      );
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const verificationToken = crypto.randomUUID();
 
@@ -91,6 +104,22 @@ export class AuthService {
     await this.prisma.postulanteProfile.create({
       data: { userId: user.id, fullName: dto.fullName ?? "Sin nombre" },
     });
+
+    // Aceptar términos y condiciones
+    try {
+      const activeTerms = await this.termsService.getActiveTerms(
+        undefined,
+        TermsType.POSTULANTE
+      );
+      await this.termsService.acceptTerms(
+        user.id,
+        TermsType.POSTULANTE,
+        activeTerms.version
+      );
+    } catch (error) {
+      console.error("Error aceptando términos:", error);
+      // No fallar el registro si hay error aceptando términos, pero loguear
+    }
 
     // Enviar email de verificación
     await this.mailService.sendVerificationEmail(user.email, verificationToken);
@@ -153,6 +182,22 @@ export class AuthService {
             profilePicture: payload.picture,
           },
         });
+
+        // Aceptar términos y condiciones automáticamente para registro con Google
+        try {
+          const activeTerms = await this.termsService.getActiveTerms(
+            undefined,
+            TermsType.POSTULANTE
+          );
+          await this.termsService.acceptTerms(
+            user.id,
+            TermsType.POSTULANTE,
+            activeTerms.version
+          );
+        } catch (error) {
+          console.error("Error aceptando términos:", error);
+          // No fallar el registro si hay error aceptando términos, pero loguear
+        }
       }
 
       return this.issueTokens(user.id, user.userType);
@@ -262,10 +307,210 @@ export class AuthService {
             fullName: dto.fullName || "Sin nombre",
           },
         });
+
+        // Aceptar términos y condiciones automáticamente para registro con Apple
+        try {
+          const activeTerms = await this.termsService.getActiveTerms(
+            undefined,
+            TermsType.POSTULANTE
+          );
+          await this.termsService.acceptTerms(
+            user.id,
+            TermsType.POSTULANTE,
+            activeTerms.version
+          );
+        } catch (error) {
+          console.error("Error aceptando términos:", error);
+          // No fallar el registro si hay error aceptando términos, pero loguear
+        }
       }
 
       return this.issueTokens(user.id, user.userType);
     } catch (error) {
+      console.error("Error verificando token de Apple:", error);
+      throw new UnauthorizedException(
+        await this.getTranslation(
+          "auth.invalidAppleToken",
+          "Token de Apple inválido"
+        )
+      );
+    }
+  }
+
+  async loginGoogle(dto: { idToken: string }) {
+    if (!dto.idToken) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "auth.googleTokenRequired",
+          "Token de Google requerido"
+        )
+      );
+    }
+
+    try {
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: dto.idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+
+      const payload = ticket.getPayload();
+
+      if (!payload?.email) {
+        throw new UnauthorizedException(
+          await this.getTranslation(
+            "auth.invalidGoogleToken",
+            "Token de Google inválido"
+          )
+        );
+      }
+
+      // Buscar usuario por email o googleId
+      let user = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: payload.email },
+            { googleId: payload.sub }
+          ]
+        },
+      });
+
+      // Si no existe el usuario, lanzar error
+      if (!user) {
+        throw new UnauthorizedException(
+          await this.getTranslation(
+            "auth.userNotFound",
+            "Usuario no encontrado. Por favor regístrate primero."
+          )
+        );
+      }
+
+      // Verificar que el usuario tenga googleId asociado o actualizarlo
+      if (!user.googleId) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { googleId: payload.sub },
+        });
+      }
+
+      const tokens = await this.issueTokens(user.id, user.userType);
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          email: user.email,
+          tipo: user.userType.toLowerCase() as "postulante" | "empresa",
+          verificado: user.isVerified,
+        },
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      console.error("Error verificando token de Google:", error);
+      throw new UnauthorizedException(
+        await this.getTranslation(
+          "auth.invalidGoogleToken",
+          "Token de Google inválido"
+        )
+      );
+    }
+  }
+
+  async loginApple(dto: {
+    identityToken?: string;
+    authorizationCode?: string;
+    email?: string;
+    appleUserId?: string;
+  }) {
+    try {
+      let appleData: any;
+
+      // Opción 1: Verificar el identityToken (JWT)
+      if (dto.identityToken) {
+        appleData = await appleSignin.verifyIdToken(dto.identityToken, {
+          audience: process.env.APPLE_CLIENT_ID,
+          ignoreExpiration: false,
+        });
+      }
+      // Opción 2: Usar el authorization code para obtener tokens
+      else if (dto.authorizationCode) {
+        const tokenResponse = await appleSignin.getAuthorizationToken(
+          dto.authorizationCode,
+          {
+            clientID: process.env.APPLE_CLIENT_ID ?? "",
+            clientSecret: await this.generateAppleClientSecret(),
+            redirectUri: process.env.APPLE_REDIRECT_URI ?? "",
+          }
+        );
+
+        appleData = await appleSignin.verifyIdToken(tokenResponse.id_token, {
+          audience: process.env.APPLE_CLIENT_ID,
+        });
+      } else {
+        throw new BadRequestException(
+          await this.getTranslation(
+            "auth.appleTokenOrCodeRequired",
+            "identityToken o authorizationCode requerido"
+          )
+        );
+      }
+
+      const email = appleData.email || dto.email;
+      const appleUserId = appleData.sub || dto.appleUserId;
+
+      if (!appleUserId) {
+        throw new BadRequestException(
+          await this.getTranslation(
+            "auth.appleUserIdRequired",
+            "Apple User ID requerido"
+          )
+        );
+      }
+
+      // Buscar usuario por appleId o email
+      let user = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { appleId: appleUserId },
+            ...(email ? [{ email }] : [])
+          ]
+        },
+      });
+
+      // Si no existe el usuario, lanzar error
+      if (!user) {
+        throw new UnauthorizedException(
+          await this.getTranslation(
+            "auth.userNotFound",
+            "Usuario no encontrado. Por favor regístrate primero."
+          )
+        );
+      }
+
+      // Verificar que el usuario tenga appleId asociado o actualizarlo
+      if (!user.appleId) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { appleId: appleUserId },
+        });
+      }
+
+      const tokens = await this.issueTokens(user.id, user.userType);
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          email: user.email,
+          tipo: user.userType.toLowerCase() as "postulante" | "empresa",
+          verificado: user.isVerified,
+        },
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
+        throw error;
+      }
       console.error("Error verificando token de Apple:", error);
       throw new UnauthorizedException(
         await this.getTranslation(
@@ -302,6 +547,32 @@ export class AuthService {
   }
 
   async login(dto: any) {
+    // Login con Google
+    if (dto.idToken) {
+      return this.loginGoogle({ idToken: dto.idToken });
+    }
+    
+    // Login con Apple
+    if (dto.identityToken || dto.authorizationCode || dto.appleUserId) {
+      return this.loginApple({
+        identityToken: dto.identityToken,
+        authorizationCode: dto.authorizationCode,
+        email: dto.email,
+        fullName: dto.fullName,
+        appleUserId: dto.appleUserId,
+      });
+    }
+
+    // Login con email/password
+    if (!dto.email || !dto.password) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "auth.invalidCredentials",
+          "Credenciales inválidas"
+        )
+      );
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -347,18 +618,40 @@ export class AuthService {
   }
 
   private async issueTokens(userId: string, role: string) {
+    // Obtener el usuario para incluir userType en el token
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, userType: true, email: true },
+    });
+
     const accessToken = await this.jwt.signAsync(
-      { sub: userId, role },
+      {
+        sub: userId,
+        role,
+        userType: user?.userType,
+        email: user?.email,
+      },
       {
         secret: process.env.JWT_ACCESS_SECRET,
-        expiresIn: Number(process.env.JWT_ACCESS_TTL || 900),
+        expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m",
       }
     );
 
     const refreshToken = crypto.randomUUID();
-    const expiresAt = new Date(
-      Date.now() + 1000 * Number(process.env.JWT_REFRESH_TTL || 2592000)
-    );
+    // JWT_REFRESH_EXPIRES_IN puede ser "7d", "30d", etc. o un número en segundos
+    const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || "7d";
+    // Convertir a milisegundos si es un número, o parsear formato como "7d"
+    let refreshExpiresInMs = 7 * 24 * 60 * 60 * 1000; // default 7 días
+    if (refreshExpiresIn.match(/^\d+$/)) {
+      refreshExpiresInMs = Number(refreshExpiresIn) * 1000;
+    } else if (refreshExpiresIn.endsWith("d")) {
+      const days = Number(refreshExpiresIn.slice(0, -1));
+      refreshExpiresInMs = days * 24 * 60 * 60 * 1000;
+    } else if (refreshExpiresIn.endsWith("h")) {
+      const hours = Number(refreshExpiresIn.slice(0, -1));
+      refreshExpiresInMs = hours * 60 * 60 * 1000;
+    }
+    const expiresAt = new Date(Date.now() + refreshExpiresInMs);
 
     await this.prisma.refreshToken.create({
       data: { userId, token: refreshToken, expiresAt },

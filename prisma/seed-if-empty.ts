@@ -23,7 +23,7 @@ async function runSeed() {
     create: {
       email: "admin@trabajoya.dev",
       passwordHash,
-      userType: "EMPRESA",
+      userType: "ADMIN",
       isVerified: true,
     },
   });

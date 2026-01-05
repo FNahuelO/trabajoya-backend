@@ -6,12 +6,14 @@ import { AuthController } from "./auth.controller";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { I18nCustomModule } from "../i18n/i18n.module";
 import { MailModule } from "../mail/mail.module";
+import { TermsModule } from "../terms/terms.module";
 
 @Module({
   imports: [
     PassportModule,
     I18nCustomModule,
     MailModule,
+    TermsModule,
     JwtModule.register({
       secret: process.env.JWT_ACCESS_SECRET,
       signOptions: { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m" },

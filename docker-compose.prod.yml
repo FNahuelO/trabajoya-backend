@@ -40,7 +40,7 @@ services:
 
       # CORS / Swagger
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
-      SWAGGER_ENABLED: ${SWAGGER_ENABLED:false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
       MAX_FILE_SIZE: ${MAX_FILE_SIZE:-5242880}
 
       # FRONT URL para armar links en emails
@@ -58,8 +58,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Prisma migraciones y arranque
-    command: ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+    # Verificar DB, ejecutar migraciones y arrancar
+    command: ["sh", "-c", "node scripts/wait-for-db.js && npx prisma migrate deploy && node dist/main.js"]
     restart: unless-stopped
 
 volumes:

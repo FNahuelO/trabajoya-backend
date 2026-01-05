@@ -5,6 +5,7 @@ import { RegisterDto } from "./dto/register.dto";
 import { RegisterEmpresaDto } from "./dto/register-empresa.dto";
 import { LoginDto } from "./dto/login.dto";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { Public } from "../common/decorators/public.decorator";
 import { createResponse } from "../common/mapper/api-response.mapper";
 
 @ApiTags("auth")
@@ -12,6 +13,7 @@ import { createResponse } from "../common/mapper/api-response.mapper";
 export class AuthController {
   constructor(private service: AuthService) {}
 
+  @Public()
   @Post("register")
   async register(@Body() dto: RegisterDto) {
     return createResponse({
@@ -21,6 +23,7 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post("register-empresa")
   async registerEmpresa(@Body() dto: RegisterEmpresaDto) {
     return createResponse({
@@ -30,6 +33,7 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post("login")
   async login(@Body() dto: LoginDto) {
     return createResponse({
@@ -46,6 +50,7 @@ export class AuthController {
     return { userId: req.user?.sub ?? null };
   }
 
+  @Public()
   @Post("refresh")
   async refreshToken(@Body() dto: { refreshToken: string }) {
     return createResponse({
@@ -66,6 +71,7 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post("forgot-password")
   async forgotPassword(@Body() dto: { email: string }) {
     return createResponse({
@@ -75,6 +81,7 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post("reset-password")
   async resetPassword(@Body() dto: { token: string; password: string }) {
     return createResponse({
@@ -84,6 +91,7 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post("verify-email")
   async verifyEmail(@Body() dto: { token: string }) {
     return createResponse({

@@ -1,102 +1,82 @@
 import {
   Controller,
   Post,
+  Body,
   Req,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
-import { UploadService } from "./upload.service";
-import { ApiTags, ApiBearerAuth, ApiConsumes, ApiBody } from "@nestjs/swagger";
+import { UploadService, PresignUploadDto, CompleteUploadDto } from "./upload.service";
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 
-// Definir el tipo de archivo
-interface MulterFile {
-  fieldname: string;
-  originalname: string;
-  encoding: string;
-  mimetype: string;
-  size: number;
-  buffer: Buffer;
-}
-
 @ApiTags("upload")
-@Controller("api/upload")
+@Controller("api/uploads")
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UploadController {
   constructor(private service: UploadService) {}
 
-  @Post("avatar")
-  @UseInterceptors(FileInterceptor("file"))
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
+  @Post("presign")
+  @ApiOperation({ summary: "Genera una presigned URL para subir un archivo a S3" })
+  @ApiResponse({
+    status: 200,
+    description: "Presigned URL generada correctamente",
     schema: {
       type: "object",
       properties: {
-        file: {
-          type: "string",
-          format: "binary",
+        success: { type: "boolean" },
+        message: { type: "string" },
+        data: {
+          type: "object",
+          properties: {
+            uploadUrl: { type: "string" },
+            key: { type: "string" },
+          },
         },
       },
     },
   })
-  uploadAvatar(@Req() req: any, @UploadedFile() file: MulterFile) {
-    return this.service.uploadAvatar(req.user?.sub, file);
+  async presignUpload(
+    @Req() req: any,
+    @Body() dto: PresignUploadDto
+  ) {
+    const result = await this.service.presignUpload(req.user?.sub, dto);
+    return {
+      success: true,
+      message: "Presigned URL generada correctamente",
+      data: result,
+    };
   }
 
-  @Post("logo")
-  @UseInterceptors(FileInterceptor("file"))
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
+  @Post("complete")
+  @ApiOperation({ summary: "Completa el proceso de upload verificando el archivo en S3" })
+  @ApiResponse({
+    status: 200,
+    description: "Upload completado correctamente",
     schema: {
       type: "object",
       properties: {
-        file: {
-          type: "string",
-          format: "binary",
+        success: { type: "boolean" },
+        message: { type: "string" },
+        data: {
+          type: "object",
+          properties: {
+            mediaAssetId: { type: "string" },
+            key: { type: "string" },
+          },
         },
       },
     },
   })
-  uploadLogo(@Req() req: any, @UploadedFile() file: MulterFile) {
-    return this.service.uploadCompanyLogo(req.user?.sub, file);
-  }
-
-  @Post("cv")
-  @UseInterceptors(FileInterceptor("file"))
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
-    schema: {
-      type: "object",
-      properties: {
-        file: {
-          type: "string",
-          format: "binary",
-        },
-      },
-    },
-  })
-  uploadCV(@Req() req: any, @UploadedFile() file: MulterFile) {
-    return this.service.uploadCV(req.user?.sub, file);
-  }
-
-  @Post("video")
-  @UseInterceptors(FileInterceptor("file"))
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
-    schema: {
-      type: "object",
-      properties: {
-        file: {
-          type: "string",
-          format: "binary",
-        },
-      },
-    },
-  })
-  uploadVideo(@Req() req: any, @UploadedFile() file: MulterFile) {
-    return this.service.uploadVideo(req.user?.sub, file);
+  async completeUpload(
+    @Req() req: any,
+    @Body() dto: CompleteUploadDto
+  ) {
+    const result = await this.service.completeUpload(req.user?.sub, dto);
+    return {
+      success: true,
+      message: "Upload completado correctamente",
+      data: result,
+    };
   }
 }

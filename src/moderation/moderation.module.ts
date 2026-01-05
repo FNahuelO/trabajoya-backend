@@ -1,11 +1,11 @@
-import { Module } from '@nestjs/common';
-import { ModerationController } from './moderation.controller';
-import { ModerationService } from './moderation.service';
+import { Module } from "@nestjs/common";
+import { ModerationController } from "./moderation.controller";
+import { ModerationService } from "./moderation.service";
+import { ContentModerationService } from "../common/services/content-moderation.service";
 
 @Module({
   controllers: [ModerationController],
-  providers: [ModerationService],
+  providers: [ModerationService, ContentModerationService],
   exports: [ModerationService],
 })
 export class ModerationModule {}
-

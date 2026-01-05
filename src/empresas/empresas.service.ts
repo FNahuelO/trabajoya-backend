@@ -5,13 +5,17 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { ContentModerationService } from "../common/services/content-moderation.service";
+import { SubscriptionsService } from "../subscriptions/subscriptions.service";
+import { PaymentsService } from "../payments/payments.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
 export class EmpresasService {
   constructor(
     private prisma: PrismaService,
-    private contentModeration: ContentModerationService
+    private contentModeration: ContentModerationService,
+    private subscriptionsService: SubscriptionsService,
+    private paymentsService: PaymentsService
   ) {}
 
   async getByUser(userId: string) {
@@ -100,6 +104,41 @@ export class EmpresasService {
       throw new NotFoundException("Mensaje de error");
     }
 
+    // Verificar si la empresa tiene una suscripción activa y su plan
+    const activeSubscription =
+      await this.subscriptionsService.getActiveSubscription(profile.id);
+
+    // Precio por publicación (configurable)
+    const jobPublicationPrice = parseFloat(
+      process.env.JOB_PUBLICATION_PRICE || "10.00"
+    );
+
+    // Por ahora, TODOS los planes requieren pago por publicación
+    // En el futuro, planes PREMIUM/ENTERPRISE podrían incluir publicaciones gratis
+    // Los planes solo controlan límites de cantidad, no eximen del pago
+
+    // Verificar si el plan incluye publicaciones gratis
+    const planIncludesFreeJobs =
+      activeSubscription?.planType === "PREMIUM" ||
+      activeSubscription?.planType === "ENTERPRISE";
+
+    // Si NO incluye publicaciones gratis, requiere pago
+    if (!planIncludesFreeJobs) {
+      return this.prisma.job.create({
+        data: {
+          ...dto,
+          empresaId: profile.id,
+          moderationStatus: "PENDING_PAYMENT" as any,
+          status: "inactive",
+          isPaid: false,
+          paymentStatus: "PENDING",
+          paymentAmount: jobPublicationPrice,
+          paymentCurrency: "USD",
+        },
+      });
+    }
+
+    // Si el plan incluye publicaciones gratis (PREMIUM/ENTERPRISE), pasa directo a moderación automática
     // Aplicar filtro automático de moderación
     const moderationResult = this.contentModeration.analyzeJobContent({
       title: dto.title || "",
@@ -107,13 +146,25 @@ export class EmpresasService {
       requirements: dto.requirements || "",
     });
 
-    // Determinar el estado de moderación
+    // Determinar el estado de moderación y status basado en el resultado
     let moderationStatus = "PENDING";
+    let status = "inactive"; // Por defecto inactivo hasta aprobación manual
     let autoRejectionReason = null;
 
     if (!moderationResult.isApproved) {
+      // Si no pasa la revisión automática, rechazar automáticamente
       moderationStatus = "AUTO_REJECTED";
-      autoRejectionReason = moderationResult.reason;
+      status = "inactive";
+      // Combinar todas las razones en un mensaje
+      autoRejectionReason = moderationResult.reasons.join(". ");
+    } else if (moderationResult.needsManualReview) {
+      // Si necesita revisión manual (score >= 30 y < 50), va a PENDING
+      moderationStatus = "PENDING";
+      status = "inactive";
+    } else {
+      // Si pasa completamente (score < 30), aún así va a PENDING para revisión manual
+      moderationStatus = "PENDING";
+      status = "inactive";
     }
 
     return this.prisma.job.create({
@@ -121,7 +172,10 @@ export class EmpresasService {
         ...dto,
         empresaId: profile.id,
         moderationStatus: moderationStatus as any,
+        status: status,
         autoRejectionReason: autoRejectionReason,
+        isPaid: true, // Con suscripción activa se considera pagado
+        paymentStatus: "COMPLETED",
       },
     });
   }
@@ -161,6 +215,40 @@ export class EmpresasService {
 
     if (!job) {
       throw new NotFoundException("Mensaje de error");
+    }
+
+    // Si se actualizan campos de contenido, aplicar moderación automática nuevamente
+    const contentChanged =
+      (dto.title && dto.title !== job.title) ||
+      (dto.description && dto.description !== job.description) ||
+      (dto.requirements && dto.requirements !== job.requirements);
+
+    if (contentChanged) {
+      const moderationResult = this.contentModeration.analyzeJobContent({
+        title: dto.title || job.title || "",
+        description: dto.description || job.description || "",
+        requirements: dto.requirements || job.requirements || "",
+      });
+
+      // Si no pasa la moderación automática, rechazar
+      if (!moderationResult.isApproved) {
+        dto.moderationStatus = "AUTO_REJECTED";
+        dto.status = "inactive";
+        dto.autoRejectionReason = moderationResult.reasons.join(". ");
+        // Limpiar campos de moderación manual si estaban aprobados
+        dto.moderatedBy = null;
+        dto.moderatedAt = null;
+        dto.moderationReason = null;
+      } else {
+        // Si pasa la moderación automática, volver a estado PENDING para revisión manual
+        dto.moderationStatus = "PENDING";
+        dto.status = "inactive";
+        dto.autoRejectionReason = null;
+        // Limpiar campos de moderación manual
+        dto.moderatedBy = null;
+        dto.moderatedAt = null;
+        dto.moderationReason = null;
+      }
     }
 
     return this.prisma.job.update({
@@ -373,6 +461,139 @@ export class EmpresasService {
         _count: {
           select: { applications: true },
         },
+      },
+    });
+  }
+
+  /**
+   * Crear orden de pago para una publicación
+   */
+  async createJobPaymentOrder(userId: string, jobId: string) {
+    const profile = await this.prisma.empresaProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException("Empresa no encontrada");
+    }
+
+    const job = await this.prisma.job.findFirst({
+      where: {
+        id: jobId,
+        empresaId: profile.id,
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException("Empleo no encontrado");
+    }
+
+    if (job.isPaid) {
+      throw new BadRequestException("Este empleo ya ha sido pagado");
+    }
+
+    if (job.moderationStatus !== "PENDING_PAYMENT") {
+      throw new BadRequestException(
+        "Este empleo no requiere pago o ya fue procesado"
+      );
+    }
+
+    const amount =
+      job.paymentAmount ||
+      parseFloat(process.env.JOB_PUBLICATION_PRICE || "10.00");
+    const currency = job.paymentCurrency || "USD";
+
+    // Crear orden de pago en PayPal
+    const order = await this.paymentsService.createOrder(
+      amount,
+      currency,
+      `Pago por publicación de empleo: ${job.title}`
+    );
+
+    // Actualizar el empleo con el orderId
+    await this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        paymentOrderId: order.orderId,
+        paymentStatus: "PENDING",
+      },
+    });
+
+    return {
+      orderId: order.orderId,
+      status: order.status,
+      links: order.links,
+      amount,
+      currency,
+    };
+  }
+
+  /**
+   * Confirmar pago de una publicación y pasar a moderación
+   */
+  async confirmJobPayment(userId: string, jobId: string, orderId: string) {
+    const profile = await this.prisma.empresaProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException("Empresa no encontrada");
+    }
+
+    const job = await this.prisma.job.findFirst({
+      where: {
+        id: jobId,
+        empresaId: profile.id,
+        paymentOrderId: orderId,
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException("Empleo no encontrado o orderId no coincide");
+    }
+
+    if (job.isPaid) {
+      throw new BadRequestException("Este empleo ya ha sido pagado");
+    }
+
+    // Capturar el pago en PayPal
+    const captureResult = await this.paymentsService.captureOrder(orderId);
+
+    if (captureResult.status !== "COMPLETED") {
+      throw new BadRequestException("El pago no pudo ser completado");
+    }
+
+    // Aplicar filtro automático de moderación ahora que está pagado
+    const moderationResult = this.contentModeration.analyzeJobContent({
+      title: job.title || "",
+      description: job.description || "",
+      requirements: job.requirements || "",
+    });
+
+    // Determinar el estado de moderación y status basado en el resultado
+    let moderationStatus = "PENDING";
+    let status = "inactive";
+    let autoRejectionReason = null;
+
+    if (!moderationResult.isApproved) {
+      moderationStatus = "AUTO_REJECTED";
+      status = "inactive";
+      autoRejectionReason = moderationResult.reasons.join(". ");
+    } else {
+      moderationStatus = "PENDING";
+      status = "inactive";
+    }
+
+    // Actualizar el empleo con el pago confirmado y pasar a moderación
+    return this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        isPaid: true,
+        paymentStatus: "COMPLETED",
+        paidAt: new Date(),
+        moderationStatus: moderationStatus as any,
+        status: status,
+        autoRejectionReason: autoRejectionReason,
       },
     });
   }

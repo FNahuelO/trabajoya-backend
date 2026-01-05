@@ -12,11 +12,17 @@ export class JobsService {
 
   async search(q: any) {
     const where: any = {
-      OR: [{ status: "activo" }, { status: "active" }],
+      AND: [
+        {
+          OR: [{ status: "activo" }, { status: "active" }],
+        },
+        {
+          moderationStatus: "APPROVED",
+        },
+      ],
     };
 
     if (q.q) {
-      where.AND = where.AND || [];
       where.AND.push({
         OR: [
           { title: { contains: q.q, mode: "insensitive" } },
@@ -27,7 +33,6 @@ export class JobsService {
     }
 
     if (q.location) {
-      where.AND = where.AND || [];
       where.AND.push({
         OR: [
           { location: { contains: q.location, mode: "insensitive" } },
@@ -37,9 +42,15 @@ export class JobsService {
       });
     }
 
-    if (q.categoria) where.category = q.categoria;
-    if (q.tipoEmpleo) where.jobType = q.tipoEmpleo;
-    if (q.modalidad) where.workMode = q.modalidad;
+    if (q.categoria) {
+      where.AND.push({ category: q.categoria });
+    }
+    if (q.tipoEmpleo) {
+      where.AND.push({ jobType: q.tipoEmpleo });
+    }
+    if (q.modalidad) {
+      where.AND.push({ workMode: q.modalidad });
+    }
 
     const page = Number(q.page || 1);
     const pageSize = Number(q.pageSize || 20);

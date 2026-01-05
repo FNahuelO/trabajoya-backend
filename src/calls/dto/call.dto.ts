@@ -1,6 +1,11 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsEnum, IsNotEmpty, IsOptional, IsString } from "class-validator";
 
+export enum CallType {
+  VOICE = "VOICE",
+  VIDEO = "VIDEO",
+}
+
 export enum CallStatus {
   PENDING = "PENDING",
   ACCEPTED = "ACCEPTED",
@@ -15,6 +20,16 @@ export class InitiateCallDto {
   @IsNotEmpty()
   @IsString()
   toUserId: string;
+
+  @ApiProperty({
+    description: "Tipo de llamada",
+    enum: CallType,
+    default: CallType.VOICE,
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(CallType)
+  callType?: CallType;
 }
 
 export class CallResponseDto {
@@ -26,6 +41,9 @@ export class CallResponseDto {
 
   @ApiProperty()
   toUserId: string;
+
+  @ApiProperty({ enum: CallType, default: CallType.VOICE })
+  callType: CallType;
 
   @ApiProperty({ enum: CallStatus })
   status: CallStatus;
