@@ -109,6 +109,24 @@ export class S3UploadService {
   }
 
   /**
+   * Sube un archivo directamente a S3 desde un buffer
+   */
+  async uploadBuffer(
+    key: string,
+    buffer: Buffer,
+    contentType: string
+  ): Promise<void> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    });
+
+    await this.s3Client.send(command);
+  }
+
+  /**
    * Genera una key consistente para un archivo
    */
   generateKey(

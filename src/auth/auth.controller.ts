@@ -101,14 +101,13 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post("resend-verification")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async resendVerification(@Req() req: any) {
+  async resendVerification(@Body() dto: { email: string }) {
     return createResponse({
       success: true,
       message: "Email de verificación reenviado correctamente",
-      data: await this.service.sendVerificationEmail(req.user?.sub),
+      data: await this.service.resendVerificationEmail(dto.email),
     });
   }
 }

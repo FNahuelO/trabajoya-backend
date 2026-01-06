@@ -84,12 +84,7 @@ Este email fue enviado automáticamente. Si no te registraste en TrabajoYa, pued
       }/verify-email?token=${token}`
     ); */
 
-    // En producción, aquí se enviaría el email real usando un servicio como:
-    // - SendGrid
-    // - AWS SES
-    // - Nodemailer con SMTP
-    // - Resend
-    // - Mailgun
+    // El email se envía usando AWS SES (configurado en mail.module.ts)
   }
 
   async sendPasswordResetEmail(email: string, token: string): Promise<void> {

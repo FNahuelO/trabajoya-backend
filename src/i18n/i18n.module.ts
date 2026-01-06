@@ -12,8 +12,12 @@ import * as path from "path";
     I18nModule.forRoot({
       fallbackLanguage: "es",
       loaderOptions: {
-        path: path.join(process.cwd(), "src/i18n/"),
-        watch: true,
+        // En producción usa dist/i18n/, en desarrollo usa src/i18n/
+        path: path.join(
+          process.cwd(),
+          process.env.NODE_ENV === "production" ? "dist/i18n/" : "src/i18n/"
+        ),
+        watch: process.env.NODE_ENV !== "production",
       },
       resolvers: [
         { use: QueryResolver, options: ["lang"] },

@@ -5,9 +5,16 @@ RUN apk add --no-cache openssl libc6-compat
 
 WORKDIR /app
 
+# ============================================
+# Stage 1: Build - Instalar todas las dependencias (incluyendo devDependencies)
+# ============================================
+FROM base AS builder
+
 # Copiar archivos de dependencias
 COPY package*.json ./
-RUN npm ci --only=production
+
+# Instalar TODAS las dependencias (incluyendo devDependencies para compilar)
+RUN npm ci
 
 # Copiar código fuente
 COPY . .
@@ -18,5 +25,37 @@ RUN npx prisma generate
 # Compilar la aplicación
 RUN npm run build
 
+# Compilar scripts de seed (necesarios en producción)
+RUN npx tsc prisma/seed-if-empty.ts --outDir dist/prisma --module commonjs --target es2021 --esModuleInterop --skipLibCheck || echo "Warning: Could not compile seed script"
+
+# ============================================
+# Stage 2: Production - Solo dependencias de producción
+# ============================================
+FROM base AS production
+
+# Copiar archivos de dependencias
+COPY package*.json ./
+
+# Instalar dependencias de producción + ts-node para ejecutar seed
+RUN npm ci --only=production && \
+    npm install --save-dev ts-node typescript || true
+
+# Copiar código compilado desde el stage de build
+COPY --from=builder /app/dist ./dist
+# Copiar archivos de i18n (necesarios en runtime)
+COPY --from=builder /app/src/i18n ./dist/i18n
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/prisma ./prisma
+# Copiar scripts necesarios
+COPY --from=builder /app/scripts ./scripts
+# Copiar tsconfig para ts-node (necesario para ejecutar seed)
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+
+# Generar cliente de Prisma (necesario para runtime)
+RUN npx prisma generate
+
+# Hacer el script de entrypoint ejecutable
+RUN chmod +x scripts/entrypoint.sh
+
 EXPOSE 4000
-CMD ["npm", "run", "start:prod"]
+CMD ["./scripts/entrypoint.sh"]

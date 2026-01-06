@@ -5,8 +5,8 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { TermsType, UserType } from "@prisma/client";
-import * as fs from "fs";
-import * as path from "path";
+import { S3UploadService } from "../upload/s3-upload.service";
+import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
 
 interface MulterFile {
   fieldname: string;
@@ -19,15 +19,11 @@ interface MulterFile {
 
 @Injectable()
 export class TermsService {
-  private readonly uploadDir = path.join(process.cwd(), "uploads");
-  private readonly termsDir = path.join(this.uploadDir, "terms");
-
-  constructor(private prisma: PrismaService) {
-    // Crear directorio de términos si no existe
-    if (!fs.existsSync(this.termsDir)) {
-      fs.mkdirSync(this.termsDir, { recursive: true });
-    }
-  }
+  constructor(
+    private prisma: PrismaService,
+    private s3UploadService: S3UploadService,
+    private cloudFrontSigner: CloudFrontSignerService
+  ) {}
 
   /**
    * Obtiene los términos activos según el tipo de usuario o tipo específico
@@ -136,7 +132,7 @@ export class TermsService {
   }
 
   /**
-   * Sube un nuevo PDF de términos y condiciones (solo admin)
+   * Sube un nuevo PDF de términos y condiciones a S3 (solo admin)
    */
   async uploadTerms(
     file: MulterFile,
@@ -176,13 +172,19 @@ export class TermsService {
       },
     });
 
-    // Guardar el archivo
-    const filename = `terms-${type}-${version}-${Date.now()}.pdf`;
-    const filepath = path.join(this.termsDir, filename);
+    // Generar key para S3
+    const timestamp = Date.now();
+    const key = `terms/${type.toLowerCase()}/${version}-${timestamp}.pdf`;
 
-    fs.writeFileSync(filepath, file.buffer);
+    // Subir archivo a S3
+    await this.s3UploadService.uploadBuffer(
+      key,
+      file.buffer,
+      file.mimetype
+    );
 
-    const fileUrl = `/uploads/terms/${filename}`;
+    // Generar URL de CloudFront
+    const fileUrl = this.cloudFrontSigner.getCloudFrontUrl(key);
 
     // Crear registro en la base de datos
     const terms = await this.prisma.termsAndConditions.create({

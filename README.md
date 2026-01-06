@@ -81,6 +81,15 @@ JWT_REFRESH_TTL="2592000"
 JWT_ACCESS_TTL="900"
 GOOGLE_CLIENT_ID="your-google-client-id"
 APPLE_CLIENT_ID="your-apple-client-id"
+
+# Configuración de Email con AWS SES (Free Tier)
+MAIL_PROVIDER="ses"  # Opciones: "ses" (producción) o "smtp" (desarrollo)
+MAIL_FROM="noreply@tudominio.com"  # Email verificado en AWS SES
+AWS_REGION="us-east-1"  # Región de AWS donde está configurado SES
+
+# Credenciales de AWS (solo necesarias si no usas IAM roles)
+AWS_ACCESS_KEY_ID="tu-access-key-id"
+AWS_SECRET_ACCESS_KEY="tu-secret-access-key"
 ```
 
 ### Base de Datos
@@ -88,3 +97,26 @@ APPLE_CLIENT_ID="your-apple-client-id"
 - **Desarrollo**: PostgreSQL en puerto 5444
 - **API**: NestJS en puerto 4000
 - **Watch mode**: Recarga automática en cambios de código
+
+### Configuración de Email con AWS SES
+
+El backend está configurado para usar **AWS SES** por defecto (free tier: 62,000 emails/mes gratis).
+
+**Configuración rápida:**
+1. Verifica tu email/dominio en AWS SES
+2. Solicita salir del sandbox (24-48 horas)
+3. Configura las variables de entorno (ver abajo)
+
+**Variables de entorno necesarias:**
+```env
+MAIL_PROVIDER="ses"  # Ya es el predeterminado
+MAIL_FROM="noreply@tudominio.com"  # Email verificado en SES
+AWS_REGION="us-east-1"  # Región de AWS
+AWS_ACCESS_KEY_ID="tu-access-key"  # Solo si no usas IAM roles
+AWS_SECRET_ACCESS_KEY="tu-secret-key"  # Solo si no usas IAM roles
+```
+
+**Documentación:**
+- [Guía rápida de SES](./SES_QUICK_SETUP.md) ⚡ **Empieza aquí**
+- [Configuración completa de AWS SES](./AWS_SES_SETUP.md)
+- [Comparación de proveedores](./EMAIL_PROVIDERS_COMPARISON.md)

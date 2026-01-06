@@ -38,10 +38,13 @@ services:
       JWT_ACCESS_TTL: "900" # (segundos) si tu código lee *_TTL
       JWT_REFRESH_TTL: "2592000" # (segundos) si tu código lee *_TTL
 
-      # MAIL dev (Resend)
-      MAIL_PROVIDER: resend
-      MAIL_FROM: "TrabajoYa <onboarding@resend.dev>"
-      RESEND_API_KEY: ${RESEND_API_KEY}
+      # MAIL - AWS SES (producción) o SMTP (desarrollo)
+      # Para usar SES en desarrollo, configura:
+      # MAIL_PROVIDER: ses
+      # MAIL_FROM: "noreply@trabajo-ya.com"
+      # AWS_REGION: us-east-1
+      # AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      # AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
 
       # MAIL dev alternativo (SMTP -> MailHog) - descomenta para usar MailHog
       # MAIL_PROVIDER: smtp

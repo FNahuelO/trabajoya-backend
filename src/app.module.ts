@@ -22,7 +22,7 @@ import { TermsModule } from "./terms/terms.module";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule,
     I18nCustomModule,
     PrismaModule,
     AuthModule,

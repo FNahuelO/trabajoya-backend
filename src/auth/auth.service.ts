@@ -367,10 +367,7 @@ export class AuthService {
       // Buscar usuario por email o googleId
       let user = await this.prisma.user.findFirst({
         where: {
-          OR: [
-            { email: payload.email },
-            { googleId: payload.sub }
-          ]
+          OR: [{ email: payload.email }, { googleId: payload.sub }],
         },
       });
 
@@ -421,6 +418,7 @@ export class AuthService {
     identityToken?: string;
     authorizationCode?: string;
     email?: string;
+    fullName?: string;
     appleUserId?: string;
   }) {
     try {
@@ -471,10 +469,7 @@ export class AuthService {
       // Buscar usuario por appleId o email
       let user = await this.prisma.user.findFirst({
         where: {
-          OR: [
-            { appleId: appleUserId },
-            ...(email ? [{ email }] : [])
-          ]
+          OR: [{ appleId: appleUserId }, ...(email ? [{ email }] : [])],
         },
       });
 
@@ -508,7 +503,10 @@ export class AuthService {
         },
       };
     } catch (error) {
-      if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       console.error("Error verificando token de Apple:", error);
@@ -551,7 +549,7 @@ export class AuthService {
     if (dto.idToken) {
       return this.loginGoogle({ idToken: dto.idToken });
     }
-    
+
     // Login con Apple
     if (dto.identityToken || dto.authorizationCode || dto.appleUserId) {
       return this.loginApple({
@@ -849,13 +847,60 @@ export class AuthService {
       });
     }
 
-    // TODO: Enviar email con el token
-    console.log(`Verification token for ${user.email}: ${verificationToken}`);
+    // Enviar email con el token
+    await this.mailService.sendVerificationEmail(user.email, verificationToken);
 
     return {
       message: await this.getTranslation(
         "auth.verificationEmailSent",
         "Email de verificación enviado"
+      ),
+      ...(process.env.NODE_ENV === "development" && { verificationToken }),
+    };
+  }
+
+  async resendVerificationEmail(email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    // Por seguridad, no revelar si el email existe o no
+    if (!user) {
+      return {
+        message: await this.getTranslation(
+          "auth.verificationEmailSent",
+          "Si el email existe y no está verificado, se enviará un email de verificación"
+        ),
+      };
+    }
+
+    // Si el email ya está verificado, no hacer nada (por seguridad)
+    if (user.isVerified) {
+      return {
+        message: await this.getTranslation(
+          "auth.verificationEmailSent",
+          "Si el email existe y no está verificado, se enviará un email de verificación"
+        ),
+      };
+    }
+
+    // Si no tiene token de verificación, generar uno nuevo
+    let verificationToken = user.verificationToken;
+    if (!verificationToken) {
+      verificationToken = crypto.randomUUID();
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { verificationToken },
+      });
+    }
+
+    // Enviar email con el token
+    await this.mailService.sendVerificationEmail(user.email, verificationToken);
+
+    return {
+      message: await this.getTranslation(
+        "auth.verificationEmailSent",
+        "Si el email existe y no está verificado, se enviará un email de verificación"
       ),
       ...(process.env.NODE_ENV === "development" && { verificationToken }),
     };
