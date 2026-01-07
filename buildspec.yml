@@ -35,10 +35,10 @@ phases:
       - echo "Construyendo imagen Docker con --no-cache (sin caché)..."
       - docker build --no-cache --pull --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --build-arg GIT_COMMIT="$CODEBUILD_RESOLVED_SOURCE_VERSION" -f Dockerfile.prod -t "$REPOSITORY_URI:$IMAGE_TAG" .
       - docker tag "$REPOSITORY_URI:$IMAGE_TAG" "$REPOSITORY_URI:latest"
-      - echo "📤 Subiendo imágenes a ECR..."
+      - echo "Subiendo imagenes a ECR..."
       - docker push "$REPOSITORY_URI:$IMAGE_TAG"
-      - docker push "$REPOSITORY_URI:latest"
-      - echo "✅ Build completado y subido: $REPOSITORY_URI:$IMAGE_TAG"
+      - LATEST_TAG="latest" && docker push "$REPOSITORY_URI:$LATEST_TAG"
+      - echo "Build completado y subido: $REPOSITORY_URI:$IMAGE_TAG"
 
   post_build:
     commands:
