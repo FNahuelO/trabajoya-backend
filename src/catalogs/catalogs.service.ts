@@ -235,62 +235,68 @@ export class CatalogsService {
   async getPublicCatalogs(lang: "es" | "en" | "pt" = "es") {
     const langUpper = lang.toUpperCase() as "ES" | "EN" | "PT";
 
-    const [jobAreas, jobTypes, jobLevels] = await Promise.all([
-      this.prisma.catalog.findMany({
-        where: {
-          type: "JOB_AREA",
-          isActive: true,
-        },
-        include: {
-          translations: {
-            where: { lang: langUpper },
-          },
-        },
-        orderBy: { order: "asc" },
-      }),
-      this.prisma.catalog.findMany({
-        where: {
-          type: "JOB_TYPE",
-          isActive: true,
-        },
-        include: {
-          translations: {
-            where: { lang: langUpper },
-          },
-        },
-        orderBy: { order: "asc" },
-      }),
-      this.prisma.catalog.findMany({
-        where: {
-          type: "JOB_LEVEL",
-          isActive: true,
-        },
-        include: {
-          translations: {
-            where: { lang: langUpper },
-          },
-        },
-        orderBy: { order: "asc" },
-      }),
-    ]);
+    const catalogTypes: Array<"JOB_AREA" | "JOB_TYPE" | "JOB_LEVEL" | "JOB_TYPES" | "EXPERIENCE_LEVELS" | "APPLICATION_STATUSES" | "MODALITIES" | "LANGUAGE_LEVELS" | "COMPANY_SIZES" | "SECTORS" | "STUDY_TYPES" | "STUDY_STATUSES" | "MARITAL_STATUSES"> = [
+      "JOB_AREA",
+      "JOB_TYPE",
+      "JOB_LEVEL",
+      "JOB_TYPES",
+      "EXPERIENCE_LEVELS",
+      "APPLICATION_STATUSES",
+      "MODALITIES",
+      "LANGUAGE_LEVELS",
+      "COMPANY_SIZES",
+      "SECTORS",
+      "STUDY_TYPES",
+      "STUDY_STATUSES",
+      "MARITAL_STATUSES",
+    ];
 
-    return {
-      jobAreas: jobAreas.map((item) => ({
-        code: item.code,
-        label: item.translations[0]?.label || "",
-        order: item.order,
-      })),
-      jobTypes: jobTypes.map((item) => ({
-        code: item.code,
-        label: item.translations[0]?.label || "",
-        order: item.order,
-      })),
-      jobLevels: jobLevels.map((item) => ({
-        code: item.code,
-        label: item.translations[0]?.label || "",
-        order: item.order,
-      })),
+    const catalogsByType = await Promise.all(
+      catalogTypes.map((type) =>
+        this.prisma.catalog.findMany({
+          where: {
+            type,
+            isActive: true,
+          },
+          include: {
+            translations: {
+              where: { lang: langUpper },
+            },
+          },
+          orderBy: { order: "asc" },
+        })
+      )
+    );
+
+    // Mapear los tipos a sus claves en camelCase para mantener compatibilidad
+    const typeKeyMap: Record<string, string> = {
+      JOB_AREA: "jobAreas",
+      JOB_TYPE: "jobTypes",
+      JOB_LEVEL: "jobLevels",
+      JOB_TYPES: "jobTypesList",
+      EXPERIENCE_LEVELS: "experienceLevels",
+      APPLICATION_STATUSES: "applicationStatuses",
+      MODALITIES: "modalities",
+      LANGUAGE_LEVELS: "languageLevels",
+      COMPANY_SIZES: "companySizes",
+      SECTORS: "sectors",
+      STUDY_TYPES: "studyTypes",
+      STUDY_STATUSES: "studyStatuses",
+      MARITAL_STATUSES: "maritalStatuses",
     };
+
+    const result: Record<string, Array<{ code: string; label: string; order: number }>> = {};
+
+    catalogTypes.forEach((type, index) => {
+      const key = typeKeyMap[type] || type.toLowerCase();
+      result[key] = catalogsByType[index].map((item) => ({
+        code: item.code,
+        label: item.translations[0]?.label || "",
+        order: item.order,
+      }));
+    });
+
+    return result;
   }
 }
 
