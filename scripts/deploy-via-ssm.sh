@@ -70,14 +70,50 @@ aws ecr get-login-password --region "\$REGION" | docker login --username AWS --p
 echo "📥 Descargando imagen: \$TARGET_IMAGE"
 echo "🔍 Verificando que la imagen existe en ECR..."
 
-# Verificar primero que la imagen existe en ECR
-REPO_NAME=\$(echo "\$TARGET_IMAGE" | cut -d'/' -f2 | cut -d':' -f1)
+# Extraer nombre del repositorio y tag de forma más robusta
+# Formato esperado: ACCOUNT.dkr.ecr.REGION.amazonaws.com/REPO_NAME:TAG
+FULL_REPO=\$(echo "\$TARGET_IMAGE" | cut -d':' -f1)
+REPO_NAME=\$(echo "\$FULL_REPO" | cut -d'/' -f2)
 IMAGE_TAG=\$(echo "\$TARGET_IMAGE" | cut -d':' -f2)
-if ! aws ecr describe-images --repository-name "\$REPO_NAME" --image-ids imageTag="\$IMAGE_TAG" --region "\$REGION" >/dev/null 2>&1; then
-  echo "❌ La imagen \$TARGET_IMAGE no existe en ECR"
+
+echo "   Repositorio completo: \$FULL_REPO"
+echo "   Nombre del repo: \$REPO_NAME"
+echo "   Tag: \$IMAGE_TAG"
+
+# Esperar un poco para que ECR indexe la imagen (puede haber un pequeño delay)
+echo "⏳ Esperando 5 segundos para que ECR indexe la imagen..."
+sleep 5
+
+# Verificar que la imagen existe en ECR (con reintentos)
+MAX_RETRIES=3
+RETRY_COUNT=0
+IMAGE_EXISTS=false
+
+while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
+  if aws ecr describe-images --repository-name "\$REPO_NAME" --image-ids imageTag="\$IMAGE_TAG" --region "\$REGION" >/dev/null 2>&1; then
+    IMAGE_EXISTS=true
+    break
+  fi
+  RETRY_COUNT=\$((RETRY_COUNT + 1))
+  if [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; then
+    echo "⚠️  Intento \$RETRY_COUNT falló, esperando 3 segundos antes de reintentar..."
+    sleep 3
+  fi
+done
+
+if [ "\$IMAGE_EXISTS" = "false" ]; then
+  echo "❌ La imagen \$TARGET_IMAGE no existe en ECR después de \$MAX_RETRIES intentos"
   echo "🔍 Buscando imágenes disponibles en ECR..."
-  aws ecr describe-images --repository-name "\$REPO_NAME" --region "\$REGION" --query 'imageDetails[*].[imageTags[0],imagePushedAt]' --output table 2>/dev/null | head -10 || echo "No se pudieron listar imágenes"
-  exit 1
+  echo "📋 Últimas 10 imágenes en el repositorio:"
+  aws ecr describe-images --repository-name "\$REPO_NAME" --region "\$REGION" --query 'imageDetails[*].[imageTags[0],imagePushedAt]' --output table 2>/dev/null | head -15 || echo "No se pudieron listar imágenes"
+  echo "🔍 Verificando si el tag latest está disponible..."
+  if aws ecr describe-images --repository-name "\$REPO_NAME" --image-ids imageTag="latest" --region "\$REGION" >/dev/null 2>&1; then
+    echo "✅ El tag 'latest' existe, usándolo como fallback"
+    TARGET_IMAGE="\${TARGET_IMAGE%:*}:latest"
+    IMAGE_TAG="latest"
+  else
+    exit 1
+  fi
 fi
 
 # Intentar hacer pull de la imagen
