@@ -162,45 +162,50 @@ export class AwsConfigService implements OnModuleInit {
       this.configService.get<string>("STACK_PREFIX") || "trabajoya-prod";
 
     const parameters = [
-      `${stackPrefix}/s3/bucket`,
-      `${stackPrefix}/cloudfront/domain`,
-      `${stackPrefix}/cloudfront/distribution-id`,
-      `${stackPrefix}/cloudfront/keypair-id`,
+      { name: `${stackPrefix}/s3/bucket`, envVar: "S3_BUCKET_NAME" },
+      { name: `${stackPrefix}/cloudfront/domain`, envVar: "CLOUDFRONT_DOMAIN" },
+      { name: `${stackPrefix}/cloudfront/distribution-id`, envVar: "CLOUDFRONT_DISTRIBUTION_ID" },
+      { name: `${stackPrefix}/cloudfront/keypair-id`, envVar: "CLOUDFRONT_KEY_PAIR_ID" },
     ];
 
-    for (const paramName of parameters) {
+    for (const param of parameters) {
       try {
-        const command = new GetParameterCommand({ Name: paramName });
+        // Validar que el nombre del parámetro no tenga prefijos inválidos
+        // AWS SSM no permite nombres que empiecen con "ssm" (case-insensitive)
+        const normalizedName = param.name.trim();
+        if (/^ssm/i.test(normalizedName)) {
+          this.logger.warn(
+            `Nombre de parámetro SSM inválido (no puede empezar con 'ssm'): ${param.name}. Omitiendo.`
+          );
+          continue;
+        }
+
+        const command = new GetParameterCommand({ Name: normalizedName });
         const response = await this.ssmClient.send(command);
 
-        if (paramName.includes("s3/bucket")) {
-          process.env.S3_BUCKET_NAME = response.Parameter?.Value;
-        } else if (paramName.includes("cloudfront/domain")) {
-          process.env.CLOUDFRONT_DOMAIN = response.Parameter?.Value;
-        } else if (paramName.includes("cloudfront/distribution-id")) {
-          process.env.CLOUDFRONT_DISTRIBUTION_ID = response.Parameter?.Value;
-        } else if (paramName.includes("cloudfront/keypair-id")) {
-          process.env.CLOUDFRONT_KEY_PAIR_ID = response.Parameter?.Value;
+        if (response.Parameter?.Value) {
+          process.env[param.envVar] = response.Parameter.Value;
+          this.logger.debug(`Parámetro SSM cargado: ${param.name} -> ${param.envVar}`);
         }
       } catch (error: any) {
-        // Si el error es porque el parámetro no existe o tiene un nombre inválido, solo loguear warning
+        // Si el error es porque el parámetro no existe o tiene un nombre inválido, solo loguear debug
+        // No es crítico si estos parámetros no existen, la app puede funcionar sin ellos
         if (
           error.name === "ParameterNotFound" ||
-          error.name === "ValidationException"
+          error.name === "ValidationException" ||
+          error.message?.includes("can't be prefixed with")
         ) {
-          this.logger.warn(
-            `Parámetro SSM no encontrado o inválido: ${paramName}. Error: ${
-              error.message || error
-            }`
+          this.logger.debug(
+            `Parámetro SSM no disponible: ${param.name}. Usando variables de entorno alternativas si están disponibles.`
           );
         } else {
-          this.logger.warn(
-            `No se pudo cargar parámetro SSM ${paramName}: ${
+          this.logger.debug(
+            `No se pudo cargar parámetro SSM ${param.name}: ${
               error.message || error
             }`
           );
         }
-        // Continuar con otros parámetros
+        // Continuar con otros parámetros - no es crítico si fallan
       }
     }
   }
