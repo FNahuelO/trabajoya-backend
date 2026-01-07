@@ -66,32 +66,44 @@ echo "✅ Proceso de migraciones completado"
 
 # Verificar que las tablas críticas existen
 echo "🔍 Verificando tablas críticas..."
+echo "   Ejecutando script de verificación de tablas..."
+node -e "
+console.log('   [DEBUG] Iniciando verificación de tablas...');
+console.log('   [DEBUG] DATABASE_URL configurada:', process.env.DATABASE_URL ? 'Sí' : 'No');
+" 2>&1
 node -e "
 const { PrismaClient } = require('@prisma/client');
 const { execSync } = require('child_process');
 const prisma = new PrismaClient();
 
 async function checkTables() {
+  console.log('   [DEBUG] Función checkTables iniciada');
   let videoMeetingExists = false;
   let mediaAssetExists = false;
   
   try {
+    console.log('   [DEBUG] Verificando tabla VideoMeeting...');
     await prisma.\$queryRaw\`SELECT 1 FROM \"VideoMeeting\" LIMIT 0\`;
     console.log('   ✅ Tabla VideoMeeting existe');
     videoMeetingExists = true;
   } catch (e) {
     console.log('   ❌ Tabla VideoMeeting NO existe');
+    console.log('   [DEBUG] Error:', e.message);
     videoMeetingExists = false;
   }
   
   try {
+    console.log('   [DEBUG] Verificando tabla MediaAsset...');
     await prisma.\$queryRaw\`SELECT 1 FROM \"MediaAsset\" LIMIT 0\`;
     console.log('   ✅ Tabla MediaAsset existe');
     mediaAssetExists = true;
   } catch (e) {
     console.log('   ❌ Tabla MediaAsset NO existe');
+    console.log('   [DEBUG] Error:', e.message);
     mediaAssetExists = false;
   }
+  
+  console.log('   [DEBUG] Estado: VideoMeeting=' + videoMeetingExists + ', MediaAsset=' + mediaAssetExists);
   
   // Si las tablas no existen pero Prisma dice que no hay migraciones pendientes,
   // significa que la migración está registrada pero nunca se ejecutó
@@ -122,17 +134,139 @@ async function checkTables() {
         console.log('   Por favor, ejecuta manualmente el SQL de la migración');
       }
     } catch (error) {
-      console.log('   ⚠️  No se pudo resolver automáticamente. Error:', error.message);
-      console.log('   Por favor, ejecuta manualmente:');
-      console.log('   npx prisma migrate resolve --rolled-back 20260107020313_add_video_meeting_and_m');
-      console.log('   npx prisma migrate deploy');
+      console.log('   ⚠️  No se pudo resolver con Prisma migrate. Intentando aplicar SQL directamente...');
+      console.log('   Error:', error.message);
+      
+      // Aplicar SQL directamente usando Prisma Client
+      try {
+        const migrationSQL = \`
+          DO \\$\\$ BEGIN
+              CREATE TYPE "CallType" AS ENUM ('VOICE', 'VIDEO');
+          EXCEPTION
+              WHEN duplicate_object THEN null;
+          END \\$\\$;
+          
+          DO \\$\\$ BEGIN
+              CREATE TYPE "VideoMeetingStatus" AS ENUM ('SCHEDULED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'MISSED');
+          EXCEPTION
+              WHEN duplicate_object THEN null;
+          END \\$\\$;
+          
+          DO \\$\\$ BEGIN
+              CREATE TYPE "MediaAssetType" AS ENUM ('CV', 'AVATAR', 'VIDEO', 'LOGO');
+          EXCEPTION
+              WHEN duplicate_object THEN null;
+          END \\$\\$;
+          
+          DO \\$\\$ BEGIN
+              CREATE TYPE "MediaAssetStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED');
+          EXCEPTION
+              WHEN duplicate_object THEN null;
+          END \\$\\$;
+          
+          ALTER TABLE "Call" ADD COLUMN IF NOT EXISTS "callType" "CallType" NOT NULL DEFAULT 'VOICE';
+          
+          CREATE TABLE IF NOT EXISTS "VideoMeeting" (
+              "id" TEXT NOT NULL,
+              "createdById" TEXT NOT NULL,
+              "invitedUserId" TEXT NOT NULL,
+              "title" TEXT,
+              "description" TEXT,
+              "scheduledAt" TIMESTAMP(3) NOT NULL,
+              "duration" INTEGER,
+              "status" "VideoMeetingStatus" NOT NULL DEFAULT 'SCHEDULED',
+              "meetingUrl" TEXT,
+              "callId" TEXT,
+              "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updatedAt" TIMESTAMP(3) NOT NULL,
+              "startedAt" TIMESTAMP(3),
+              "endedAt" TIMESTAMP(3),
+              CONSTRAINT "VideoMeeting_pkey" PRIMARY KEY ("id")
+          );
+          
+          CREATE TABLE IF NOT EXISTS "MediaAsset" (
+              "id" TEXT NOT NULL,
+              "ownerUserId" TEXT NOT NULL,
+              "type" "MediaAssetType" NOT NULL,
+              "bucket" TEXT NOT NULL,
+              "key" TEXT NOT NULL,
+              "mimeType" TEXT NOT NULL,
+              "size" INTEGER NOT NULL,
+              "status" "MediaAssetStatus" NOT NULL DEFAULT 'PENDING',
+              "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              "updatedAt" TIMESTAMP(3) NOT NULL,
+              CONSTRAINT "MediaAsset_pkey" PRIMARY KEY ("id")
+          );
+          
+          CREATE INDEX IF NOT EXISTS "VideoMeeting_createdById_idx" ON "VideoMeeting"("createdById");
+          CREATE INDEX IF NOT EXISTS "VideoMeeting_invitedUserId_idx" ON "VideoMeeting"("invitedUserId");
+          CREATE INDEX IF NOT EXISTS "VideoMeeting_scheduledAt_idx" ON "VideoMeeting"("scheduledAt");
+          CREATE INDEX IF NOT EXISTS "VideoMeeting_status_idx" ON "VideoMeeting"("status");
+          CREATE INDEX IF NOT EXISTS "MediaAsset_ownerUserId_idx" ON "MediaAsset"("ownerUserId");
+          CREATE INDEX IF NOT EXISTS "MediaAsset_type_idx" ON "MediaAsset"("type");
+          CREATE INDEX IF NOT EXISTS "MediaAsset_status_idx" ON "MediaAsset"("status");
+          CREATE INDEX IF NOT EXISTS "MediaAsset_key_idx" ON "MediaAsset"("key");
+          CREATE UNIQUE INDEX IF NOT EXISTS "MediaAsset_key_key" ON "MediaAsset"("key");
+          
+          DO \\$\\$ 
+          BEGIN
+              IF NOT EXISTS (
+                  SELECT 1 FROM pg_constraint WHERE conname = 'VideoMeeting_createdById_fkey'
+              ) THEN
+                  ALTER TABLE "VideoMeeting" ADD CONSTRAINT "VideoMeeting_createdById_fkey" 
+                      FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+              END IF;
+          END \\$\\$;
+          
+          DO \\$\\$ 
+          BEGIN
+              IF NOT EXISTS (
+                  SELECT 1 FROM pg_constraint WHERE conname = 'VideoMeeting_invitedUserId_fkey'
+              ) THEN
+                  ALTER TABLE "VideoMeeting" ADD CONSTRAINT "VideoMeeting_invitedUserId_fkey" 
+                      FOREIGN KEY ("invitedUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+              END IF;
+          END \\$\\$;
+          
+          DO \\$\\$ 
+          BEGIN
+              IF NOT EXISTS (
+                  SELECT 1 FROM pg_constraint WHERE conname = 'MediaAsset_ownerUserId_fkey'
+              ) THEN
+                  ALTER TABLE "MediaAsset" ADD CONSTRAINT "MediaAsset_ownerUserId_fkey" 
+                      FOREIGN KEY ("ownerUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+              END IF;
+          END \\$\\$;
+        \`;
+        
+        console.log('   🔄 Ejecutando SQL de migración directamente...');
+        await prisma.\$executeRawUnsafe(migrationSQL);
+        console.log('   ✅ SQL ejecutado correctamente');
+        
+        // Verificar nuevamente
+        try {
+          await prisma.\$queryRaw\`SELECT 1 FROM "VideoMeeting" LIMIT 0\`;
+          await prisma.\$queryRaw\`SELECT 1 FROM "MediaAsset" LIMIT 0\`;
+          console.log('   ✅ Tablas verificadas correctamente después de aplicar SQL directo');
+        } catch (e) {
+          console.log('   ❌ ERROR: Las tablas aún no existen después de aplicar SQL');
+          console.log('   Error:', e.message);
+        }
+      } catch (sqlError) {
+        console.log('   ❌ ERROR: No se pudo aplicar el SQL directamente');
+        console.log('   Error:', sqlError.message);
+        console.log('   Por favor, ejecuta manualmente el SQL de la migración');
+      }
     }
   }
   
   await prisma.\$disconnect();
 }
 
-checkTables();
+checkTables().catch(err => {
+  console.error('   ❌ ERROR CRÍTICO en checkTables:', err);
+  process.exit(1);
+});
 "
 
 # Ejecutar seed solo si la base de datos está vacía (no se ha creado antes)

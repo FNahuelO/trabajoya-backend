@@ -21,15 +21,6 @@ export class ModerationService {
         },
         include: {
           empresa: {
-            include: {
-              user: {
-                select: {
-                  email: true,
-                  id: true,
-                  createdAt: true,
-                },
-              },
-            },
             select: {
               id: true,
               companyName: true,
@@ -38,7 +29,13 @@ export class ModerationService {
               provincia: true,
               pais: true,
               logo: true,
-              user: true,
+              user: {
+                select: {
+                  email: true,
+                  id: true,
+                  createdAt: true,
+                },
+              },
             },
           },
           _count: {

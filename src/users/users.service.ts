@@ -155,7 +155,7 @@ export class UsersService {
       });
 
       // Eliminar reuniones de video
-      await (tx as any).videoMeeting.deleteMany({
+      await tx.videoMeeting.deleteMany({
         where: {
           OR: [{ createdById: userId }, { invitedUserId: userId }],
         },
@@ -174,7 +174,7 @@ export class UsersService {
       });
 
       // Eliminar aceptaciones de términos
-      await (tx as any).userTermsAcceptance.deleteMany({
+      await tx.userTermsAcceptance.deleteMany({
         where: { userId },
       });
 
