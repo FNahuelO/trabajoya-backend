@@ -1,141 +1,102 @@
-post_build:
-  commands:
-    - echo "Push de imagen a ECR"
-    - docker push $REPOSITORY_URI:$IMAGE_TAG
-    - docker push $REPOSITORY_URI:latest
-    - echo "Actualizando instancias EC2..."
-    - |
-      TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
-      PROJECT_NAME="${PROJECT_NAME:-trabajoya-prod}"
-      CONTAINER_NAME="${PROJECT_NAME}-backend"
+version: 0.2
 
-      echo "Imagen objetivo: $TARGET_IMAGE"
-      echo "Buscando instancias EC2..."
+phases:
+  pre_build:
+    commands:
+      - echo "Login a Amazon ECR"
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
+      - export REPOSITORY_URI=$ECR_REPOSITORY_URI
+      - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - export IMAGE_TAG=${COMMIT_HASH:-latest}
 
-      if [ -n "$EC2_INSTANCE_ID" ]; then
-        INSTANCE_IDS="$EC2_INSTANCE_ID"
-      else
-        ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName,'trabajoya')||contains(AutoScalingGroupName,'prod')].AutoScalingGroupName" --output text 2>/dev/null || echo "")
-        INSTANCE_IDS=""
-        if [ -n "$ASG_NAMES" ]; then
-          for ASG_NAME in $ASG_NAMES; do
-            ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy'&&LifecycleState=='InService'].InstanceId" --output text 2>/dev/null || echo "")
-            if [ -n "$ASG_INSTANCES" ]; then
-              INSTANCE_IDS="$INSTANCE_IDS $ASG_INSTANCES"
-            fi
-          done
-        fi
-      fi
+  build:
+    commands:
+      - docker pull public.ecr.aws/docker/library/node:20-alpine || echo "Warning"
+      - docker build -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
+      - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
 
-      if [ -z "$INSTANCE_IDS" ]; then
-        echo "No se encontraron instancias activas"
-        exit 0
-      fi
-
-      echo "Instancias encontradas: $INSTANCE_IDS"
-
-      cat > /tmp/update.sh << 'EOF'
-      #!/bin/bash
-      set -e
-      echo "=== Actualizando contenedor ==="
-      REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
-      ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-      echo "Login a ECR..."
-      aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
-      echo "Descargando imagen..."
-      docker pull TARGET_IMAGE_PH || docker pull REPO_PH:latest
-      if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
-        echo "Reiniciando contenedor..."
-        docker restart CONTAINER_PH || (docker stop CONTAINER_PH && docker rm CONTAINER_PH)
-      fi
-      echo "Actualizacion completada"
-      EOF
-
-      sed -i "s|TARGET_IMAGE_PH|${TARGET_IMAGE}|g" /tmp/update.sh
-      sed -i "s|REPO_PH|${REPOSITORY_URI}|g" /tmp/update.sh
-      sed -i "s|CONTAINER_PH|${CONTAINER_NAME}|g" /tmp/update.sh
-
-      SCRIPT=$(cat /tmp/update.sh)
-
-      for INSTANCE_ID in $INSTANCE_IDS; do
-        echo ""
-        echo "=== Actualizando instancia: $INSTANCE_ID ==="
-        
-        COMMAND_ID=$(aws ssm send-command \
-          --instance-ids "$INSTANCE_ID" \
-          --document-name "AWS-RunShellScript" \
-          --parameters commands="$SCRIPT" \
-          --timeout-seconds 600 \
-          --query 'Command.CommandId' \
-          --output text 2>&1)
-        
-        if [ -z "$COMMAND_ID" ] || [ "$COMMAND_ID" = "None" ]; then
-          echo "ERROR: No se pudo enviar comando SSM"
-          echo "Verifica que SSM Agent este instalado y el rol tenga permisos"
-          continue
-        fi
-        
-        echo "Comando SSM enviado: $COMMAND_ID"
-        echo "Esperando respuesta (max 5 minutos)..."
-        
-        WAIT_COUNT=0
-        while [ $WAIT_COUNT -lt 30 ]; do
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --query 'Status' \
-            --output text 2>/dev/null || echo "Pending")
-          
-          echo "  Estado: $STATUS (intento $((WAIT_COUNT + 1))/30)"
-          
-          if [ "$STATUS" = "Success" ]; then
-            echo ""
-            echo "✅ Instancia actualizada exitosamente"
-            echo ""
-            echo "Output del comando:"
-            aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query 'StandardOutputContent' \
-              --output text 2>/dev/null || echo "No output"
-            break
-          elif [ "$STATUS" = "Failed" ]; then
-            echo ""
-            echo "❌ ERROR: El comando fallo"
-            echo ""
-            echo "Error output:"
-            aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query 'StandardErrorContent' \
-              --output text 2>/dev/null || echo "No error details"
-            echo ""
-            echo "Standard output:"
-            aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query 'StandardOutputContent' \
-              --output text 2>/dev/null || echo "No output"
-            break
-          elif [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
-            echo ""
-            echo "⚠️  Comando $STATUS"
-            break
+  post_build:
+    commands:
+      - echo "Push de imagen a ECR"
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - docker push $REPOSITORY_URI:latest
+      - echo "Actualizando instancias EC2..."
+      - |
+        TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
+        PROJECT_NAME="${PROJECT_NAME:-trabajoya-prod}"
+        CONTAINER_NAME="${PROJECT_NAME}-backend"
+        echo "Imagen objetivo: $TARGET_IMAGE"
+        echo "Buscando instancias EC2..."
+        if [ -n "$EC2_INSTANCE_ID" ]; then
+          INSTANCE_IDS="$EC2_INSTANCE_ID"
+        else
+          ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName,'trabajoya')||contains(AutoScalingGroupName,'prod')].AutoScalingGroupName" --output text 2>/dev/null || echo "")
+          INSTANCE_IDS=""
+          if [ -n "$ASG_NAMES" ]; then
+            for ASG_NAME in $ASG_NAMES; do
+              ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy'&&LifecycleState=='InService'].InstanceId" --output text 2>/dev/null || echo "")
+              if [ -n "$ASG_INSTANCES" ]; then
+                INSTANCE_IDS="$INSTANCE_IDS $ASG_INSTANCES"
+              fi
+            done
           fi
-          
-          WAIT_COUNT=$((WAIT_COUNT + 1))
-          sleep 10
-        done
-        
-        if [ $WAIT_COUNT -eq 30 ]; then
-          echo ""
-          echo "⚠️  Timeout esperando respuesta del comando"
-          echo "El comando puede seguir ejecutandose en la instancia"
         fi
-      done
-
-      echo ""
-      echo "=== Deployment completado ==="
+        if [ -z "$INSTANCE_IDS" ]; then
+          echo "No se encontraron instancias activas"
+          exit 0
+        fi
+        echo "Instancias encontradas: $INSTANCE_IDS"
+        cat > /tmp/update.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        echo "=== Actualizando contenedor ==="
+        REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        echo "Login a ECR..."
+        aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
+        echo "Descargando imagen..."
+        docker pull TARGET_IMAGE_PH || docker pull REPO_PH:latest
+        if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
+          echo "Reiniciando contenedor..."
+          docker restart CONTAINER_PH || (docker stop CONTAINER_PH && docker rm CONTAINER_PH)
+        fi
+        echo "Actualizacion completada"
+        EOF
+        sed -i "s|TARGET_IMAGE_PH|${TARGET_IMAGE}|g" /tmp/update.sh
+        sed -i "s|REPO_PH|${REPOSITORY_URI}|g" /tmp/update.sh
+        sed -i "s|CONTAINER_PH|${CONTAINER_NAME}|g" /tmp/update.sh
+        SCRIPT=$(cat /tmp/update.sh)
+        for INSTANCE_ID in $INSTANCE_IDS; do
+          echo ""
+          echo "=== Actualizando instancia: $INSTANCE_ID ==="
+          COMMAND_ID=$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name "AWS-RunShellScript" --parameters commands="$SCRIPT" --timeout-seconds 600 --query 'Command.CommandId' --output text 2>&1)
+          if [ -z "$COMMAND_ID" ] || [ "$COMMAND_ID" = "None" ]; then
+            echo "ERROR: No se pudo enviar comando SSM"
+            continue
+          fi
+          echo "Comando SSM enviado: $COMMAND_ID"
+          echo "Esperando respuesta..."
+          WAIT_COUNT=0
+          while [ $WAIT_COUNT -lt 30 ]; do
+            STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'Status' --output text 2>/dev/null || echo "Pending")
+            echo "  Estado: $STATUS (intento $((WAIT_COUNT + 1))/30)"
+            if [ "$STATUS" = "Success" ]; then
+              echo "✅ Instancia actualizada exitosamente"
+              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "No output"
+              break
+            elif [ "$STATUS" = "Failed" ]; then
+              echo "❌ ERROR: El comando fallo"
+              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || echo "No error details"
+              break
+            elif [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+              echo "⚠️  Comando $STATUS"
+              break
+            fi
+            WAIT_COUNT=$((WAIT_COUNT + 1))
+            sleep 10
+          done
+        done
+        echo "=== Deployment completado ==="
 
 artifacts:
   files:
