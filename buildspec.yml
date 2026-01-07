@@ -34,7 +34,9 @@ phases:
         TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
         PROJECT_NAME="${PROJECT_NAME:-trabajoya-prod}"
         CONTAINER_NAME="${PROJECT_NAME}-backend"
+        DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
         echo "Imagen objetivo: $TARGET_IMAGE"
+        echo "Region: $DEPLOY_REGION"
         echo "Buscando instancias EC2..."
         if [ -n "$EC2_INSTANCE_ID" ]; then
           INSTANCE_IDS="$EC2_INSTANCE_ID"
@@ -59,18 +61,31 @@ phases:
         #!/bin/bash
         set -e
         echo "=== Actualizando contenedor ==="
-        REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+        REGION="REGION_PH"
         ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        echo "Region: $REGION"
+        echo "Account: $ACCOUNT_ID"
         echo "Login a ECR..."
         aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
-        echo "Descargando imagen..."
-        docker pull TARGET_IMAGE_PH || docker pull REPO_PH:latest
+        echo "Descargando imagen TARGET_IMAGE_PH..."
+        docker pull TARGET_IMAGE_PH || {
+          echo "Intentando con latest..."
+          docker pull REPO_PH:latest
+        }
         if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
-          echo "Reiniciando contenedor..."
-          docker restart CONTAINER_PH || (docker stop CONTAINER_PH && docker rm CONTAINER_PH)
+          echo "Reiniciando contenedor CONTAINER_PH..."
+          docker restart CONTAINER_PH && echo "Contenedor reiniciado OK" || {
+            echo "Fallo al reiniciar, deteniendo..."
+            docker stop CONTAINER_PH
+            docker rm CONTAINER_PH
+            echo "Contenedor detenido - user-data lo recreara"
+          }
+        else
+          echo "Contenedor no estaba corriendo - user-data lo iniciara"
         fi
         echo "Actualizacion completada"
         EOF
+        sed -i "s|REGION_PH|${DEPLOY_REGION}|g" /tmp/update.sh
         sed -i "s|TARGET_IMAGE_PH|${TARGET_IMAGE}|g" /tmp/update.sh
         sed -i "s|REPO_PH|${REPOSITORY_URI}|g" /tmp/update.sh
         sed -i "s|CONTAINER_PH|${CONTAINER_NAME}|g" /tmp/update.sh
@@ -96,12 +111,21 @@ phases:
             STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'Status' --output text 2>/dev/null || echo "Pending")
             echo "  Estado: $STATUS (intento $((WAIT_COUNT + 1))/30)"
             if [ "$STATUS" = "Success" ]; then
+              echo ""
               echo "✅ Instancia actualizada exitosamente"
+              echo ""
+              echo "Output:"
               aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "No output"
               break
             elif [ "$STATUS" = "Failed" ]; then
+              echo ""
               echo "❌ ERROR: El comando fallo"
+              echo ""
+              echo "Error:"
               aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || echo "No error details"
+              echo ""
+              echo "Output:"
+              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "No output"
               break
             elif [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
               echo "⚠️  Comando $STATUS"
@@ -111,6 +135,7 @@ phases:
             sleep 10
           done
         done
+        echo ""
         echo "=== Deployment completado ==="
 
 artifacts:
