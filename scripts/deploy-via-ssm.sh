@@ -98,13 +98,15 @@ while [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ] && [ "\$PULL_SUCCESS" = "fal
   if [ \$PULL_EXIT_CODE -eq 0 ]; then
     PULL_SUCCESS=true
     echo "✅ Imagen \$TARGET_IMAGE descargada correctamente"
-    echo "\$PULL_OUTPUT" | tail -3
+    echo "\$PULL_OUTPUT"
     break
   else
     PULL_RETRY_COUNT=\$((PULL_RETRY_COUNT + 1))
+    echo "⚠️  Pull falló (exit code: \$PULL_EXIT_CODE)"
+    echo "📋 Output completo del pull:"
+    echo "\$PULL_OUTPUT"
     if [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ]; then
-      echo "⚠️  Pull falló, esperando 8 segundos antes de reintentar..."
-      echo "\$PULL_OUTPUT" | tail -3
+      echo "⏳ Esperando 8 segundos antes de reintentar..."
       sleep 8
     fi
   fi
@@ -126,13 +128,15 @@ if [ "\$PULL_SUCCESS" = "false" ] && [ "\$ORIGINAL_TAG" != "latest" ]; then
       TARGET_IMAGE="\$LATEST_IMAGE"
       ORIGINAL_TAG="latest"
       echo "✅ Imagen :latest descargada como fallback"
-      echo "\$PULL_OUTPUT" | tail -3
+      echo "\$PULL_OUTPUT"
       break
     else
       PULL_RETRY_COUNT=\$((PULL_RETRY_COUNT + 1))
+      echo "⚠️  Pull de latest falló (exit code: \$PULL_EXIT_CODE)"
+      echo "📋 Output completo del pull:"
+      echo "\$PULL_OUTPUT"
       if [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ]; then
-        echo "⚠️  Pull de latest falló, esperando 8 segundos antes de reintentar..."
-        echo "\$PULL_OUTPUT" | tail -3
+        echo "⏳ Esperando 8 segundos antes de reintentar..."
         sleep 8
       fi
     fi
@@ -306,15 +310,19 @@ for INSTANCE_ID in $INSTANCE_IDS; do
     
     if [ "$STATUS" = "Success" ]; then
       echo "✅ $INSTANCE_ID actualizada"
-      echo "📋 Salida del deployment:"
-      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null | tail -20
+      echo "📋 Salida completa del deployment:"
+      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null
+      echo ""
+      echo "📋 Errores (si hay):"
+      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || echo "Ninguno"
       break
     elif [ "$STATUS" = "Failed" ]; then
       echo "❌ $INSTANCE_ID falló"
-      echo "📋 Salida de error:"
+      echo "📋 Salida de error completa:"
       aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null
-      echo "📋 Salida estándar:"
-      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null | tail -20
+      echo ""
+      echo "📋 Salida estándar completa:"
+      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null
       break
     elif [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
       echo "⚠️  $INSTANCE_ID: $STATUS"
