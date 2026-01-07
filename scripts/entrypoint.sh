@@ -4,27 +4,27 @@ set -e
 echo "🚀 Iniciando aplicación en producción..."
 
 echo "⏳ Esperando a que la base de datos esté disponible..."
-node scripts/wait-for-db.js
+if [ -f "scripts/wait-for-db.js" ]; then
+  node scripts/wait-for-db.js
+else
+  echo "⚠️  wait-for-db.js no encontrado, continuando..."
+fi
 
-echo "📦 Ejecutando migraciones de Prisma..."
-echo "   DATABASE_URL: ${DATABASE_URL:0:50}..."
+# ✅ NO ejecutar migraciones aquí - se hacen en CodeBuild
+echo "📦 Migraciones ya aplicadas en CI/CD"
 
-if [ ! -d "prisma/migrations" ]; then
-  echo "❌ ERROR: El directorio prisma/migrations no existe."
-  ls -la prisma/ || true
+echo "🌱 Verificando si se necesita ejecutar seed..."
+# Solo en primera vez, con lock para evitar race conditions
+if [ -f "dist/prisma/seed-if-empty.js" ]; then
+  node dist/prisma/seed-if-empty.js || true
+else
+  echo "⚠️  seed-if-empty.js no encontrado, saltando seed..."
+fi
+
+echo "🎯 Iniciando aplicación NestJS..."
+if [ ! -f "dist/main.js" ]; then
+  echo "❌ Error: dist/main.js no encontrado. Asegúrate de que la aplicación esté compilada."
   exit 1
 fi
 
-echo "   Aplicando migraciones pendientes..."
-if ! npx prisma migrate deploy > /tmp/migrate_output.txt 2>&1; then
-  echo "⚠️  prisma migrate deploy falló"
-  cat /tmp/migrate_output.txt
-else
-  cat /tmp/migrate_output.txt
-fi
-
-echo "🌱 Verificando si se necesita ejecutar seed..."
-node dist/prisma/seed-if-empty.js || true
-
-echo "🎯 Iniciando aplicación NestJS..."
 exec node dist/main.js

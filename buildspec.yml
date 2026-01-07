@@ -16,15 +16,121 @@ phases:
   build:
     commands:
       - echo "Build iniciado el $(date)"
+      - echo "Verificando si la imagen ya existe en ECR..."
+      - |
+        if aws ecr describe-images --repository-name $(echo $ECR_REPOSITORY_URI | cut -d'/' -f2) --image-ids imageTag=$IMAGE_TAG 2>/dev/null; then
+          echo "⚠️  Imagen con tag $IMAGE_TAG ya existe. Verificando si hay cambios..."
+          OLD_DIGEST=$(aws ecr describe-images --repository-name $(echo $ECR_REPOSITORY_URI | cut -d'/' -f2) --image-ids imageTag=$IMAGE_TAG --query 'imageDetails[0].imageDigest' --output text)
+          echo "Digest actual: $OLD_DIGEST"
+        else
+          echo "✅ Imagen nueva, procediendo con build..."
+        fi
       - docker build -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
+      - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
+      - NEW_DIGEST=$(docker inspect $REPOSITORY_URI:$IMAGE_TAG --format='{{index .RepoDigests 0}}' | cut -d'@' -f2 || echo "new-image")
+      - echo "Nuevo digest: $NEW_DIGEST"
+      - |
+        if [ -n "$OLD_DIGEST" ] && [ "$NEW_DIGEST" = "$OLD_DIGEST" ]; then
+          echo "⚠️  La imagen no ha cambiado. Marcando para skip de deployment..."
+          echo "SKIP_DEPLOY=true" >> /tmp/build.env
+        else
+          echo "✅ Imagen nueva o modificada. Deployment necesario."
+          echo "SKIP_DEPLOY=false" >> /tmp/build.env
+        fi
 
   post_build:
     commands:
       - echo "Push de imagen a ECR"
       - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - echo "Forzando redeploy del servicio ECS"
+      - docker push $REPOSITORY_URI:latest
+
+      - echo "Ejecutando migraciones ANTES del deploy"
       - |
+        aws ecs run-task \
+          --cluster trabajoya-prod-cluster \
+          --task-definition trabajoya-prod-migrations \
+          --launch-type FARGATE \
+          --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxx],securityGroups=[sg-xxxxx],assignPublicIp=ENABLED}" \
+          --overrides "{\"containerOverrides\":[{\"name\":\"migrations\",\"command\":[\"npx\",\"prisma\",\"migrate\",\"deploy\"]}]}"
+
+      - echo "Verificando si se necesita actualizar el servicio..."
+      - |
+        source /tmp/build.env 2>/dev/null || SKIP_DEPLOY="false"
+
+        # Verificar imagen actual del servicio
+        CURRENT_IMAGE=$(aws ecs describe-services \
+          --cluster trabajoya-prod-cluster \
+          --services trabajoya-prod-backend \
+          --query 'services[0].deployments[?status==`PRIMARY`].taskDefinition' \
+          --output text | xargs -I {} aws ecs describe-task-definition \
+          --task-definition {} \
+          --query 'taskDefinition.containerDefinitions[0].image' \
+          --output text 2>/dev/null || echo "")
+
+        TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
+        echo "Imagen actual en servicio: $CURRENT_IMAGE"
+        echo "Imagen objetivo: $TARGET_IMAGE"
+
+        if [ "$SKIP_DEPLOY" = "true" ]; then
+          echo "⏭️  Saltando deployment - imagen no ha cambiado"
+          exit 0
+        fi
+
+        if [ "$CURRENT_IMAGE" = "$TARGET_IMAGE" ]; then
+          echo "⏭️  El servicio ya está usando la imagen $TARGET_IMAGE"
+          echo "✅ No se requiere actualización - evitando crear nuevas tareas"
+          exit 0
+        fi
+
+        echo "📦 Actualizando task definition con nuevo tag"
+        TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition trabajoya-prod-backend --query 'taskDefinition')
+        NEW_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "$TARGET_IMAGE" '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+        NEW_REVISION=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.revision' --output text)
+        echo "Nueva revisión registrada: $NEW_REVISION"
+
+      - echo "🔄 Actualizando servicio SOLO si hay cambios reales"
+      - |
+        source /tmp/build.env 2>/dev/null || SKIP_DEPLOY="false"
+
+        if [ "$SKIP_DEPLOY" = "true" ]; then
+          exit 0
+        fi
+
+        # Verificar una vez más antes de actualizar
+        CURRENT_IMAGE=$(aws ecs describe-services \
+          --cluster trabajoya-prod-cluster \
+          --services trabajoya-prod-backend \
+          --query 'services[0].deployments[?status==`PRIMARY`].taskDefinition' \
+          --output text | xargs -I {} aws ecs describe-task-definition \
+          --task-definition {} \
+          --query 'taskDefinition.containerDefinitions[0].image' \
+          --output text 2>/dev/null || echo "")
+
+        if [ "$CURRENT_IMAGE" = "$REPOSITORY_URI:$IMAGE_TAG" ]; then
+          echo "✅ El servicio ya está actualizado - no se crearán nuevas tareas"
+          exit 0
+        fi
+
+        echo "🚀 Iniciando deployment optimizado..."
         aws ecs update-service \
           --cluster trabajoya-prod-cluster \
           --service trabajoya-prod-backend \
-          --force-new-deployment
+          --task-definition trabajoya-prod-backend:$NEW_REVISION \
+          --deployment-configuration "maximumPercent=150,minimumHealthyPercent=50" \
+          --health-check-grace-period-seconds 30
+
+      - echo "⏳ Esperando que el deployment se estabilice..."
+      - |
+        source /tmp/build.env 2>/dev/null || SKIP_DEPLOY="false"
+
+        if [ "$SKIP_DEPLOY" = "true" ]; then
+          exit 0
+        fi
+
+        aws ecs wait services-stable \
+          --cluster trabajoya-prod-cluster \
+          --services trabajoya-prod-backend \
+          --max-attempts 60 \
+          --delay 10
+
+      - echo "✅ Deploy completado. Servicio actualizado sin crear tareas innecesarias"
