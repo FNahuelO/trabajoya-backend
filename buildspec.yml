@@ -67,7 +67,12 @@ phases:
         echo "Nombre del contenedor: $CONTAINER_NAME"
         echo "Buscando instancias EC2..."
 
-        # Buscar todas las instancias EC2 en ejecución que podrían ser del proyecto
+        # Permitir especificar instancia directamente por variable de entorno
+        if [ -n "$EC2_INSTANCE_ID" ]; then
+          echo "✅ Usando instancia especificada en variable de entorno: $EC2_INSTANCE_ID"
+          INSTANCE_IDS="$EC2_INSTANCE_ID"
+        else
+          # Buscar todas las instancias EC2 en ejecución que podrían ser del proyecto
         # Buscar por múltiples criterios:
         # 1. Por tag de ASG
         # 2. Por nombre de instancia
@@ -112,14 +117,39 @@ phases:
             echo "⚠️  Buscando todas las instancias corriendo..."
             ALL_INSTANCES=$(aws ec2 describe-instances \
               --filters "Name=instance-state-name,Values=running" \
-              --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0]]" \
+              --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],PrivateIpAddress]" \
               --output text 2>/dev/null)
             
-            echo "📋 Instancias encontradas:"
+            echo "📋 Todas las instancias corriendo encontradas:"
             echo "$ALL_INSTANCES"
+            echo ""
+            echo "💡 Si ninguna de estas es correcta, puedes:"
+            echo "   1. Establecer la variable de entorno EC2_INSTANCE_ID en CodeBuild"
+            echo "   2. O buscar por el nombre del stack de CloudFormation"
             
-            # Extraer solo los IDs
-            INSTANCE_IDS=$(echo "$ALL_INSTANCES" | awk '{print $1}' | tr '\n' ' ' | xargs)
+            # Buscar por stack de CloudFormation
+            STACK_NAME=$(aws cloudformation list-stacks \
+              --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
+              --query "StackSummaries[?contains(StackName, 'trabajoya') && contains(StackName, 'prod')].StackName" \
+              --output text 2>/dev/null | head -n 1)
+            
+            if [ -n "$STACK_NAME" ]; then
+              echo "🔍 Stack de CloudFormation encontrado: $STACK_NAME"
+              echo "   Buscando recursos EC2 en el stack..."
+              
+              # Buscar instancias por stack
+              STACK_INSTANCES=$(aws ec2 describe-instances \
+                --filters \
+                  "Name=instance-state-name,Values=running" \
+                  "Name=tag:aws:cloudformation:stack-name,Values=$STACK_NAME" \
+                --query "Reservations[*].Instances[*].InstanceId" \
+                --output text 2>/dev/null)
+              
+              if [ -n "$STACK_INSTANCES" ]; then
+                echo "✅ Instancias encontradas en stack: $STACK_INSTANCES"
+                INSTANCE_IDS="$STACK_INSTANCES"
+              fi
+            fi
           fi
         fi
 
