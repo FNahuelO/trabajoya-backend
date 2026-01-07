@@ -2,52 +2,27 @@
 set -e
 
 echo "🚀 Iniciando aplicación en producción..."
-echo "📁 Directorio actual: $(pwd)"
-echo "📋 Contenido del directorio:"
-ls -la || echo "No se pudo listar directorio"
 
-echo "⏳ Esperando a que la base de datos esté disponible..."
+# Esperar a que la base de datos esté disponible
 if [ -f "./scripts/wait-for-db.js" ]; then
-  echo "✅ Ejecutando wait-for-db.js..."
-  node ./scripts/wait-for-db.js
-elif [ -f "scripts/wait-for-db.js" ]; then
-  echo "✅ Ejecutando scripts/wait-for-db.js..."
-  node scripts/wait-for-db.js
-else
-  echo "⚠️  wait-for-db.js no encontrado, continuando..."
+  node ./scripts/wait-for-db.js >/dev/null 2>&1 || node scripts/wait-for-db.js >/dev/null 2>&1 || true
 fi
 
-# ✅ Ejecutar migraciones antes de iniciar la app (opción más económica)
-echo "🔄 Ejecutando migraciones de base de datos..."
-echo "📂 Verificando Prisma..."
+# Ejecutar migraciones
 if [ -f "./node_modules/.bin/prisma" ]; then
-  echo "✅ Prisma encontrado en node_modules/.bin/prisma"
-  ./node_modules/.bin/prisma migrate deploy || {
-    echo "⚠️  Error al ejecutar migraciones. La app continuará pero puede fallar si la DB no está actualizada."
-  }
-elif command -v npx > /dev/null 2>&1; then
-  echo "✅ Usando npx para ejecutar Prisma..."
-  npx prisma migrate deploy || {
-    echo "⚠️  Error al ejecutar migraciones. La app continuará pero puede fallar si la DB no está actualizada."
-  }
-else
-  echo "⚠️  Prisma no encontrado. Saltando migraciones."
-  echo "📋 Node modules:"
-  ls -la node_modules/.bin/ 2>/dev/null | head -10 || echo "No se pudo listar node_modules"
+  ./node_modules/.bin/prisma migrate deploy >/dev/null 2>&1 || npx prisma migrate deploy >/dev/null 2>&1 || true
+elif command -v npx >/dev/null 2>&1; then
+  npx prisma migrate deploy >/dev/null 2>&1 || true
 fi
 
-echo "🌱 Verificando si se necesita ejecutar seed..."
-# Solo en primera vez, con lock para evitar race conditions
-if [ -f "dist/prisma/seed-if-empty.js" ]; then
-  node dist/prisma/seed-if-empty.js || true
-else
-  echo "⚠️  seed-if-empty.js no encontrado, saltando seed..."
-fi
+# Ejecutar seed si existe
+[ -f "dist/prisma/seed-if-empty.js" ] && node dist/prisma/seed-if-empty.js >/dev/null 2>&1 || true
 
-echo "🎯 Iniciando aplicación NestJS..."
+# Verificar que la aplicación esté compilada
 if [ ! -f "dist/main.js" ]; then
-  echo "❌ Error: dist/main.js no encontrado. Asegúrate de que la aplicación esté compilada."
+  echo "❌ Error: dist/main.js no encontrado"
   exit 1
 fi
 
+# Iniciar aplicación
 exec node dist/main.js

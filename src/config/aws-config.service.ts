@@ -162,10 +162,10 @@ export class AwsConfigService implements OnModuleInit {
       this.configService.get<string>("STACK_PREFIX") || "trabajoya-prod";
 
     const parameters = [
-      { name: `${stackPrefix}/s3/bucket`, envVar: "S3_BUCKET_NAME" },
-      { name: `${stackPrefix}/cloudfront/domain`, envVar: "CLOUDFRONT_DOMAIN" },
-      { name: `${stackPrefix}/cloudfront/distribution-id`, envVar: "CLOUDFRONT_DISTRIBUTION_ID" },
-      { name: `${stackPrefix}/cloudfront/keypair-id`, envVar: "CLOUDFRONT_KEY_PAIR_ID" },
+      { name: `/${stackPrefix}/s3/bucket`, envVar: "S3_BUCKET_NAME" },
+      { name: `/${stackPrefix}/cloudfront/domain`, envVar: "CLOUDFRONT_DOMAIN" },
+      { name: `/${stackPrefix}/cloudfront/distribution-id`, envVar: "CLOUDFRONT_DISTRIBUTION_ID" },
+      { name: `/${stackPrefix}/cloudfront/keypair-id`, envVar: "CLOUDFRONT_KEY_PAIR_ID" },
     ];
 
     for (const param of parameters) {
