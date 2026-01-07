@@ -182,10 +182,24 @@ export class AwsConfigService implements OnModuleInit {
         } else if (paramName.includes("cloudfront/keypair-id")) {
           process.env.CLOUDFRONT_KEY_PAIR_ID = response.Parameter?.Value;
         }
-      } catch (error) {
-        this.logger.warn(
-          `No se pudo cargar parámetro SSM ${paramName}: ${error}`
-        );
+      } catch (error: any) {
+        // Si el error es porque el parámetro no existe o tiene un nombre inválido, solo loguear warning
+        if (
+          error.name === "ParameterNotFound" ||
+          error.name === "ValidationException"
+        ) {
+          this.logger.warn(
+            `Parámetro SSM no encontrado o inválido: ${paramName}. Error: ${
+              error.message || error
+            }`
+          );
+        } else {
+          this.logger.warn(
+            `No se pudo cargar parámetro SSM ${paramName}: ${
+              error.message || error
+            }`
+          );
+        }
         // Continuar con otros parámetros
       }
     }

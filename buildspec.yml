@@ -25,7 +25,66 @@ phases:
       - docker push $REPOSITORY_URI:latest
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
+      - |
+        # Forzar actualización de instancias EC2 en Auto Scaling Group
+        # Esto hace que las instancias se recreen y descarguen la nueva imagen :latest
+        ASG_NAME=${AUTO_SCALING_GROUP_NAME:-""}
+
+        if [ -n "$ASG_NAME" ]; then
+          echo "🔄 Forzando actualización de instancias en Auto Scaling Group: $ASG_NAME"
+          
+          # Obtener instancias actuales del ASG
+          INSTANCES=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG_NAME" \
+            --query 'AutoScalingGroups[0].Instances[*].InstanceId' \
+            --output text 2>/dev/null || echo '')
+          
+          if [ -n "$INSTANCES" ] && [ "$INSTANCES" != "None" ]; then
+            echo "📋 Instancias actuales en el ASG:"
+            echo "$INSTANCES" | tr '\t' '\n' | while read INSTANCE_ID; do
+              if [ -n "$INSTANCE_ID" ]; then
+                echo "   - $INSTANCE_ID"
+              fi
+            done
+            
+            # Opción 1: Usar start-instance-refresh (método recomendado, rolling update)
+            echo "🔄 Iniciando instance refresh (rolling update)..."
+            REFRESH_ID=$(aws autoscaling start-instance-refresh \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' \
+              --query 'InstanceRefreshId' \
+              --output text 2>/dev/null || echo '')
+            
+            if [ -n "$REFRESH_ID" ] && [ "$REFRESH_ID" != "None" ]; then
+              echo "✅ Instance refresh iniciado: $REFRESH_ID"
+              echo "   Las instancias se actualizarán gradualmente manteniendo el servicio disponible"
+            else
+              echo "⚠️  No se pudo iniciar instance refresh. Intentando método alternativo..."
+              
+              # Opción 2: Terminar instancias una por una (el ASG creará nuevas)
+              echo "🔄 Terminando instancias para forzar recreación..."
+              echo "$INSTANCES" | tr '\t' '\n' | while read INSTANCE_ID; do
+                if [ -n "$INSTANCE_ID" ]; then
+                  echo "   Terminando instancia: $INSTANCE_ID"
+                  aws autoscaling terminate-instance-in-auto-scaling-group \
+                    --instance-id "$INSTANCE_ID" \
+                    --no-should-decrement-desired-capacity 2>/dev/null || true
+                  # Pequeña pausa entre terminaciones
+                  sleep 2
+                fi
+              done
+              echo "✅ Instancias marcadas para terminación. El ASG creará nuevas instancias automáticamente"
+            fi
+          else
+            echo "⚠️  No se encontraron instancias en el ASG. El ASG creará nuevas instancias automáticamente."
+          fi
+        else
+          echo "ℹ️  Variable AUTO_SCALING_GROUP_NAME no definida. Saltando actualización de instancias."
+          echo "   Para habilitar actualización automática, configura esta variable en CodeBuild:"
+          echo "   - AUTO_SCALING_GROUP_NAME: nombre del Auto Scaling Group"
+          echo ""
+          echo "   Ejemplo: TrabajoYaStack-prod-BackendASG08C95C34-zb3tOO7qgnCl"
+        fi
 artifacts:
   files:
     - imageDetail.json
-
