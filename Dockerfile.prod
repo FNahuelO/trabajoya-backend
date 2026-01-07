@@ -22,7 +22,8 @@ COPY . .
 # Generar cliente de Prisma
 RUN npx prisma generate
 
-# Compilar la aplicación
+# Compilar la aplicación (aumentar memoria de Node.js)
+ENV NODE_OPTIONS=--max-old-space-size=2048
 RUN npm run build
 
 # Compilar scripts de seed (necesarios en producción)

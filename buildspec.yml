@@ -4,28 +4,27 @@ phases:
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
-      - aws --version
       - REPOSITORY_URI=$ECR_REPOSITORY_URI
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
-      - echo Repository URI is $REPOSITORY_URI
-      - echo Image tag is $IMAGE_TAG
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
+      - |
+        DOCKERHUB_USER=$(aws secretsmanager get-secret-value --secret-id /trabajoya/dockerhub/username --region $AWS_DEFAULT_REGION --query SecretString --output text 2>/dev/null || echo '')
+        DOCKERHUB_PASS=$(aws secretsmanager get-secret-value --secret-id /trabajoya/dockerhub/password --region $AWS_DEFAULT_REGION --query SecretString --output text 2>/dev/null || echo '')
+        if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_PASS" ]; then
+          echo "$DOCKERHUB_PASS" | docker login --username "$DOCKERHUB_USER" --password-stdin docker.io || true
+        fi
   build:
     commands:
-      - echo Build started on `date`
-      - echo Building the Docker image...
+      - echo Building Docker image...
       - docker build -f Dockerfile.prod -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
   post_build:
     commands:
-      - echo Build completed on `date`
-      - echo Pushing the Docker images...
+      - echo Pushing Docker images...
       - docker push $REPOSITORY_URI:latest
       - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - echo Writing image definitions file...
       - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
-      - cat imageDetail.json
 artifacts:
   files:
     - imageDetail.json
