@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 echo "🚀 Iniciando aplicación en producción..."
@@ -30,7 +30,7 @@ npx prisma migrate status || true
 
 echo ""
 echo "   Aplicando migraciones pendientes..."
-npx prisma migrate deploy --skip-seed 2>&1 | tee /tmp/migrate_output.txt
+npx prisma migrate deploy 2>&1 | tee /tmp/migrate_output.txt
 MIGRATE_EXIT_CODE=${PIPESTATUS[0]}
 
 if [ $MIGRATE_EXIT_CODE -ne 0 ]; then
@@ -77,7 +77,7 @@ if [ $MIGRATE_EXIT_CODE -ne 0 ]; then
   # Intentar aplicar nuevamente
   echo ""
   echo "   Reintentando aplicar migraciones..."
-  npx prisma migrate deploy --skip-seed || {
+  npx prisma migrate deploy || {
     echo "❌ ERROR: Las migraciones de Prisma siguen fallando."
     echo "   Por favor, verifica manualmente la base de datos."
     # No salir, intentar continuar de todas formas
@@ -143,7 +143,7 @@ async function checkTables() {
       
       // Intentar aplicar nuevamente
       console.log('   🔄 Aplicando migración nuevamente...');
-      execSync('npx prisma migrate deploy --skip-seed', { stdio: 'inherit' });
+      execSync('npx prisma migrate deploy', { stdio: 'inherit' });
       console.log('   ✅ Migración aplicada correctamente');
       
       // Verificar nuevamente
