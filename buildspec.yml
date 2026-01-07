@@ -139,9 +139,95 @@ phases:
           fi
         fi
 
-        # Si no se creó, intentar con configuración mínima
+        # Si no se creó, intentar obtener variables de entorno desde SSM Parameter Store
+        if [ "$CONTAINER_CREATED" -eq 0 ]; then
+          echo "Intentando obtener variables de entorno desde SSM Parameter Store..."
+          STACK_PREFIX="${STACK_PREFIX:-trabajoya-prod}"
+          SSM_ENV_FILE="/tmp/ssm_env_file.txt"
+          rm -f "$SSM_ENV_FILE"
+          
+          # Lista de variables críticas a obtener desde SSM
+          SSM_PARAMS=(
+            "DATABASE_URL"
+            "DATABASE_SECRET_ARN"
+            "DATABASE_ENDPOINT"
+            "DATABASE_NAME"
+            "APP_SECRETS_ARN"
+            "AWS_REGION"
+            "STACK_PREFIX"
+            "JWT_ACCESS_SECRET"
+            "JWT_REFRESH_SECRET"
+            "S3_BUCKET_NAME"
+            "CLOUDFRONT_DOMAIN"
+          )
+          
+          ENV_VARS_COUNT=0
+          for PARAM_NAME in "${SSM_PARAMS[@]}"; do
+            # Convertir a minúsculas de forma compatible
+            PARAM_LOWER=$(echo "$PARAM_NAME" | tr '[:upper:]' '[:lower:]')
+            
+            # Intentar obtener desde SSM con diferentes prefijos posibles
+            SSM_NAMES=(
+              "${STACK_PREFIX}/${PARAM_LOWER}"
+              "${STACK_PREFIX}/env/${PARAM_LOWER}"
+              "/${STACK_PREFIX}/${PARAM_LOWER}"
+              "/${STACK_PREFIX}/env/${PARAM_LOWER}"
+              "${PARAM_NAME}"
+              "${PARAM_LOWER}"
+            )
+            
+            VALUE_FOUND=0
+            for SSM_NAME in "${SSM_NAMES[@]}"; do
+              VALUE=$(aws ssm get-parameter --name "$SSM_NAME" --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+              if [ -n "$VALUE" ] && [ "$VALUE" != "None" ]; then
+                echo "${PARAM_NAME}=${VALUE}" >> "$SSM_ENV_FILE"
+                echo "✅ Obtenido ${PARAM_NAME} desde SSM: ${SSM_NAME}"
+                ENV_VARS_COUNT=$((ENV_VARS_COUNT + 1))
+                VALUE_FOUND=1
+                break
+              fi
+            done
+            
+            if [ "$VALUE_FOUND" -eq 0 ]; then
+              echo "⚠️  No se encontró ${PARAM_NAME} en SSM Parameter Store"
+            fi
+          done
+          
+          # Si obtuvimos variables desde SSM, intentar crear el contenedor con ellas
+          if [ -f "$SSM_ENV_FILE" ] && [ -s "$SSM_ENV_FILE" ] && [ "$ENV_VARS_COUNT" -gt 0 ]; then
+            echo "Usando variables de entorno desde SSM (${ENV_VARS_COUNT} variables encontradas)..."
+            # Agregar NODE_ENV=production si no está presente
+            if ! grep -q "^NODE_ENV=" "$SSM_ENV_FILE"; then
+              echo "NODE_ENV=production" >> "$SSM_ENV_FILE"
+            fi
+            
+            DOCKER_OUTPUT=$(docker run -d \
+              --name CONTAINER_PH \
+              --restart unless-stopped \
+              -p 4000:4000 \
+              --env-file "$SSM_ENV_FILE" \
+              "$NEW_IMAGE" 2>&1)
+            DOCKER_EXIT_CODE=$?
+            
+            if [ $DOCKER_EXIT_CODE -eq 0 ]; then
+              CONTAINER_CREATED=1
+              echo "✅ Contenedor creado con variables de entorno desde SSM"
+              echo "Container ID: $DOCKER_OUTPUT"
+            else
+              echo "⚠️  Fallo al crear con variables de SSM (exit code: $DOCKER_EXIT_CODE)"
+              echo "Error: $DOCKER_OUTPUT"
+              docker rm -f CONTAINER_PH 2>/dev/null || true
+            fi
+          else
+            echo "⚠️  No se encontraron variables de entorno en SSM Parameter Store"
+          fi
+        fi
+        
+        # Si aún no se creó, intentar con configuración mínima
         if [ "$CONTAINER_CREATED" -eq 0 ]; then
           echo "Creando contenedor con configuración mínima (NODE_ENV=production)..."
+          echo "⚠️  ADVERTENCIA: El contenedor se crea sin variables de entorno críticas."
+          echo "⚠️  La aplicación puede fallar si necesita DATABASE_URL u otras variables."
           echo "Imagen: $NEW_IMAGE"
           echo "Comando completo: docker run -d --name CONTAINER_PH --restart unless-stopped -p 4000:4000 -e NODE_ENV=production \"$NEW_IMAGE\""
           
