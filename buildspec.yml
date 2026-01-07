@@ -37,8 +37,8 @@ phases:
       - docker tag "$REPOSITORY_URI:$IMAGE_TAG" "$REPOSITORY_URI:latest"
       - echo "Subiendo imagenes a ECR..."
       - docker push "$REPOSITORY_URI:$IMAGE_TAG"
-      - LATEST_TAG="latest" && docker push "$REPOSITORY_URI:$LATEST_TAG"
-      - echo "Build completado y subido: $REPOSITORY_URI:$IMAGE_TAG"
+      - docker push "$REPOSITORY_URI:latest"
+      - echo "Build completado y subido=$REPOSITORY_URI:$IMAGE_TAG"
 
   post_build:
     commands:
