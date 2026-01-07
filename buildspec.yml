@@ -39,6 +39,8 @@ phases:
       - docker push "$REPOSITORY_URI:$IMAGE_TAG"
       - docker push "$REPOSITORY_URI:latest"
       - echo "Build completado y subido=$REPOSITORY_URI:$IMAGE_TAG"
+      - echo "⏳ Esperando 10 segundos para que ECR indexe las imágenes..."
+      - sleep 10
 
   post_build:
     commands:

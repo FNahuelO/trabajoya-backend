@@ -81,42 +81,50 @@ echo "   Nombre del repo: \$REPO_NAME"
 echo "   Tag: \$IMAGE_TAG"
 
 # Esperar un poco para que ECR indexe la imagen (puede haber un pequeño delay)
-echo "⏳ Esperando 5 segundos para que ECR indexe la imagen..."
-sleep 5
+echo "⏳ Esperando 10 segundos para que ECR indexe la imagen..."
+sleep 10
 
-# Verificar que la imagen existe en ECR (con reintentos)
-MAX_RETRIES=3
+# Verificar que la imagen existe en ECR (con reintentos más agresivos)
+MAX_RETRIES=10
 RETRY_COUNT=0
 IMAGE_EXISTS=false
 
 while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
   if aws ecr describe-images --repository-name "\$REPO_NAME" --image-ids imageTag="\$IMAGE_TAG" --region "\$REGION" >/dev/null 2>&1; then
     IMAGE_EXISTS=true
+    echo "✅ Imagen \$IMAGE_TAG encontrada en ECR (intento \$((RETRY_COUNT + 1)))"
     break
   fi
   RETRY_COUNT=\$((RETRY_COUNT + 1))
   if [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; then
-    echo "⚠️  Intento \$RETRY_COUNT falló, esperando 3 segundos antes de reintentar..."
-    sleep 3
+    echo "⚠️  Intento \$RETRY_COUNT falló, esperando 5 segundos antes de reintentar..."
+    sleep 5
   fi
 done
 
 if [ "\$IMAGE_EXISTS" = "false" ]; then
-  echo "❌ La imagen \$TARGET_IMAGE no existe en ECR después de \$MAX_RETRIES intentos"
+  echo "⚠️  La imagen \$TARGET_IMAGE no se encontró en ECR después de \$MAX_RETRIES intentos"
   echo "🔍 Buscando imágenes disponibles en ECR..."
   echo "📋 Últimas 10 imágenes en el repositorio:"
   aws ecr describe-images --repository-name "\$REPO_NAME" --region "\$REGION" --query 'imageDetails[*].[imageTags[0],imagePushedAt]' --output table 2>/dev/null | head -15 || echo "No se pudieron listar imágenes"
-  echo "🔍 Verificando si el tag latest está disponible..."
+  echo "🔄 Intentando usar 'latest' como fallback (siempre se etiqueta en el build)..."
+  # Siempre intentar usar latest ya que sabemos que se etiqueta en buildspec.yml
+  LATEST_IMAGE="\${TARGET_IMAGE%:*}:latest"
   if aws ecr describe-images --repository-name "\$REPO_NAME" --image-ids imageTag="latest" --region "\$REGION" >/dev/null 2>&1; then
     echo "✅ El tag 'latest' existe, usándolo como fallback"
-    TARGET_IMAGE="\${TARGET_IMAGE%:*}:latest"
+    TARGET_IMAGE="\$LATEST_IMAGE"
     IMAGE_TAG="latest"
   else
-    exit 1
+    echo "⚠️  El tag 'latest' tampoco está disponible todavía, pero intentaremos hacer pull de todas formas..."
+    echo "💡 Nota: ECR puede tardar en indexar. Intentando pull directo..."
+    # No salir con error todavía, intentar hacer pull directamente
+    TARGET_IMAGE="\$LATEST_IMAGE"
+    IMAGE_TAG="latest"
   fi
 fi
 
-# Intentar hacer pull de la imagen
+# Intentar hacer pull de la imagen (a veces docker pull funciona aunque describe-images no)
+echo "📥 Intentando descargar imagen: \$TARGET_IMAGE"
 PULL_OUTPUT=\$(docker pull "\$TARGET_IMAGE" 2>&1)
 PULL_EXIT_CODE=\$?
 
@@ -124,20 +132,48 @@ if [ \$PULL_EXIT_CODE -eq 0 ]; then
   echo "✅ Imagen \$TARGET_IMAGE descargada correctamente"
   echo "\$PULL_OUTPUT" | tail -3
 else
-  echo "❌ Error al descargar \$TARGET_IMAGE (exit code: \$PULL_EXIT_CODE)"
-  echo "\$PULL_OUTPUT"
-  echo "⚠️  Intentando con :latest como fallback..."
-  LATEST_IMAGE="\${TARGET_IMAGE%:*}:latest"
-  LATEST_PULL_OUTPUT=\$(docker pull "\$LATEST_IMAGE" 2>&1)
-  LATEST_PULL_EXIT_CODE=\$?
-  if [ \$LATEST_PULL_EXIT_CODE -eq 0 ]; then
-    echo "✅ Imagen :latest descargada como fallback"
-    TARGET_IMAGE="\$LATEST_IMAGE"
+  echo "⚠️  Error al descargar \$TARGET_IMAGE (exit code: \$PULL_EXIT_CODE)"
+  echo "\$PULL_OUTPUT" | tail -5
+  # Si no estamos usando latest ya, intentar con latest como fallback
+  if [ "\$IMAGE_TAG" != "latest" ]; then
+    echo "🔄 Intentando con :latest como fallback..."
+    LATEST_IMAGE="\${TARGET_IMAGE%:*}:latest"
+    LATEST_PULL_OUTPUT=\$(docker pull "\$LATEST_IMAGE" 2>&1)
+    LATEST_PULL_EXIT_CODE=\$?
+    if [ \$LATEST_PULL_EXIT_CODE -eq 0 ]; then
+      echo "✅ Imagen :latest descargada como fallback"
+      TARGET_IMAGE="\$LATEST_IMAGE"
+      IMAGE_TAG="latest"
+    else
+      echo "❌ No se pudo descargar ninguna imagen"
+      echo "📋 Output del pull de latest:"
+      echo "\$LATEST_PULL_OUTPUT" | tail -5
+      echo "⏳ Esperando 15 segundos adicionales y reintentando con latest..."
+      sleep 15
+      LATEST_PULL_OUTPUT=\$(docker pull "\$LATEST_IMAGE" 2>&1)
+      LATEST_PULL_EXIT_CODE=\$?
+      if [ \$LATEST_PULL_EXIT_CODE -eq 0 ]; then
+        echo "✅ Imagen :latest descargada después de espera adicional"
+        TARGET_IMAGE="\$LATEST_IMAGE"
+        IMAGE_TAG="latest"
+      else
+        echo "❌ Error final: No se pudo descargar la imagen después de todos los intentos"
+        exit 1
+      fi
+    fi
   else
-    echo "❌ No se pudo descargar ninguna imagen"
-    echo "📋 Output del pull de latest:"
-    echo "\$LATEST_PULL_OUTPUT"
-    exit 1
+    # Ya estamos usando latest, esperar un poco más y reintentar
+    echo "⏳ Esperando 15 segundos adicionales y reintentando pull de latest..."
+    sleep 15
+    LATEST_PULL_OUTPUT=\$(docker pull "\$TARGET_IMAGE" 2>&1)
+    LATEST_PULL_EXIT_CODE=\$?
+    if [ \$LATEST_PULL_EXIT_CODE -eq 0 ]; then
+      echo "✅ Imagen descargada después de espera adicional"
+    else
+      echo "❌ Error final: No se pudo descargar la imagen después de todos los intentos"
+      echo "\$LATEST_PULL_OUTPUT" | tail -5
+      exit 1
+    fi
   fi
 fi
 
