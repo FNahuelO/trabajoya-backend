@@ -3,14 +3,14 @@ version: 0.2
 phases:
   pre_build:
     commands:
-      - echo Logging in to Amazon ECR...
+      - echo "Logging in to Amazon ECR..."
       - aws --version
       - REPOSITORY_URI=$ECR_REPOSITORY_URI
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
-      - echo Repository URI is $REPOSITORY_URI
-      - echo Image tag is $IMAGE_TAG
-      - echo Checking source code location...
+      - echo "Repository URI is $REPOSITORY_URI"
+      - echo "Image tag is $IMAGE_TAG"
+      - echo "Checking source code location..."
       - echo "CODEBUILD_SRC_DIR: $CODEBUILD_SRC_DIR"
       - echo "CODEBUILD_SRC_DIR_* variables:"
       - env | grep CODEBUILD_SRC || true
@@ -19,10 +19,10 @@ phases:
           echo 'CODEBUILD_SRC_DIR exists, contents:'
           ls -la "$CODEBUILD_SRC_DIR" || true
         fi
-      - echo Checking for source in common locations...
+      - echo "Checking for source in common locations..."
       - find /codebuild -type d -name 'src' 2>/dev/null | head -5 || true
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
-      - echo Attempting Docker Hub login if credentials are available...
+      - echo "Attempting Docker Hub login if credentials are available..."
       - |
         DOCKERHUB_USER=$(aws secretsmanager get-secret-value --secret-id /trabajoya/dockerhub/username --region $AWS_DEFAULT_REGION --query SecretString --output text 2>/dev/null || echo '')
         DOCKERHUB_PASS=$(aws secretsmanager get-secret-value --secret-id /trabajoya/dockerhub/password --region $AWS_DEFAULT_REGION --query SecretString --output text 2>/dev/null || echo '')
@@ -34,11 +34,11 @@ phases:
         fi
   build:
     commands:
-      - echo Build started on `date`
-      - echo Building the Docker image...
+      - echo "Build started on `date`"
+      - echo "Building the Docker image..."
       - echo "CODEBUILD_SRC_DIR: $CODEBUILD_SRC_DIR"
       - echo "Current directory: $(pwd)"
-      - echo Checking for ZIP files that need extraction...
+      - echo "Checking for ZIP files that need extraction..."
       - find /codebuild -name '*.zip' -type f 2>/dev/null | head -5 || echo 'No ZIP files found'
       - |
         echo Checking if CODEBUILD_SRC_DIR is empty and needs to download source...
@@ -52,15 +52,15 @@ phases:
             echo "Could not get GitHub token from Secrets Manager"
           fi
         fi
-      - echo Checking all possible source locations...
-      - echo Checking CODEBUILD_SRC_DIR...
+      - echo "Checking all possible source locations..."
+      - echo "Checking CODEBUILD_SRC_DIR..."
       - |
         if [ -d "$CODEBUILD_SRC_DIR" ]; then
           echo "CODEBUILD_SRC_DIR exists, file count: $(find $CODEBUILD_SRC_DIR -type f 2>/dev/null | wc -l)"
           ls -la "$CODEBUILD_SRC_DIR" | head -20 || true
           cd "$CODEBUILD_SRC_DIR" || true
         fi
-      - echo Checking /codebuild/output/srcDownload...
+      - echo "Checking /codebuild/output/srcDownload..."
       - |
         if [ -d /codebuild/output/srcDownload ]; then
           echo 'Found srcDownload directory'
@@ -75,7 +75,7 @@ phases:
             fi
           fi
         fi
-      - echo Searching for Dockerfile.prod in entire filesystem...
+      - echo "Searching for Dockerfile.prod in entire filesystem..."
       - |
         DOCKERFILE_PATH=$(find /codebuild -name 'Dockerfile.prod' -type f 2>/dev/null | head -1)
         if [ -n "$DOCKERFILE_PATH" ]; then
@@ -104,9 +104,9 @@ phases:
             exit 1
           fi
         fi
-        echo Using DOCKERFILE: $DOCKERFILE
-        echo Using BUILD_CONTEXT: $BUILD_CONTEXT
-        echo Current directory before build: $(pwd)
+        echo "Using DOCKERFILE: $DOCKERFILE"
+        echo "Using BUILD_CONTEXT: $BUILD_CONTEXT"
+        echo "Current directory before build: $(pwd)"
       - |
         echo Building Docker image with retry logic...
         MAX_RETRIES=3
@@ -133,7 +133,7 @@ phases:
       - echo "=========================================="
       - echo "INICIANDO POST_BUILD - Actualizacion ASG"
       - echo "=========================================="
-      - echo Pushing Docker images...
+      - echo "Pushing Docker images..."
       - docker push $REPOSITORY_URI:latest
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
