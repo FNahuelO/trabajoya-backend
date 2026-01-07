@@ -1,20 +1,36 @@
--- CreateEnum
-CREATE TYPE "CallType" AS ENUM ('VOICE', 'VIDEO');
+-- CreateEnum: CallType (si no existe)
+DO $$ BEGIN
+    CREATE TYPE "CallType" AS ENUM ('VOICE', 'VIDEO');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "VideoMeetingStatus" AS ENUM ('SCHEDULED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'MISSED');
+-- CreateEnum: VideoMeetingStatus (si no existe)
+DO $$ BEGIN
+    CREATE TYPE "VideoMeetingStatus" AS ENUM ('SCHEDULED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'MISSED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "MediaAssetType" AS ENUM ('CV', 'AVATAR', 'VIDEO', 'LOGO');
+-- CreateEnum: MediaAssetType (si no existe)
+DO $$ BEGIN
+    CREATE TYPE "MediaAssetType" AS ENUM ('CV', 'AVATAR', 'VIDEO', 'LOGO');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- CreateEnum
-CREATE TYPE "MediaAssetStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED');
+-- CreateEnum: MediaAssetStatus (si no existe)
+DO $$ BEGIN
+    CREATE TYPE "MediaAssetStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- AlterTable
-ALTER TABLE "Call" ADD COLUMN     "callType" "CallType" NOT NULL DEFAULT 'VOICE';
+-- AlterTable: Agregar campo callType a la tabla Call existente
+ALTER TABLE "Call" ADD COLUMN IF NOT EXISTS "callType" "CallType" NOT NULL DEFAULT 'VOICE';
 
--- CreateTable
-CREATE TABLE "VideoMeeting" (
+-- CreateTable: VideoMeeting
+CREATE TABLE IF NOT EXISTS "VideoMeeting" (
     "id" TEXT NOT NULL,
     "createdById" TEXT NOT NULL,
     "invitedUserId" TEXT NOT NULL,
@@ -33,8 +49,8 @@ CREATE TABLE "VideoMeeting" (
     CONSTRAINT "VideoMeeting_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "MediaAsset" (
+-- CreateTable: MediaAsset
+CREATE TABLE IF NOT EXISTS "MediaAsset" (
     "id" TEXT NOT NULL,
     "ownerUserId" TEXT NOT NULL,
     "type" "MediaAssetType" NOT NULL,
@@ -49,38 +65,47 @@ CREATE TABLE "MediaAsset" (
     CONSTRAINT "MediaAsset_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "VideoMeeting_createdById_idx" ON "VideoMeeting"("createdById");
+-- CreateIndex (con IF NOT EXISTS)
+CREATE INDEX IF NOT EXISTS "VideoMeeting_createdById_idx" ON "VideoMeeting"("createdById");
+CREATE INDEX IF NOT EXISTS "VideoMeeting_invitedUserId_idx" ON "VideoMeeting"("invitedUserId");
+CREATE INDEX IF NOT EXISTS "VideoMeeting_scheduledAt_idx" ON "VideoMeeting"("scheduledAt");
+CREATE INDEX IF NOT EXISTS "VideoMeeting_status_idx" ON "VideoMeeting"("status");
 
--- CreateIndex
-CREATE INDEX "VideoMeeting_invitedUserId_idx" ON "VideoMeeting"("invitedUserId");
+CREATE INDEX IF NOT EXISTS "MediaAsset_ownerUserId_idx" ON "MediaAsset"("ownerUserId");
+CREATE INDEX IF NOT EXISTS "MediaAsset_type_idx" ON "MediaAsset"("type");
+CREATE INDEX IF NOT EXISTS "MediaAsset_status_idx" ON "MediaAsset"("status");
+CREATE INDEX IF NOT EXISTS "MediaAsset_key_idx" ON "MediaAsset"("key");
 
--- CreateIndex
-CREATE INDEX "VideoMeeting_scheduledAt_idx" ON "VideoMeeting"("scheduledAt");
+-- CreateUniqueIndex
+CREATE UNIQUE INDEX IF NOT EXISTS "MediaAsset_key_key" ON "MediaAsset"("key");
 
--- CreateIndex
-CREATE INDEX "VideoMeeting_status_idx" ON "VideoMeeting"("status");
+-- AddForeignKey (verificar si ya existen)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'VideoMeeting_createdById_fkey'
+    ) THEN
+        ALTER TABLE "VideoMeeting" ADD CONSTRAINT "VideoMeeting_createdById_fkey" 
+            FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
--- CreateIndex
-CREATE UNIQUE INDEX "MediaAsset_key_key" ON "MediaAsset"("key");
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'VideoMeeting_invitedUserId_fkey'
+    ) THEN
+        ALTER TABLE "VideoMeeting" ADD CONSTRAINT "VideoMeeting_invitedUserId_fkey" 
+            FOREIGN KEY ("invitedUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
--- CreateIndex
-CREATE INDEX "MediaAsset_ownerUserId_idx" ON "MediaAsset"("ownerUserId");
-
--- CreateIndex
-CREATE INDEX "MediaAsset_type_idx" ON "MediaAsset"("type");
-
--- CreateIndex
-CREATE INDEX "MediaAsset_status_idx" ON "MediaAsset"("status");
-
--- CreateIndex
-CREATE INDEX "MediaAsset_key_idx" ON "MediaAsset"("key");
-
--- AddForeignKey
-ALTER TABLE "VideoMeeting" ADD CONSTRAINT "VideoMeeting_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "VideoMeeting" ADD CONSTRAINT "VideoMeeting_invitedUserId_fkey" FOREIGN KEY ("invitedUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MediaAsset" ADD CONSTRAINT "MediaAsset_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'MediaAsset_ownerUserId_fkey'
+    ) THEN
+        ALTER TABLE "MediaAsset" ADD CONSTRAINT "MediaAsset_ownerUserId_fkey" 
+            FOREIGN KEY ("ownerUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
