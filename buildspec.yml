@@ -12,7 +12,7 @@ phases:
       - echo "Image tag is $IMAGE_TAG"
       - echo "Checking source code location..."
       - echo CODEBUILD_SRC_DIR is $CODEBUILD_SRC_DIR
-      - echo CODEBUILD_SRC_DIR variables:
+      - echo "CODEBUILD_SRC_DIR variables"
       - env | grep CODEBUILD_SRC || true
       - |
         if [ -d "$CODEBUILD_SRC_DIR" ]; then
