@@ -19,13 +19,33 @@ export interface SignedCookieOptions {
 @Injectable()
 export class CloudFrontSignerService {
   private privateKey: string;
-  private keyPairId: string;
-  private cloudFrontDomain: string;
+  private keyPairId: string | null = null;
+  private cloudFrontDomain: string | null = null;
   private readonly defaultExpiresIn = 900; // 15 minutos
 
-  constructor(private configService: ConfigService) {
-    this.keyPairId = this.configService.get<string>("CLOUDFRONT_KEY_PAIR_ID") || "";
-    this.cloudFrontDomain = this.configService.get<string>("CLOUDFRONT_DOMAIN") || "";
+  constructor(private configService: ConfigService) {}
+
+  /**
+   * Obtiene el dominio de CloudFront de forma lazy (cuando se necesita)
+   * Esto permite que AwsConfigService cargue los valores desde SSM primero
+   */
+  private getCloudFrontDomain(): string {
+    if (this.cloudFrontDomain === null) {
+      this.cloudFrontDomain =
+        this.configService.get<string>("CLOUDFRONT_DOMAIN") || "";
+    }
+    return this.cloudFrontDomain;
+  }
+
+  /**
+   * Obtiene el Key Pair ID de forma lazy (cuando se necesita)
+   */
+  private getKeyPairId(): string {
+    if (this.keyPairId === null) {
+      this.keyPairId =
+        this.configService.get<string>("CLOUDFRONT_KEY_PAIR_ID") || "";
+    }
+    return this.keyPairId;
   }
 
   /**
@@ -42,13 +62,10 @@ export class CloudFrontSignerService {
    */
   private async loadPrivateKey(): Promise<void> {
     const secretArn =
-      this.configService.get<string>("CLOUDFRONT_PRIVATE_KEY_SECRET_ARN") ||
-      "";
+      this.configService.get<string>("CLOUDFRONT_PRIVATE_KEY_SECRET_ARN") || "";
 
     if (!secretArn) {
-      throw new Error(
-        "CLOUDFRONT_PRIVATE_KEY_SECRET_ARN no está configurado"
-      );
+      throw new Error("CLOUDFRONT_PRIVATE_KEY_SECRET_ARN no está configurado");
     }
 
     try {
@@ -97,10 +114,11 @@ export class CloudFrontSignerService {
     const expiresTimestamp = Math.floor(expiresAt.getTime() / 1000);
 
     // Crear política de acceso
+    const domain = this.getCloudFrontDomain();
     const policy = JSON.stringify({
       Statement: [
         {
-          Resource: `${this.cloudFrontDomain}${resourcePath}`,
+          Resource: `${domain}${resourcePath}`,
           Condition: {
             DateLessThan: {
               "AWS:EpochTime": expiresTimestamp,
@@ -114,19 +132,22 @@ export class CloudFrontSignerService {
     const signature = this.signPolicy(policy);
 
     return {
-      "CloudFront-Policy": this.base64Encode(policy).replace(/[+=\/]/g, (match) => {
-        if (match === "+") return "-";
-        if (match === "=") return "_";
-        if (match === "/") return "~";
-        return match;
-      }),
+      "CloudFront-Policy": this.base64Encode(policy).replace(
+        /[+=\/]/g,
+        (match) => {
+          if (match === "+") return "-";
+          if (match === "=") return "_";
+          if (match === "/") return "~";
+          return match;
+        }
+      ),
       "CloudFront-Signature": signature.replace(/[+=\/]/g, (match) => {
         if (match === "+") return "-";
         if (match === "=") return "_";
         if (match === "/") return "~";
         return match;
       }),
-      "CloudFront-Key-Pair-Id": this.keyPairId,
+      "CloudFront-Key-Pair-Id": this.getKeyPairId(),
       expiresAt,
     };
   }
@@ -149,12 +170,32 @@ export class CloudFrontSignerService {
   }
 
   /**
+   * Verifica si CloudFront está configurado
+   */
+  isCloudFrontConfigured(): boolean {
+    const domain = this.getCloudFrontDomain();
+    return domain && domain.trim() !== "";
+  }
+
+  /**
    * Genera la URL completa del recurso en CloudFront
    */
   getCloudFrontUrl(resourcePath: string): string {
-    const domain = this.cloudFrontDomain;
+    const domain = this.getCloudFrontDomain();
     // Asegurar que el path comience con /
-    const path = resourcePath.startsWith("/") ? resourcePath : `/${resourcePath}`;
-    return `https://${domain}${path}`;
+    const path = resourcePath.startsWith("/")
+      ? resourcePath
+      : `/${resourcePath}`;
+    const url = `https://${domain}${path}`;
+
+    // Validar que la URL no esté malformada
+    if (url.includes("https:///")) {
+      console.warn(
+        `[CloudFrontSignerService] ⚠️  URL malformada generada: ${url}. ` +
+          `CLOUDFRONT_DOMAIN podría estar vacío o no configurado.`
+      );
+    }
+
+    return url;
   }
 }

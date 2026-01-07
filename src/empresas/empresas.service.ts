@@ -3,11 +3,13 @@ import {
   NotFoundException,
   BadRequestException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
 import { ContentModerationService } from "../common/services/content-moderation.service";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PaymentsService } from "../payments/payments.service";
 import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { S3UploadService } from "../upload/s3-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -17,7 +19,9 @@ export class EmpresasService {
     private contentModeration: ContentModerationService,
     private subscriptionsService: SubscriptionsService,
     private paymentsService: PaymentsService,
-    private cloudFrontSigner: CloudFrontSignerService
+    private cloudFrontSigner: CloudFrontSignerService,
+    private s3UploadService: S3UploadService,
+    private configService: ConfigService
   ) {}
 
   async getByUser(userId: string) {
@@ -38,17 +42,46 @@ export class EmpresasService {
       throw new NotFoundException("Mensaje de error");
     }
 
-    // Transformar el logo key en una URL de CloudFront si existe
+    // Transformar el logo key en una URL válida (CloudFront o S3 directo)
     if (profile.logo && !profile.logo.startsWith("http")) {
       try {
-        const logoPath = profile.logo.startsWith("/") ? profile.logo : `/${profile.logo}`;
-        const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
-        // Solo actualizar si se generó una URL válida
-        if (cloudFrontUrl && cloudFrontUrl.startsWith("https://")) {
-          profile.logo = cloudFrontUrl;
+        // Verificar si CloudFront está configurado
+        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+          const logoPath = profile.logo.startsWith("/")
+            ? profile.logo
+            : `/${profile.logo}`;
+          const cloudFrontUrl =
+            this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+          // Solo actualizar si se generó una URL válida (verificar que no sea malformada)
+          if (
+            cloudFrontUrl &&
+            cloudFrontUrl.startsWith("https://") &&
+            !cloudFrontUrl.includes("https:///")
+          ) {
+            profile.logo = cloudFrontUrl;
+          } else {
+            // Si CloudFront falla o retorna URL malformada, usar S3 directo
+            console.warn(
+              `[EmpresasService] CloudFront configurado pero URL malformada: ${cloudFrontUrl}. ` +
+                `Usando S3 directo para logo: ${profile.logo}`
+            );
+            profile.logo = await this.s3UploadService.getObjectUrl(
+              profile.logo,
+              3600
+            );
+          }
+        } else {
+          // Si CloudFront no está configurado, usar S3 directo
+          console.log(
+            `[EmpresasService] CloudFront no configurado. Usando S3 directo para logo: ${profile.logo}`
+          );
+          profile.logo = await this.s3UploadService.getObjectUrl(
+            profile.logo,
+            3600
+          );
         }
       } catch (error) {
-        console.error("Error generando URL de CloudFront para logo:", error);
+        console.error("Error generando URL para logo:", error);
         // Si falla, mantener el key original para que el frontend pueda intentar construirla
       }
     }
