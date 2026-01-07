@@ -4,15 +4,24 @@ phases:
   pre_build:
     commands:
       - echo "Login a Amazon ECR"
+      - aws --version
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
       - export REPOSITORY_URI=$ECR_REPOSITORY_URI
       - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - export IMAGE_TAG=${COMMIT_HASH:-latest}
+      - echo "Repositorio:$REPOSITORY_URI"
+      - echo "Tag:$IMAGE_TAG"
+      - cd $CODEBUILD_SRC_DIR
 
   build:
     commands:
-      - docker pull public.ecr.aws/docker/library/node:20-alpine || echo "Warning"
-      - docker build -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
+      - echo "Login a ECR Public Gallery para imágenes base sin límites..."
+      - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws 2>/dev/null || echo "⚠️  No se pudo hacer login a ECR Public, continuando..."
+      - echo "Build iniciado el $(date)"
+      - echo "=== Pre-pull de imagen base desde ECR Public ==="
+      - docker pull public.ecr.aws/docker/library/node:20-alpine || echo "⚠️  No se pudo hacer pull, continuando..."
+      - echo "=== Iniciando build ==="
+      - docker build --no-cache --pull -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
       - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
 
   post_build:
@@ -65,13 +74,19 @@ phases:
         sed -i "s|TARGET_IMAGE_PH|${TARGET_IMAGE}|g" /tmp/update.sh
         sed -i "s|REPO_PH|${REPOSITORY_URI}|g" /tmp/update.sh
         sed -i "s|CONTAINER_PH|${CONTAINER_NAME}|g" /tmp/update.sh
-        SCRIPT=$(cat /tmp/update.sh)
         for INSTANCE_ID in $INSTANCE_IDS; do
           echo ""
           echo "=== Actualizando instancia: $INSTANCE_ID ==="
-          COMMAND_ID=$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name "AWS-RunShellScript" --parameters commands="$SCRIPT" --timeout-seconds 600 --query 'Command.CommandId' --output text 2>&1)
-          if [ -z "$COMMAND_ID" ] || [ "$COMMAND_ID" = "None" ]; then
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters '{"commands":["'"$(cat /tmp/update.sh | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')"'"]}' \
+            --timeout-seconds 600 \
+            --query 'Command.CommandId' \
+            --output text 2>&1)
+          if [ -z "$COMMAND_ID" ] || [ "$COMMAND_ID" = "None" ] || echo "$COMMAND_ID" | grep -q "Error"; then
             echo "ERROR: No se pudo enviar comando SSM"
+            echo "$COMMAND_ID"
             continue
           fi
           echo "Comando SSM enviado: $COMMAND_ID"
