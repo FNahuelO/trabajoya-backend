@@ -27,8 +27,7 @@ phases:
 
   post_build:
     commands:
-      - docker push "$REPOSITORY_URI:$IMAGE_TAG"
-      - docker push "$REPOSITORY_URI:latest"
+      - echo "Post build iniciado"
       - chmod +x ./scripts/deploy-via-ssm.sh
       - ./scripts/deploy-via-ssm.sh
 
