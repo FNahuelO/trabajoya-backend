@@ -7,6 +7,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ContentModerationService } from "../common/services/content-moderation.service";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PaymentsService } from "../payments/payments.service";
+import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -15,7 +16,8 @@ export class EmpresasService {
     private prisma: PrismaService,
     private contentModeration: ContentModerationService,
     private subscriptionsService: SubscriptionsService,
-    private paymentsService: PaymentsService
+    private paymentsService: PaymentsService,
+    private cloudFrontSigner: CloudFrontSignerService
   ) {}
 
   async getByUser(userId: string) {
@@ -34,6 +36,21 @@ export class EmpresasService {
 
     if (!profile) {
       throw new NotFoundException("Mensaje de error");
+    }
+
+    // Transformar el logo key en una URL de CloudFront si existe
+    if (profile.logo && !profile.logo.startsWith("http")) {
+      try {
+        const logoPath = profile.logo.startsWith("/") ? profile.logo : `/${profile.logo}`;
+        const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+        // Solo actualizar si se generó una URL válida
+        if (cloudFrontUrl && cloudFrontUrl.startsWith("https://")) {
+          profile.logo = cloudFrontUrl;
+        }
+      } catch (error) {
+        console.error("Error generando URL de CloudFront para logo:", error);
+        // Si falla, mantener el key original para que el frontend pueda intentar construirla
+      }
     }
 
     return profile;
