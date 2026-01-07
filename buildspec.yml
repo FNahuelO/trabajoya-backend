@@ -108,7 +108,7 @@ phases:
         # Intentar crear el contenedor
         # Primero intentar con --env-file si tenemos las variables guardadas
         CONTAINER_CREATED=0
-        
+
         if [ -f "$OLD_ENV_FILE" ] && [ -s "$OLD_ENV_FILE" ]; then
           echo "Intentando crear contenedor con variables de entorno del contenedor anterior..."
           echo "Variables encontradas: $(wc -l < "$OLD_ENV_FILE")"
@@ -137,7 +137,7 @@ phases:
             fi
           fi
         fi
-        
+
         # Si no se creó, intentar con configuración mínima
         if [ "$CONTAINER_CREATED" -eq 0 ]; then
           echo "Creando contenedor con configuración mínima (NODE_ENV=production)..."
