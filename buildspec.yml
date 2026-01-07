@@ -194,8 +194,9 @@ phases:
                 REFRESH_OUTPUT=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$ASG_NAME" --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' --output json 2>&1)
                 REFRESH_ERROR=$?
                 if [ $REFRESH_ERROR -eq 0 ]; then
-                  REFRESH_ID=$(echo "$REFRESH_OUTPUT" | jq -r '.InstanceRefresh.InstanceRefreshId // empty' 2>/dev/null || echo '')
-                  if [ -n "$REFRESH_ID" ] && [ "$REFRESH_ID" != "None" ] && [ "$REFRESH_ID" != 'null' ]; then
+                  # Intentar extraer InstanceRefreshId de diferentes estructuras posibles
+                  REFRESH_ID=$(echo "$REFRESH_OUTPUT" | jq -r '.InstanceRefresh.InstanceRefreshId // .InstanceRefreshId // empty' 2>/dev/null || echo '')
+                  if [ -n "$REFRESH_ID" ] && [ "$REFRESH_ID" != "None" ] && [ "$REFRESH_ID" != 'null' ] && [ "$REFRESH_ID" != '' ]; then
                     echo "Instance refresh iniciado: $REFRESH_ID"
                     echo '   Las instancias se actualizaran gradualmente manteniendo el servicio disponible'
                   else
@@ -235,7 +236,7 @@ phases:
           echo "   Ejemplo: AUTO_SCALING_GROUP_NAME=TrabajoYaStack-prod-BackendASG08C95C34-zb3tOO7qgnCl"
         fi
       - echo "=========================================="
-      - echo "POST_BUILD COMPLETADO G"
+      - echo "POST_BUILD COMPLETADO"
 artifacts:
   files:
     - imageDetail.json
