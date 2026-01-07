@@ -16,8 +16,10 @@ COPY package*.json ./
 # Instalar TODAS las dependencias (incluyendo devDependencies para compilar)
 RUN npm ci
 
-# Copiar código fuente
+# Copiar código fuente (incluyendo scripts)
 COPY . .
+# Asegurar que scripts/entrypoint.sh existe y tiene permisos
+RUN chmod +x scripts/entrypoint.sh || echo "Warning: scripts/entrypoint.sh no encontrado en builder"
 
 # Generar cliente de Prisma
 RUN npx prisma generate
@@ -58,8 +60,15 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # Generar cliente de Prisma (necesario para runtime)
 RUN npx prisma generate
 
-# Hacer el script de entrypoint ejecutable
-RUN chmod +x scripts/entrypoint.sh
+# Hacer el script de entrypoint ejecutable y verificar que existe
+RUN echo "Verificando scripts..." && \
+    ls -la scripts/ || echo "Directorio scripts no encontrado" && \
+    chmod +x scripts/entrypoint.sh && \
+    ls -la scripts/entrypoint.sh && \
+    test -f scripts/entrypoint.sh || (echo "ERROR: entrypoint.sh no encontrado después de copiar" && ls -la && exit 1) && \
+    echo "✅ entrypoint.sh encontrado y con permisos"
 
 EXPOSE 4000
-CMD ["./scripts/entrypoint.sh"]
+
+# Ejecutar directamente el script de entrypoint
+CMD ["/bin/sh", "scripts/entrypoint.sh"]
