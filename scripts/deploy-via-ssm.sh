@@ -68,20 +68,36 @@ ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text 2>/dev/n
 aws ecr get-login-password --region "\$REGION" | docker login --username AWS --password-stdin "\$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com" >/dev/null 2>&1 || { echo "❌ Error al hacer login a ECR"; exit 1; }
 
 echo "📥 Descargando imagen: \$TARGET_IMAGE"
-docker pull "\$TARGET_IMAGE" || {
+echo "🔍 Verificando que la imagen existe en ECR..."
+if ! docker pull "\$TARGET_IMAGE" 2>&1 | grep -q "Error\|denied\|not found"; then
+  echo "✅ Imagen \$TARGET_IMAGE descargada correctamente"
+else
   echo "⚠️  No se pudo descargar \$TARGET_IMAGE, intentando con :latest"
-  docker pull "\${TARGET_IMAGE%:*}:latest" || { echo "❌ No se pudo descargar imagen"; exit 1; }
-  TARGET_IMAGE="\${TARGET_IMAGE%:*}:latest"
-}
+  LATEST_IMAGE="\${TARGET_IMAGE%:*}:latest"
+  if ! docker pull "\$LATEST_IMAGE" 2>&1 | grep -q "Error\|denied\|not found"; then
+    echo "✅ Imagen :latest descargada, pero verificando que sea reciente..."
+    TARGET_IMAGE="\$LATEST_IMAGE"
+  else
+    echo "❌ No se pudo descargar ninguna imagen. Verificando ECR..."
+    aws ecr describe-images --repository-name "\${TARGET_IMAGE#*/}" --image-ids imageTag="\${TARGET_IMAGE##*:}" --region "\$REGION" 2>&1 || echo "⚠️  Imagen no encontrada en ECR"
+    exit 1
+  fi
+fi
 
 # Verificar que la imagen se descargó correctamente
 IMAGE_ID=\$(docker images "\$TARGET_IMAGE" --format "{{.ID}}" | head -1)
 if [ -z "\$IMAGE_ID" ]; then
-  echo "❌ Error: La imagen \$TARGET_IMAGE no se encuentra localmente"
+  echo "❌ Error: La imagen \$TARGET_IMAGE no se encuentra localmente después del pull"
+  echo "📋 Imágenes disponibles:"
+  docker images "\${TARGET_IMAGE%:*}" --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}" | head -5
   exit 1
 fi
 
-echo "✅ Imagen descargada: \$TARGET_IMAGE (ID: \$IMAGE_ID)"
+# Obtener información de la imagen
+IMAGE_CREATED=\$(docker images "\$TARGET_IMAGE" --format "{{.CreatedAt}}" | head -1)
+echo "✅ Imagen descargada: \$TARGET_IMAGE"
+echo "   ID: \$IMAGE_ID"
+echo "   Creada: \$IMAGE_CREATED"
 
 # Obtener configuración desde Secrets Manager
 if command -v jq >/dev/null 2>&1; then
@@ -101,8 +117,23 @@ if command -v jq >/dev/null 2>&1; then
   fi
 fi
 
+echo "🛑 Deteniendo y eliminando contenedor antiguo..."
+# Forzar detención y eliminación
 docker stop "\$CONTAINER_NAME" 2>/dev/null || true
-docker rm "\$CONTAINER_NAME" 2>/dev/null || true
+sleep 1
+docker rm -f "\$CONTAINER_NAME" 2>/dev/null || true
+sleep 1
+
+# Verificar que el contenedor fue eliminado
+if docker ps -a --format "{{.Names}}" | grep -q "^\$CONTAINER_NAME$"; then
+  echo "⚠️  El contenedor aún existe, forzando eliminación..."
+  docker rm -f "\$CONTAINER_NAME" || true
+  sleep 1
+fi
+
+# Limpiar imágenes antiguas para liberar espacio (opcional, pero ayuda)
+echo "🧹 Limpiando imágenes Docker antiguas (sin etiquetas)..."
+docker image prune -f >/dev/null 2>&1 || true
 
 # Construir comando docker run con variables de entorno
 DOCKER_ENV_ARGS=(
@@ -125,22 +156,49 @@ if [ -n "\${AWS_REGION:-}" ]; then
   DOCKER_ENV_ARGS+=("-e" "AWS_REGION=\$AWS_REGION")
 fi
 
+echo "🚀 Creando nuevo contenedor con imagen: \$TARGET_IMAGE"
 docker run -d \
   --name "\$CONTAINER_NAME" \
   --restart unless-stopped \
   -p "\$PORT:\$PORT" \
   "\${DOCKER_ENV_ARGS[@]}" \
-  "\$TARGET_IMAGE" || { echo "❌ Error al crear contenedor"; exit 1; }
+  "\$TARGET_IMAGE" || { 
+    echo "❌ Error al crear contenedor"
+    echo "📋 Verificando si la imagen existe localmente:"
+    docker images "\$TARGET_IMAGE" --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}"
+    exit 1
+  }
+
+# Esperar un momento para que el contenedor se inicie
+sleep 2
 
 # Verificar que el contenedor está usando la imagen correcta
 CONTAINER_IMAGE=\$(docker inspect "\$CONTAINER_NAME" --format "{{.Config.Image}}" 2>/dev/null || echo "")
-if [ "\$CONTAINER_IMAGE" != "\$TARGET_IMAGE" ]; then
-  echo "⚠️  Advertencia: El contenedor está usando la imagen \$CONTAINER_IMAGE en lugar de \$TARGET_IMAGE"
+if [ -z "\$CONTAINER_IMAGE" ]; then
+  echo "❌ Error: No se pudo obtener información del contenedor"
+  exit 1
 fi
 
-echo "✅ Contenedor actualizado"
-echo "📦 Imagen usada: \$CONTAINER_IMAGE"
-docker ps --filter name="\$CONTAINER_NAME" --format "{{.Names}} - {{.Status}} - {{.Image}}"
+if [ "\$CONTAINER_IMAGE" != "\$TARGET_IMAGE" ]; then
+  echo "⚠️  ADVERTENCIA: El contenedor está usando la imagen \$CONTAINER_IMAGE en lugar de \$TARGET_IMAGE"
+  echo "🔄 Reintentando con la imagen correcta..."
+  docker stop "\$CONTAINER_NAME" 2>/dev/null || true
+  docker rm "\$CONTAINER_NAME" 2>/dev/null || true
+  docker run -d \
+    --name "\$CONTAINER_NAME" \
+    --restart unless-stopped \
+    -p "\$PORT:\$PORT" \
+    "\${DOCKER_ENV_ARGS[@]}" \
+    "\$TARGET_IMAGE" || { echo "❌ Error al recrear contenedor"; exit 1; }
+  sleep 2
+  CONTAINER_IMAGE=\$(docker inspect "\$CONTAINER_NAME" --format "{{.Config.Image}}" 2>/dev/null || echo "")
+fi
+
+echo "✅ Contenedor actualizado correctamente"
+echo "📦 Imagen configurada: \$TARGET_IMAGE"
+echo "📦 Imagen en uso: \$CONTAINER_IMAGE"
+echo "📊 Estado del contenedor:"
+docker ps --filter name="\$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}"
 EOF
 
 # Codificar el script en base64 para enviarlo por SSM
@@ -176,10 +234,15 @@ for INSTANCE_ID in $INSTANCE_IDS; do
     
     if [ "$STATUS" = "Success" ]; then
       echo "✅ $INSTANCE_ID actualizada"
+      echo "📋 Salida del deployment:"
+      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null | tail -20
       break
     elif [ "$STATUS" = "Failed" ]; then
       echo "❌ $INSTANCE_ID falló"
-      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null | head -5
+      echo "📋 Salida de error:"
+      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null
+      echo "📋 Salida estándar:"
+      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null | tail -20
       break
     elif [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
       echo "⚠️  $INSTANCE_ID: $STATUS"
