@@ -37,7 +37,23 @@ fi
 
 echo "Instancias: $INSTANCE_IDS"
 
+# Validar que las variables necesarias están definidas
+if [ -z "$REPOSITORY_URI" ] || [ -z "$IMAGE_TAG" ]; then
+  echo "❌ Error: REPOSITORY_URI o IMAGE_TAG no están definidas"
+  echo "   REPOSITORY_URI=${REPOSITORY_URI:-undefined}"
+  echo "   IMAGE_TAG=${IMAGE_TAG:-undefined}"
+  exit 1
+fi
+
+# Validar que TARGET_IMAGE está correctamente formado
+if [[ ! "$TARGET_IMAGE" =~ ^[^:]+:[^:]+$ ]]; then
+  echo "❌ Error: TARGET_IMAGE tiene formato incorrecto: $TARGET_IMAGE"
+  exit 1
+fi
+
 # Crear el script remoto con las variables sustituidas
+# Usamos EOF sin comillas para permitir expansión de variables del script principal
+# Las variables deben estar correctamente definidas antes de este punto
 cat > /tmp/remote_update.sh << EOF
 #!/bin/bash
 set -e
@@ -296,6 +312,13 @@ fi
 
 for INSTANCE_ID in $INSTANCE_IDS; do
   echo "Actualizando $INSTANCE_ID..."
+  
+  # Verificar que el script remoto se generó correctamente
+  if [ ! -f /tmp/remote_update.sh ] || [ ! -s /tmp/remote_update.sh ]; then
+    echo "❌ Error: El script remoto no se generó correctamente"
+    exit 1
+  fi
+  
   COMMAND_ID=$(aws ssm send-command \
     --instance-ids "$INSTANCE_ID" \
     --document-name "AWS-RunShellScript" \
@@ -304,38 +327,82 @@ for INSTANCE_ID in $INSTANCE_IDS; do
     --query "Command.CommandId" \
     --output text 2>&1)
   
-  if [ -z "$COMMAND_ID" ] || [ "$COMMAND_ID" = "None" ] || echo "$COMMAND_ID" | grep -q "Error"; then
+  if [ -z "$COMMAND_ID" ] || [ "$COMMAND_ID" = "None" ] || echo "$COMMAND_ID" | grep -qi "error"; then
     echo "❌ Error enviando comando SSM: $COMMAND_ID"
+    echo "📋 Intentando obtener más detalles..."
+    aws ssm send-command \
+      --instance-ids "$INSTANCE_ID" \
+      --document-name "AWS-RunShellScript" \
+      --parameters "$PARAMS_JSON" \
+      --timeout-seconds 900 2>&1 | head -20
     continue
   fi
   
+  echo "✅ Comando SSM enviado, CommandId: $COMMAND_ID"
+  
   WAIT_COUNT=0
-  while [ $WAIT_COUNT -lt 12 ]; do
+  MAX_WAIT=24  # 24 * 10 = 240 segundos (4 minutos)
+  while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
     sleep 10
     STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'Status' --output text 2>/dev/null || echo "Pending")
     
     if [ "$STATUS" = "Success" ]; then
       echo "✅ $INSTANCE_ID actualizada"
       echo "📋 Salida completa del deployment:"
-      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null
+      OUTPUT=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "")
+      if [ -n "$OUTPUT" ]; then
+        echo "$OUTPUT"
+      else
+        echo "(Sin salida estándar)"
+      fi
       echo ""
       echo "📋 Errores (si hay):"
-      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || echo "Ninguno"
+      ERRORS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || echo "")
+      if [ -n "$ERRORS" ]; then
+        echo "$ERRORS"
+      else
+        echo "Ninguno"
+      fi
       break
     elif [ "$STATUS" = "Failed" ]; then
       echo "❌ $INSTANCE_ID falló"
       echo "📋 Salida de error completa:"
-      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null
+      ERRORS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || echo "")
+      if [ -n "$ERRORS" ]; then
+        echo "$ERRORS"
+      else
+        echo "(Sin errores capturados)"
+      fi
       echo ""
       echo "📋 Salida estándar completa:"
-      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null
+      OUTPUT=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "")
+      if [ -n "$OUTPUT" ]; then
+        echo "$OUTPUT"
+      else
+        echo "(Sin salida estándar)"
+      fi
       break
     elif [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
       echo "⚠️  $INSTANCE_ID: $STATUS"
+      # Mostrar salida incluso si fue cancelado o timeout
+      echo "📋 Salida disponible:"
+      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "(Sin salida disponible)"
       break
+    else
+      # Mostrar progreso cada 3 intentos
+      if [ $((WAIT_COUNT % 3)) -eq 0 ]; then
+        echo "⏳ Esperando... Estado: $STATUS (intento $((WAIT_COUNT + 1))/$MAX_WAIT)"
+      fi
     fi
     WAIT_COUNT=$((WAIT_COUNT + 1))
   done
+  
+  # Si salimos del loop sin éxito ni fallo, mostrar estado final
+  if [ "$STATUS" != "Success" ] && [ "$STATUS" != "Failed" ] && [ "$STATUS" != "Cancelled" ] && [ "$STATUS" != "TimedOut" ]; then
+    echo "⚠️  Tiempo de espera agotado para $INSTANCE_ID. Estado final: ${STATUS:-Unknown}"
+    echo "📋 Salida disponible:"
+    aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "(Sin salida disponible)"
+  fi
 done
 
 echo "Deployment completado"
