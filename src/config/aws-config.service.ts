@@ -23,7 +23,7 @@ export class AwsConfigService implements OnModuleInit {
     this.secretsManagerClient = new SecretsManagerClient({ region });
     this.ssmClient = new SSMClient({ region });
     
-    this.logger.debug(`AwsConfigService inicializado con región: ${region}`);
+    this.logger.log(`[AwsConfigService] Inicializado con región: ${region}`);
   }
 
   async onModuleInit() {
@@ -164,7 +164,7 @@ export class AwsConfigService implements OnModuleInit {
       this.configService.get<string>("STACK_PREFIX") || "trabajoya-prod";
     const region = this.configService.get<string>("AWS_REGION") || "us-east-1";
 
-    this.logger.debug(`Cargando parámetros SSM con prefijo: ${stackPrefix} en región: ${region}`);
+    this.logger.log(`[SSM] Cargando parámetros con prefijo: ${stackPrefix} en región: ${region}`);
 
     const parameters = [
       { name: `/${stackPrefix}/s3/bucket`, envVar: "S3_BUCKET_NAME" },
@@ -180,20 +180,20 @@ export class AwsConfigService implements OnModuleInit {
         const normalizedName = param.name.trim();
         if (/^ssm/i.test(normalizedName)) {
           this.logger.warn(
-            `Nombre de parámetro SSM inválido (no puede empezar con 'ssm'): ${param.name}. Omitiendo.`
+            `[SSM] Nombre inválido (no puede empezar con 'ssm'): ${param.name}. Omitiendo.`
           );
           continue;
         }
 
-        this.logger.debug(`Intentando cargar parámetro SSM: ${normalizedName}`);
+        this.logger.log(`[SSM] Intentando cargar: ${normalizedName}`);
         const command = new GetParameterCommand({ Name: normalizedName });
         const response = await this.ssmClient.send(command);
 
         if (response.Parameter?.Value) {
           process.env[param.envVar] = response.Parameter.Value;
-          this.logger.log(`✅ Parámetro SSM cargado: ${param.name} -> ${param.envVar}`);
+          this.logger.log(`[SSM] ✅ Cargado: ${param.name} -> ${param.envVar} = ${response.Parameter.Value.substring(0, 20)}...`);
         } else {
-          this.logger.warn(`Parámetro SSM encontrado pero sin valor: ${param.name}`);
+          this.logger.warn(`[SSM] ⚠️  Encontrado pero sin valor: ${param.name}`);
         }
       } catch (error: any) {
         // Si el error es porque el parámetro no existe o tiene un nombre inválido
@@ -201,18 +201,22 @@ export class AwsConfigService implements OnModuleInit {
           error.name === "ParameterNotFound" ||
           error.$metadata?.httpStatusCode === 400
         ) {
-          this.logger.debug(
-            `Parámetro SSM no encontrado: ${param.name}. Usando variables de entorno alternativas si están disponibles.`
+          this.logger.warn(
+            `[SSM] ❌ No encontrado: ${normalizedName} (buscando: ${param.name}). Error: ${error.name}`
           );
         } else if (error.name === "ValidationException" || error.message?.includes("can't be prefixed with")) {
           this.logger.warn(
-            `Nombre de parámetro SSM inválido: ${param.name}. ${error.message}`
+            `[SSM] ⚠️  Nombre inválido: ${param.name}. ${error.message}`
           );
         } else {
           // Otros errores (permisos, red, etc.)
-          this.logger.warn(
-            `Error al cargar parámetro SSM ${param.name}: ${error.name || 'Unknown'} - ${error.message || error}. Verifique permisos IAM y región.`
+          this.logger.error(
+            `[SSM] ❌ Error cargando ${param.name}: ${error.name || 'Unknown'} - ${error.message || error}. Verifique permisos IAM y región ${region}.`
           );
+          // Mostrar más detalles del error
+          if (error.$metadata) {
+            this.logger.error(`[SSM] Detalles: ${JSON.stringify(error.$metadata)}`);
+          }
         }
         // Continuar con otros parámetros - no es crítico si fallan
       }
