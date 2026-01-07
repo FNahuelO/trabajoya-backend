@@ -28,8 +28,17 @@ export class S3UploadService {
 
   constructor(private configService: ConfigService) {
     const region = this.configService.get<string>("AWS_REGION") || "us-east-1";
-    this.bucketName =
-      this.configService.get<string>("S3_BUCKET_NAME") || "";
+    this.bucketName = this.configService.get<string>("S3_BUCKET_NAME") || "";
+
+    if (!this.bucketName) {
+      console.warn(
+        "[S3UploadService] ⚠️  S3_BUCKET_NAME no está configurado. Las operaciones de S3 fallarán."
+      );
+    } else {
+      console.log(
+        `[S3UploadService] ✅ Bucket configurado: ${this.bucketName} (region: ${region})`
+      );
+    }
 
     this.s3Client = new S3Client({
       region,
@@ -46,6 +55,12 @@ export class S3UploadService {
     key: string,
     options: PresignedUrlOptions = {}
   ): Promise<PresignedUrlResponse> {
+    if (!this.bucketName) {
+      throw new Error(
+        "S3_BUCKET_NAME no está configurado. Configure la variable de entorno o el parámetro SSM."
+      );
+    }
+
     const expiresIn = options.expiresIn || 3600; // 1 hora por defecto
 
     // Construir el comando con solo los parámetros necesarios
@@ -65,17 +80,34 @@ export class S3UploadService {
       commandParams.ContentLength = options.contentLength;
     }
 
-    const command = new PutObjectCommand(commandParams);
+    try {
+      const command = new PutObjectCommand(commandParams);
 
-    const uploadUrl = await getSignedUrl(this.s3Client, command, {
-      expiresIn,
-    });
+      const uploadUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
 
-    return {
-      uploadUrl,
-      key,
-      bucket: this.bucketName,
-    };
+      console.log(
+        `[S3UploadService] Presigned URL generada para: ${key} (ContentType: ${
+          options.contentType || "no especificado"
+        })`
+      );
+
+      return {
+        uploadUrl,
+        key,
+        bucket: this.bucketName,
+      };
+    } catch (error: any) {
+      console.error("[S3UploadService] Error generando presigned URL:", {
+        error: error.message,
+        bucket: this.bucketName,
+        key,
+        contentType: options.contentType,
+        region: this.s3Client.config.region,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -102,7 +134,10 @@ export class S3UploadService {
         lastModified: response.LastModified,
       };
     } catch (error: any) {
-      if (error.name === "NotFound" || error.$metadata?.httpStatusCode === 404) {
+      if (
+        error.name === "NotFound" ||
+        error.$metadata?.httpStatusCode === 404
+      ) {
         return { exists: false };
       }
       throw error;
@@ -149,7 +184,14 @@ export class S3UploadService {
     customUuid?: string
   ): string {
     const uuid = customUuid || this.generateUUID();
-    const typePrefix = type === "cv" ? "cvs" : type === "avatar" ? "avatars" : type === "video" ? "videos" : "logos";
+    const typePrefix =
+      type === "cv"
+        ? "cvs"
+        : type === "avatar"
+        ? "avatars"
+        : type === "video"
+        ? "videos"
+        : "logos";
     return `${typePrefix}/${userId}/${uuid}${fileExtension}`;
   }
 

@@ -22,6 +22,8 @@ export class AwsConfigService implements OnModuleInit {
 
     this.secretsManagerClient = new SecretsManagerClient({ region });
     this.ssmClient = new SSMClient({ region });
+    
+    this.logger.debug(`AwsConfigService inicializado con región: ${region}`);
   }
 
   async onModuleInit() {
@@ -160,6 +162,9 @@ export class AwsConfigService implements OnModuleInit {
   private async loadSSMParameters(): Promise<void> {
     const stackPrefix =
       this.configService.get<string>("STACK_PREFIX") || "trabajoya-prod";
+    const region = this.configService.get<string>("AWS_REGION") || "us-east-1";
+
+    this.logger.debug(`Cargando parámetros SSM con prefijo: ${stackPrefix} en región: ${region}`);
 
     const parameters = [
       { name: `/${stackPrefix}/s3/bucket`, envVar: "S3_BUCKET_NAME" },
@@ -180,29 +185,33 @@ export class AwsConfigService implements OnModuleInit {
           continue;
         }
 
+        this.logger.debug(`Intentando cargar parámetro SSM: ${normalizedName}`);
         const command = new GetParameterCommand({ Name: normalizedName });
         const response = await this.ssmClient.send(command);
 
         if (response.Parameter?.Value) {
           process.env[param.envVar] = response.Parameter.Value;
-          this.logger.debug(`Parámetro SSM cargado: ${param.name} -> ${param.envVar}`);
+          this.logger.log(`✅ Parámetro SSM cargado: ${param.name} -> ${param.envVar}`);
+        } else {
+          this.logger.warn(`Parámetro SSM encontrado pero sin valor: ${param.name}`);
         }
       } catch (error: any) {
-        // Si el error es porque el parámetro no existe o tiene un nombre inválido, solo loguear debug
-        // No es crítico si estos parámetros no existen, la app puede funcionar sin ellos
+        // Si el error es porque el parámetro no existe o tiene un nombre inválido
         if (
           error.name === "ParameterNotFound" ||
-          error.name === "ValidationException" ||
-          error.message?.includes("can't be prefixed with")
+          error.$metadata?.httpStatusCode === 400
         ) {
           this.logger.debug(
-            `Parámetro SSM no disponible: ${param.name}. Usando variables de entorno alternativas si están disponibles.`
+            `Parámetro SSM no encontrado: ${param.name}. Usando variables de entorno alternativas si están disponibles.`
+          );
+        } else if (error.name === "ValidationException" || error.message?.includes("can't be prefixed with")) {
+          this.logger.warn(
+            `Nombre de parámetro SSM inválido: ${param.name}. ${error.message}`
           );
         } else {
-          this.logger.debug(
-            `No se pudo cargar parámetro SSM ${param.name}: ${
-              error.message || error
-            }`
+          // Otros errores (permisos, red, etc.)
+          this.logger.warn(
+            `Error al cargar parámetro SSM ${param.name}: ${error.name || 'Unknown'} - ${error.message || error}. Verifique permisos IAM y región.`
           );
         }
         // Continuar con otros parámetros - no es crítico si fallan

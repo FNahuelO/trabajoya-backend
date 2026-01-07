@@ -63,9 +63,7 @@ RUN npx prisma generate
 
 # Hacer el script de entrypoint ejecutable y verificar que existe
 RUN echo "Verificando scripts..." && \
-    ls -la scripts/ || echo "Directorio scripts no encontrado" && \
     chmod +x scripts/entrypoint.sh && \
-    ls -la scripts/entrypoint.sh && \
     test -f scripts/entrypoint.sh || (echo "ERROR: entrypoint.sh no encontrado después de copiar" && ls -la && exit 1) && \
     echo "✅ entrypoint.sh encontrado y con permisos"
 
