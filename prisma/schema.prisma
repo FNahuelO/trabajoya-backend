@@ -475,3 +475,41 @@ model MediaAsset {
   @@index([status])
   @@index([key])
 }
+
+enum CatalogType {
+  JOB_AREA
+  JOB_TYPE
+  JOB_LEVEL
+}
+
+enum CatalogLanguage {
+  ES
+  EN
+  PT
+}
+
+model Catalog {
+  id        String              @id @default(uuid())
+  type      CatalogType
+  code      String
+  isActive  Boolean             @default(true)
+  order     Int                 @default(0)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  translations CatalogTranslation[]
+
+  @@unique([type, code])
+  @@index([type, order])
+  @@index([type, isActive])
+}
+
+model CatalogTranslation {
+  id        String            @id @default(uuid())
+  catalogId String
+  lang      CatalogLanguage
+  label     String
+  catalog   Catalog           @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogId, lang])
+  @@index([catalogId])
+}

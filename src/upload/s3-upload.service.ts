@@ -126,17 +126,7 @@ export class S3UploadService {
       // Log detallado para debugging
       const urlParams = new URL(uploadUrl).searchParams;
       const allParams = Array.from(urlParams.keys());
-      console.log(`[S3UploadService] Presigned URL generada para: ${key}`, {
-        bucket: this.bucketName,
-        contentType: options.contentType || "no especificado",
-        expiresIn: `${expiresIn}s`,
-        urlHasContentType:
-          urlParams.has("ContentType") || urlParams.has("content-type"),
-        contentTypeInUrl:
-          urlParams.get("ContentType") || urlParams.get("content-type"),
-        allUrlParams: allParams,
-        commandParams: Object.keys(commandParams),
-      });
+  
 
       // Advertencia si ContentType está en el comando pero no en la URL
       if (

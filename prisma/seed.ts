@@ -268,5 +268,127 @@ async function main() {
   }
 
   console.log(`✅ Seed completo: ${jobs.length} trabajos creados`);
+
+  // Crear catálogos
+  const jobAreas = [
+    { code: "COMERCIAL_VENTAS_NEGOCIOS", es: "Comercial, Ventas y Negocios", en: "Commercial, Sales & Business", pt: "Comercial, Vendas e Negócios" },
+    { code: "ADMIN_CONTABILIDAD_FINANZAS", es: "Administración, Contabilidad y Finanzas", en: "Administration, Accounting & Finance", pt: "Administração, Contabilidade e Finanças" },
+    { code: "PRODUCCION_MANUFACTURA", es: "Producción y Manufactura", en: "Production & Manufacturing", pt: "Produção e Manufatura" },
+    { code: "OFICIOS_Y_OTROS", es: "Oficios y Otros", en: "Trades & Other", pt: "Ofícios e Outros" },
+    { code: "ABASTECIMIENTO_LOGISTICA", es: "Abastecimiento y Logística", en: "Supply & Logistics", pt: "Suprimentos e Logística" },
+    { code: "GASTRONOMIA_TURISMO", es: "Gastronomía y Turismo", en: "Gastronomy & Tourism", pt: "Gastronomia e Turismo" },
+    { code: "TECNOLOGIA_SISTEMAS_TELECOM", es: "Tecnología, Sistemas y Telecomunicaciones", en: "Technology, Systems & Telecommunications", pt: "Tecnologia, Sistemas e Telecomunicações" },
+    { code: "ATENCION_CLIENTE_CALLCENTER_TELEMARKETING", es: "Atención al Cliente, Call Center y Telemarketing", en: "Customer Service, Call Center & Telemarketing", pt: "Atendimento ao Cliente, Call Center e Telemarketing" },
+    { code: "SALUD_MEDICINA_FARMACIA", es: "Salud, Medicina y Farmacia", en: "Health, Medicine & Pharmacy", pt: "Saúde, Medicina e Farmácia" },
+    { code: "INGENIERIAS", es: "Ingenierías", en: "Engineering", pt: "Engenharias" },
+    { code: "RRHH_CAPACITACION", es: "Recursos Humanos y Capacitación", en: "Human Resources & Training", pt: "Recursos Humanos e Capacitação" },
+    { code: "MARKETING_PUBLICIDAD", es: "Marketing y Publicidad", en: "Marketing & Advertising", pt: "Marketing e Publicidade" },
+    { code: "ING_CIVIL_CONSTRUCCION", es: "Ingeniería Civil y Construcción", en: "Civil Engineering & Construction", pt: "Engenharia Civil e Construção" },
+    { code: "LEGALES", es: "Legales", en: "Legal", pt: "Jurídico" },
+    { code: "SECRETARIAS_RECEPCION", es: "Secretarias y Recepción", en: "Secretarial & Reception", pt: "Secretaria e Recepção" },
+    { code: "DISENO", es: "Diseño", en: "Design", pt: "Design" },
+    { code: "ADUANA_COMERCIO_EXTERIOR", es: "Aduana y Comercio Exterior", en: "Customs & Foreign Trade", pt: "Aduana e Comércio Exterior" },
+    { code: "SEGUROS", es: "Seguros", en: "Insurance", pt: "Seguros" },
+    { code: "GERENCIA_DIRECCION_GENERAL", es: "Gerencia y Dirección General", en: "Management & General Direction", pt: "Gerência e Diretoria Geral" },
+    { code: "MINERIA_PETROLEO_GAS", es: "Minería, Petróleo y Gas", en: "Mining, Oil & Gas", pt: "Mineração, Petróleo e Gás" },
+    { code: "DEPARTAMENTO_TECNICO", es: "Departamento Tecnico", en: "Technical Department", pt: "Departamento Técnico" },
+    { code: "EDUCACION_DOCENCIA_INVESTIGACION", es: "Educación, Docencia e Investigación", en: "Education, Teaching & Research", pt: "Educação, Docência e Pesquisa" },
+    { code: "COMUNICACION_RELACIONES_PUBLICAS", es: "Comunicación, Relaciones Institucionales y Públicas", en: "Communication, Institutional & Public Relations", pt: "Comunicação, Relações Institucionais e Públicas" },
+    { code: "ENFERMERIA", es: "Enfermería", en: "Nursing", pt: "Enfermagem" },
+    { code: "NAVIERA_MARITIMA_PORTUARIA", es: "Naviero, Maritimo, Portuario", en: "Shipping, Maritime & Port", pt: "Naval, Marítimo e Portuário" },
+  ];
+
+  const jobTypes = [
+    { code: "FULL_TIME", es: "Tiempo completo", en: "Full-time", pt: "Tempo integral" },
+    { code: "PART_TIME", es: "Medio tiempo", en: "Part-time", pt: "Meio período" },
+    { code: "POR_HORAS", es: "Por horas", en: "Hourly", pt: "Por hora" },
+    { code: "TEMPORARIO", es: "Temporario", en: "Temporary", pt: "Temporário" },
+    { code: "PASANTIA", es: "Pasantía", en: "Internship", pt: "Estágio" },
+    { code: "POR_CONTRATO", es: "Por contrato", en: "Contract", pt: "Contrato" },
+    { code: "NOCTURNO", es: "Nocturno", en: "Night shift", pt: "Noturno" },
+  ];
+
+  const jobLevels = [
+    { code: "SEMI_SR", es: "Semi Sr", en: "Mid-level", pt: "Pleno" },
+    { code: "JUNIOR", es: "Junior", en: "Junior", pt: "Júnior" },
+    { code: "SENIOR", es: "Senior", en: "Senior", pt: "Sênior" },
+    { code: "SENIOR_O_SEMI_SENIOR", es: "Senior / Semi-Senior", en: "Senior / Mid-level", pt: "Sênior / Pleno" },
+    { code: "JEFE_SUPERVISOR_RESPONSABLE", es: "Jefe / Supervisor / Responsable", en: "Lead / Supervisor / Manager", pt: "Chefe / Supervisor / Responsável" },
+    { code: "OTRO", es: "Otro", en: "Other", pt: "Outro" },
+    { code: "GERENCIA_ALTA_GERENCIA_DIRECCION", es: "Gerencia / Alta Gerencia / Dirección", en: "Management / Senior Management / Director", pt: "Gerência / Alta Gerência / Diretoria" },
+    { code: "SIN_EXPERIENCIA", es: "Sin Experiencia", en: "No experience", pt: "Sem experiência" },
+    { code: "TRAINEE_PASANTE", es: "Trainee / Pasante", en: "Trainee / Intern", pt: "Trainee / Estagiário" },
+  ];
+
+  // Crear áreas de trabajo
+  let order = 10;
+  for (const area of jobAreas) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "JOB_AREA", code: area.code } },
+      update: {},
+      create: {
+        type: "JOB_AREA",
+        code: area.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: area.es },
+            { lang: "EN", label: area.en },
+            { lang: "PT", label: area.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear tipos de trabajo
+  order = 10;
+  for (const type of jobTypes) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "JOB_TYPE", code: type.code } },
+      update: {},
+      create: {
+        type: "JOB_TYPE",
+        code: type.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: type.es },
+            { lang: "EN", label: type.en },
+            { lang: "PT", label: type.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear niveles laborales
+  order = 10;
+  for (const level of jobLevels) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "JOB_LEVEL", code: level.code } },
+      update: {},
+      create: {
+        type: "JOB_LEVEL",
+        code: level.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: level.es },
+            { lang: "EN", label: level.en },
+            { lang: "PT", label: level.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  console.log(`✅ Catálogos creados: ${jobAreas.length} áreas, ${jobTypes.length} tipos, ${jobLevels.length} niveles`);
 }
 main().finally(() => prisma.$disconnect());

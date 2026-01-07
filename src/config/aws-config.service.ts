@@ -22,8 +22,6 @@ export class AwsConfigService implements OnModuleInit {
 
     this.secretsManagerClient = new SecretsManagerClient({ region });
     this.ssmClient = new SSMClient({ region });
-
-    this.logger.log(`[AwsConfigService] Inicializado con región: ${region}`);
   }
 
   async onModuleInit() {
@@ -197,17 +195,12 @@ export class AwsConfigService implements OnModuleInit {
       }
 
       try {
-        this.logger.log(`[SSM] Intentando cargar: ${normalizedName}`);
         const command = new GetParameterCommand({ Name: normalizedName });
         const response = await this.ssmClient.send(command);
 
         if (response.Parameter?.Value) {
           process.env[param.envVar] = response.Parameter.Value;
-          this.logger.log(
-            `[SSM] ✅ Cargado: ${param.name} -> ${
-              param.envVar
-            } = ${response.Parameter.Value.substring(0, 20)}...`
-          );
+          
         } else {
           this.logger.warn(
             `[SSM] ⚠️  Encontrado pero sin valor: ${param.name}`
