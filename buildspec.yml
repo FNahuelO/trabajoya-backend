@@ -79,17 +79,20 @@ phases:
         }
         echo "Imagen descargada: $NEW_IMAGE"
 
-        # Obtener la configuración del contenedor anterior ANTES de eliminarlo (para preservar variables de entorno)
+        # Obtener la configuración completa del contenedor anterior ANTES de eliminarlo
         OLD_ENV_FILE="/tmp/old_container_env.txt"
-        rm -f "$OLD_ENV_FILE"
+        OLD_CMD_FILE="/tmp/old_container_cmd.txt"
+        rm -f "$OLD_ENV_FILE" "$OLD_CMD_FILE"
+
         if docker ps -a --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
           echo "Preservando configuración del contenedor anterior..."
+          # Obtener todas las variables de entorno
           docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' CONTAINER_PH > "$OLD_ENV_FILE" 2>/dev/null || true
-          # También obtener puertos y otras configuraciones
-          OLD_PORTS=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{$p}} {{end}}' CONTAINER_PH 2>/dev/null || echo "")
+          # Obtener el comando original
+          docker inspect --format='{{.Config.Cmd}}' CONTAINER_PH > "$OLD_CMD_FILE" 2>/dev/null || true
         fi
 
-        # Detener y eliminar el contenedor existente si está corriendo
+        # Detener y eliminar el contenedor existente
         if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
           echo "Deteniendo contenedor CONTAINER_PH..."
           docker stop CONTAINER_PH || true
@@ -99,50 +102,86 @@ phases:
           docker rm CONTAINER_PH || true
         fi
 
-        # Recrear el contenedor con la nueva imagen
+        # Intentar recrear el contenedor con la nueva imagen
         echo "Recreando contenedor CONTAINER_PH con nueva imagen: $NEW_IMAGE"
-        # Intentar usar la misma configuración que tenía antes, o usar configuración mínima
+
+        # Intentar crear el contenedor
+        # Primero intentar con --env-file si tenemos las variables guardadas
+        CONTAINER_CREATED=0
+        
         if [ -f "$OLD_ENV_FILE" ] && [ -s "$OLD_ENV_FILE" ]; then
-          echo "Usando variables de entorno del contenedor anterior..."
-          ENV_ARGS=$(cat "$OLD_ENV_FILE" | grep -v '^$' | sed 's/^/--env /' | tr '\n' ' ')
-          docker run -d \
-            --name CONTAINER_PH \
-            --restart unless-stopped \
-            -p 4000:4000 \
-            $ENV_ARGS \
-            "$NEW_IMAGE" || {
-            echo "Fallo al crear con env anterior, usando configuración mínima..."
-            docker run -d \
+          echo "Intentando crear contenedor con variables de entorno del contenedor anterior..."
+          echo "Variables encontradas: $(wc -l < "$OLD_ENV_FILE")"
+          
+          # Limpiar el archivo de env (filtrar PATH y variables problemáticas)
+          CLEAN_ENV_FILE="/tmp/clean_env_file.txt"
+          cat "$OLD_ENV_FILE" | grep -v '^$' | grep -v '^PATH=' > "$CLEAN_ENV_FILE" || true
+          
+          if [ -s "$CLEAN_ENV_FILE" ]; then
+            echo "Usando --env-file con $(wc -l < "$CLEAN_ENV_FILE") variables..."
+            ERROR_OUTPUT=$(docker run -d \
               --name CONTAINER_PH \
               --restart unless-stopped \
               -p 4000:4000 \
-              -e NODE_ENV=production \
-              "$NEW_IMAGE"
-          }
-        else
-          echo "Usando configuración mínima..."
-          docker run -d \
+              --env-file "$CLEAN_ENV_FILE" \
+              "$NEW_IMAGE" 2>&1)
+            DOCKER_EXIT_CODE=$?
+            
+            if [ $DOCKER_EXIT_CODE -eq 0 ]; then
+              CONTAINER_CREATED=1
+              echo "✅ Contenedor creado con variables de entorno preservadas"
+            else
+              echo "⚠️  Fallo al crear con env-file (exit code: $DOCKER_EXIT_CODE)"
+              echo "Error: $ERROR_OUTPUT"
+              docker rm -f CONTAINER_PH 2>/dev/null || true
+            fi
+          fi
+        fi
+        
+        # Si no se creó, intentar con configuración mínima
+        if [ "$CONTAINER_CREATED" -eq 0 ]; then
+          echo "Creando contenedor con configuración mínima (NODE_ENV=production)..."
+          ERROR_OUTPUT=$(docker run -d \
             --name CONTAINER_PH \
             --restart unless-stopped \
             -p 4000:4000 \
             -e NODE_ENV=production \
-            "$NEW_IMAGE" || {
-            echo "ERROR: No se pudo crear el contenedor"
+            "$NEW_IMAGE" 2>&1)
+          DOCKER_EXIT_CODE=$?
+          
+          if [ $DOCKER_EXIT_CODE -eq 0 ]; then
+            CONTAINER_CREATED=1
+            echo "✅ Contenedor creado con configuración mínima"
+          else
+            echo "❌ ERROR: No se pudo crear el contenedor (exit code: $DOCKER_EXIT_CODE)"
+            echo "Error completo: $ERROR_OUTPUT"
+            echo ""
+            echo "Verificando si la imagen existe..."
+            docker images | grep "$(echo "$NEW_IMAGE" | cut -d: -f1)" || echo "Imagen no encontrada localmente"
+            echo ""
             echo "El user-data script debería recrearlo automáticamente"
-            exit 1
-          }
+          fi
         fi
 
         # Verificar que el contenedor está corriendo
-        sleep 2
-        if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
-          echo "✅ Contenedor recreado y corriendo exitosamente"
-          echo "Verificando logs iniciales..."
-          docker logs --tail 20 CONTAINER_PH 2>&1 | head -10 || true
+        if [ "$CONTAINER_CREATED" -eq 1 ]; then
+          sleep 3
+          if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
+            echo "✅ Contenedor recreado y corriendo exitosamente"
+            echo "Verificando logs iniciales (últimas 15 líneas)..."
+            docker logs --tail 15 CONTAINER_PH 2>&1 || true
+          else
+            echo "⚠️  Contenedor creado pero no está corriendo. Verificando estado..."
+            docker ps -a | grep CONTAINER_PH || true
+            echo "Revisando logs del contenedor..."
+            docker logs CONTAINER_PH 2>&1 | tail -20 || true
+            echo "Revisando por qué el contenedor no está corriendo..."
+            docker inspect CONTAINER_PH 2>&1 | grep -A 10 "State" || true
+          fi
         else
-          echo "⚠️  Contenedor creado pero no está corriendo. Verificando estado..."
-          docker ps -a | grep CONTAINER_PH || true
-          echo "El user-data script debería recrearlo automáticamente"
+          echo "⚠️  No se pudo crear el contenedor. Verificando si existe..."
+          docker ps -a | grep CONTAINER_PH || echo "No hay contenedor con ese nombre"
+          echo "El user-data script debería recrearlo automáticamente si es necesario"
         fi
         echo "Actualizacion completada"
         EOF
