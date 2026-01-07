@@ -70,5 +70,6 @@ RUN echo "Verificando scripts..." && \
 
 EXPOSE 4000
 
-# Ejecutar directamente el script de entrypoint
-CMD ["/bin/sh", "scripts/entrypoint.sh"]
+# Sobrescribir completamente el ENTRYPOINT de la imagen base de Node.js
+# La imagen node:20-alpine tiene un ENTRYPOINT por defecto que interfiere
+ENTRYPOINT ["/bin/sh", "/app/scripts/entrypoint.sh"]
