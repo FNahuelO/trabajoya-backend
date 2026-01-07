@@ -38,6 +38,23 @@ if [ $MIGRATE_EXIT_CODE -ne 0 ]; then
   echo "   Output completo:"
   cat /tmp/migrate_output.txt
   
+  # Verificar si el error es por tipo/enum que ya existe
+  if grep -qiE "(already exists|duplicate_object|type.*already exists)" /tmp/migrate_output.txt; then
+    echo ""
+    echo "   ⚠️  Error detectado: Tipo/Enum ya existe en la base de datos."
+    echo "   Esto puede ocurrir si la base de datos no se limpió completamente."
+    echo "   Intentando resolver marcando la migración como aplicada..."
+    
+    # Obtener el nombre de la migración problemática
+    PROBLEM_MIGRATION=$(grep -oP '20\d{14}_\w+' /tmp/migrate_output.txt | head -1)
+    if [ -n "$PROBLEM_MIGRATION" ]; then
+      echo "   Migración problemática: $PROBLEM_MIGRATION"
+      echo "   Resolviendo migración fallida..."
+      npx prisma migrate resolve --rolled-back "$PROBLEM_MIGRATION" || true
+      echo "   Reintentando aplicar migración..."
+    fi
+  fi
+  
   # Verificar si el error es por checksum diferente
   if grep -q "checksum" /tmp/migrate_output.txt; then
     echo ""
@@ -51,6 +68,11 @@ if [ $MIGRATE_EXIT_CODE -ne 0 ]; then
       npx prisma migrate resolve --applied "$PROBLEM_MIGRATION" || true
     fi
   fi
+  
+  # Verificar si hay migraciones en estado "failed"
+  echo ""
+  echo "   Verificando migraciones en estado fallido..."
+  npx prisma migrate status 2>&1 | grep -i "failed" || true
   
   # Intentar aplicar nuevamente
   echo ""
