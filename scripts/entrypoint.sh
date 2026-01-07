@@ -24,12 +24,27 @@ echo "   Directorio de migraciones encontrado. Aplicando migraciones..."
 npx prisma migrate deploy
 
 if [ $? -ne 0 ]; then
-  echo "❌ ERROR: Las migraciones de Prisma fallaron. No se puede continuar."
-  echo "   Por favor, verifica:"
-  echo "   1. La conexión a la base de datos"
-  echo "   2. Los permisos de la base de datos"
-  echo "   3. Que el esquema de Prisma esté actualizado"
-  exit 1
+  echo "⚠️  ADVERTENCIA: Las migraciones de Prisma fallaron o hay migraciones faltantes."
+  echo "   Intentando aplicar migración de emergencia para tablas faltantes..."
+  
+  # Verificar si existe el archivo de migración de emergencia
+  if [ -f "prisma/MIGRATION_TO_APPLY.sql" ]; then
+    echo "   ⚠️  Migraciones faltantes detectadas."
+    echo "   Por favor, ejecuta manualmente el SQL en prisma/MIGRATION_TO_APPLY.sql"
+    echo "   o crea una nueva migración con: npm run prisma:migrate:create add_video_meeting_and_media_asset"
+  fi
+  
+  # Verificar nuevamente que las migraciones estén aplicadas
+  echo "   Verificando estado de migraciones..."
+  npx prisma migrate deploy || {
+    echo "❌ ERROR: Las migraciones de Prisma aún fallan después del intento de recuperación."
+    echo "   Por favor, verifica manualmente:"
+    echo "   1. La conexión a la base de datos"
+    echo "   2. Los permisos de la base de datos"
+    echo "   3. Que el esquema de Prisma esté actualizado"
+    echo "   4. Que las tablas MediaAsset y VideoMeeting existan"
+    exit 1
+  }
 fi
 
 echo "✅ Migraciones aplicadas correctamente"
