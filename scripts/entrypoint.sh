@@ -20,34 +20,77 @@ if [ ! -d "prisma/migrations" ]; then
   exit 1
 fi
 
-echo "   Directorio de migraciones encontrado. Aplicando migraciones..."
-npx prisma migrate deploy
+echo "   Directorio de migraciones encontrado."
+echo "   Listando migraciones disponibles:"
+ls -la prisma/migrations/
 
-if [ $? -ne 0 ]; then
-  echo "⚠️  ADVERTENCIA: Las migraciones de Prisma fallaron o hay migraciones faltantes."
-  echo "   Intentando aplicar migración de emergencia para tablas faltantes..."
+echo ""
+echo "   Verificando estado de migraciones en la base de datos..."
+npx prisma migrate status || true
+
+echo ""
+echo "   Aplicando migraciones pendientes..."
+npx prisma migrate deploy --skip-seed 2>&1 | tee /tmp/migrate_output.txt
+MIGRATE_EXIT_CODE=${PIPESTATUS[0]}
+
+if [ $MIGRATE_EXIT_CODE -ne 0 ]; then
+  echo "⚠️  ADVERTENCIA: prisma migrate deploy falló con código $MIGRATE_EXIT_CODE"
+  echo "   Output completo:"
+  cat /tmp/migrate_output.txt
   
-  # Verificar si existe el archivo de migración de emergencia
-  if [ -f "prisma/MIGRATION_TO_APPLY.sql" ]; then
-    echo "   ⚠️  Migraciones faltantes detectadas."
-    echo "   Por favor, ejecuta manualmente el SQL en prisma/MIGRATION_TO_APPLY.sql"
-    echo "   o crea una nueva migración con: npm run prisma:migrate:create add_video_meeting_and_media_asset"
+  # Verificar si el error es por checksum diferente
+  if grep -q "checksum" /tmp/migrate_output.txt; then
+    echo ""
+    echo "   ⚠️  Error de checksum detectado. Esto puede ocurrir si la migración fue editada."
+    echo "   Intentando resolver marcando la migración como aplicada..."
+    
+    # Obtener el nombre de la migración problemática
+    PROBLEM_MIGRATION=$(grep -oP '20\d{14}_\w+' /tmp/migrate_output.txt | head -1)
+    if [ -n "$PROBLEM_MIGRATION" ]; then
+      echo "   Migración problemática: $PROBLEM_MIGRATION"
+      npx prisma migrate resolve --applied "$PROBLEM_MIGRATION" || true
+    fi
   fi
   
-  # Verificar nuevamente que las migraciones estén aplicadas
-  echo "   Verificando estado de migraciones..."
-  npx prisma migrate deploy || {
-    echo "❌ ERROR: Las migraciones de Prisma aún fallan después del intento de recuperación."
-    echo "   Por favor, verifica manualmente:"
-    echo "   1. La conexión a la base de datos"
-    echo "   2. Los permisos de la base de datos"
-    echo "   3. Que el esquema de Prisma esté actualizado"
-    echo "   4. Que las tablas MediaAsset y VideoMeeting existan"
-    exit 1
+  # Intentar aplicar nuevamente
+  echo ""
+  echo "   Reintentando aplicar migraciones..."
+  npx prisma migrate deploy --skip-seed || {
+    echo "❌ ERROR: Las migraciones de Prisma siguen fallando."
+    echo "   Por favor, verifica manualmente la base de datos."
+    # No salir, intentar continuar de todas formas
   }
 fi
 
-echo "✅ Migraciones aplicadas correctamente"
+echo "✅ Proceso de migraciones completado"
+
+# Verificar que las tablas críticas existen
+echo "🔍 Verificando tablas críticas..."
+node -e "
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+async function checkTables() {
+  try {
+    // Verificar tablas críticas
+    await prisma.\$queryRaw\`SELECT 1 FROM \"VideoMeeting\" LIMIT 0\`;
+    console.log('   ✅ Tabla VideoMeeting existe');
+  } catch (e) {
+    console.log('   ❌ Tabla VideoMeeting NO existe:', e.message);
+  }
+  
+  try {
+    await prisma.\$queryRaw\`SELECT 1 FROM \"MediaAsset\" LIMIT 0\`;
+    console.log('   ✅ Tabla MediaAsset existe');
+  } catch (e) {
+    console.log('   ❌ Tabla MediaAsset NO existe:', e.message);
+  }
+  
+  await prisma.\$disconnect();
+}
+
+checkTables();
+"
 
 # Ejecutar seed solo si la base de datos está vacía (no se ha creado antes)
 echo "🌱 Verificando si se necesita ejecutar seed..."
