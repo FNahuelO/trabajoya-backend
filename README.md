@@ -61,13 +61,21 @@ npm run docker:down:prod
 
 ## 📋 Scripts Disponibles
 
+### Scripts Generales
 - `npm run dev` - Desarrollo con watch mode
 - `npm run build` - Compilar para producción
 - `npm run start:prod` - Ejecutar versión compilada
 - `npm run docker:dev` - Desarrollo con Docker
 - `npm run docker:prod` - Producción con Docker
+
+### Scripts de Prisma
 - `npm run prisma:generate` - Generar cliente de Prisma
-- `npm run prisma:deploy` - Ejecutar migraciones
+- `npm run prisma:deploy` - Aplicar migraciones existentes (producción)
+- `npm run prisma:migrate` - Crear nueva migración interactiva (desarrollo)
+- `npm run prisma:migrate:create <nombre>` - Crear nueva migración con nombre específico
+- `npm run prisma:migrate:docker <nombre>` - Crear migración desde contenedor Docker
+- `npm run prisma:status` - Ver estado de las migraciones
+- `npm run prisma:reset` - ⚠️ Resetear base de datos (borra todos los datos)
 - `npm run prisma:seed` - Poblar base de datos
 
 ## 🔧 Configuración
@@ -97,6 +105,47 @@ AWS_SECRET_ACCESS_KEY="tu-secret-access-key"
 - **Desarrollo**: PostgreSQL en puerto 5444
 - **API**: NestJS en puerto 4000
 - **Watch mode**: Recarga automática en cambios de código
+
+## 🔄 Sistema de Migraciones
+
+El proyecto usa **Prisma Migrate** para gestionar los cambios en el esquema de la base de datos. Esto permite actualizar la base de datos sin perder datos.
+
+### Trabajando con Migraciones
+
+#### Crear una Nueva Migración
+
+Cuando modifiques `prisma/schema.prisma`, crea una migración:
+
+```bash
+# Desarrollo local
+npm run prisma:migrate:create nombre_de_la_migracion
+
+# O usando el comando interactivo
+npm run prisma:migrate
+```
+
+#### Aplicar Migraciones
+
+**En desarrollo:**
+- Las migraciones se aplican automáticamente al iniciar con `npm run docker:dev`
+- O manualmente: `npm run prisma:deploy`
+
+**En producción:**
+- Las migraciones se aplican automáticamente en el entrypoint del contenedor
+- O manualmente: `npm run prisma:deploy`
+
+#### Verificar Estado de Migraciones
+
+```bash
+npm run prisma:status
+```
+
+#### ⚠️ Importante
+
+- **NUNCA** uses `prisma db push` en producción, ya que puede causar pérdida de datos
+- Siempre crea migraciones para cambios en el esquema: `npm run prisma:migrate:create <nombre>`
+- Las migraciones se ejecutan automáticamente al iniciar los contenedores Docker
+- Si necesitas resetear la base de datos (solo desarrollo): `npm run prisma:reset`
 
 ### Configuración de Email con AWS SES
 
