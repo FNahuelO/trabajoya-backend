@@ -2,10 +2,10 @@ version: 0.2
 
 env:
   variables:
-    PROJECT_NAME: trabajoya-prod
+    PROJECT_NAME: "trabajoya-prod"
     CONTAINER_PORT: "4000"
-    APP_CONFIG_SECRET_ID: /trabajoya-prod/app/config
-    DB_CREDENTIALS_SECRET_ID: /trabajoya-prod/database/credentials
+    APP_CONFIG_SECRET_ID: "/trabajoya-prod/app/config"
+    DB_CREDENTIALS_SECRET_ID: "/trabajoya-prod/database/credentials"
 
 phases:
   pre_build:
@@ -13,168 +13,51 @@ phases:
       - echo "Login a Amazon ECR"
       - aws --version
       - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$ECR_REPOSITORY_URI"
-      - export REPOSITORY_URI="$ECR_REPOSITORY_URI"
-      - export COMMIT_HASH="$(echo "$CODEBUILD_RESOLVED_SOURCE_VERSION" | cut -c 1-7)"
-      - export IMAGE_TAG="${COMMIT_HASH:-latest}"
+      - REPOSITORY_URI="$ECR_REPOSITORY_URI"
+      - COMMIT_HASH="$(echo "$CODEBUILD_RESOLVED_SOURCE_VERSION" | cut -c 1-7)"
+      - IMAGE_TAG="${COMMIT_HASH:-latest}"
       - echo "Repositorio: $REPOSITORY_URI"
       - echo "Tag: $IMAGE_TAG"
-      - cd "$CODEBUILD_SRC_DIR"
 
   build:
     commands:
-      - echo "Login a ECR Public Gallery (opcional)..."
-      - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws 2>/dev/null || echo "⚠️ No se pudo hacer login a ECR Public, continuando..."
       - echo "Build iniciado el $(date)"
-      - docker pull public.ecr.aws/docker/library/node:20-alpine || echo "⚠️ No se pudo hacer pull, continuando..."
       - docker build --no-cache --pull -f Dockerfile.prod -t "$REPOSITORY_URI:$IMAGE_TAG" .
       - docker tag "$REPOSITORY_URI:$IMAGE_TAG" "$REPOSITORY_URI:latest"
 
   post_build:
     commands:
-      - echo "Push de imagen a ECR"
       - docker push "$REPOSITORY_URI:$IMAGE_TAG"
       - docker push "$REPOSITORY_URI:latest"
-
-      - |
-        set -euo pipefail
-
-        TARGET_IMAGE="${REPOSITORY_URI}:${IMAGE_TAG}"
-        CONTAINER_NAME="${PROJECT_NAME}-backend"
-        DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
-
-        echo "=== Deploy via SSM ==="
-        echo "Imagen objetivo: $TARGET_IMAGE"
-        echo "Contenedor: $CONTAINER_NAME"
-        echo "Region: $DEPLOY_REGION"
-
-        # Encontrar instancias
-        if [ -n "${EC2_INSTANCE_ID:-}" ]; then
-          INSTANCE_IDS="$EC2_INSTANCE_ID"
-        else
-          ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups \
-            --query "AutoScalingGroups[?contains(AutoScalingGroupName,'trabajoya')||contains(AutoScalingGroupName,'prod')].AutoScalingGroupName" \
-            --output text 2>/dev/null || echo "")
-          INSTANCE_IDS=""
+      - >
+        bash -lc '
+        set -euo pipefail;
+        TARGET_IMAGE="${REPOSITORY_URI}:${IMAGE_TAG}";
+        CONTAINER_NAME="${PROJECT_NAME}-backend";
+        DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-east-1}";
+        echo "Imagen objetivo: $TARGET_IMAGE";
+        echo "Region: $DEPLOY_REGION";
+        if [ -n "${EC2_INSTANCE_ID:-}" ]; then INSTANCE_IDS="$EC2_INSTANCE_ID"; else
+          ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName,''trabajoya'')||contains(AutoScalingGroupName,''prod'')].AutoScalingGroupName" --output text 2>/dev/null || echo "");
+          INSTANCE_IDS="";
           if [ -n "$ASG_NAMES" ]; then
             for ASG_NAME in $ASG_NAMES; do
-              ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups \
-                --auto-scaling-group-names "$ASG_NAME" \
-                --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy'&&LifecycleState=='InService'].InstanceId" \
-                --output text 2>/dev/null || echo "")
-              if [ -n "$ASG_INSTANCES" ]; then
-                INSTANCE_IDS="$INSTANCE_IDS $ASG_INSTANCES"
-              fi
-            done
-          fi
-        fi
-
-        if [ -z "$INSTANCE_IDS" ]; then
-          echo "No se encontraron instancias activas"
-          exit 0
-        fi
-
-        echo "Instancias encontradas: $INSTANCE_IDS"
-
-        # Armar el comando remoto (una sola línea segura)
-        REMOTE_CMD=$(
-          cat <<EOF
-set -euo pipefail;
-REGION="${DEPLOY_REGION}";
-TARGET_IMAGE="${TARGET_IMAGE}";
-CONTAINER_NAME="${CONTAINER_NAME}";
-APP_CONFIG_SECRET_ID="${APP_CONFIG_SECRET_ID}";
-DB_CREDENTIALS_SECRET_ID="${DB_CREDENTIALS_SECRET_ID}";
-PORT="${CONTAINER_PORT}";
-ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text);
-command -v jq >/dev/null 2>&1 || { echo "Falta jq. Instala: sudo yum/dnf install -y jq"; exit 1; };
-aws ecr get-login-password --region "\$REGION" | docker login --username AWS --password-stdin "\$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com";
-docker pull "\$TARGET_IMAGE";
-APP_CONFIG_JSON=\$(aws secretsmanager get-secret-value --secret-id "\$APP_CONFIG_SECRET_ID" --query SecretString --output text);
-DB_JSON=\$(aws secretsmanager get-secret-value --secret-id "\$DB_CREDENTIALS_SECRET_ID" --query SecretString --output text);
-
-# Export app/config
-while IFS="=" read -r k v; do export "\$k=\$v"; done < <(echo "\$APP_CONFIG_JSON" | jq -r 'to_entries|map("\(.key)=\(.value|tostring)")|.[]');
-
-# Build DATABASE_URL from db credentials
-DB_HOST=\$(echo "\$DB_JSON" | jq -r '.host');
-DB_PORT=\$(echo "\$DB_JSON" | jq -r '.port');
-DB_NAME=\$(echo "\$DB_JSON" | jq -r '.dbname');
-DB_USER=\$(echo "\$DB_JSON" | jq -r '.username');
-DB_PASS=\$(echo "\$DB_JSON" | jq -r '.password');
-export DATABASE_URL="postgresql://\${DB_USER}:\${DB_PASS}@\${DB_HOST}:\${DB_PORT}/\${DB_NAME}";
-
-docker stop "\$CONTAINER_NAME" 2>/dev/null || true;
-docker rm "\$CONTAINER_NAME" 2>/dev/null || true;
-
-docker run -d --name "\$CONTAINER_NAME" --restart unless-stopped -p "\$PORT:\$PORT" \
-  -e NODE_ENV=production \
-  -e DATABASE_URL="\$DATABASE_URL" \
-  -e JWT_ACCESS_SECRET="\${JWT_ACCESS_SECRET:-}" \
-  -e JWT_ACCESS_EXPIRES_IN="\${JWT_ACCESS_EXPIRES_IN:-}" \
-  -e JWT_REFRESH_EXPIRES_IN="\${JWT_REFRESH_EXPIRES_IN:-}" \
-  -e MAIL_FROM="\${MAIL_FROM:-}" \
-  -e GOOGLE_CLIENT_ID="\${GOOGLE_CLIENT_ID:-}" \
-  -e GOOGLE_CLIENT_SECRET="\${GOOGLE_CLIENT_SECRET:-}" \
-  -e APPLE_CLIENT_ID="\${APPLE_CLIENT_ID:-}" \
-  -e APPLE_TEAM_ID="\${APPLE_TEAM_ID:-}" \
-  -e APPLE_KEY_ID="\${APPLE_KEY_ID:-}" \
-  -e APPLE_PRIVATE_KEY="\${APPLE_PRIVATE_KEY:-}" \
-  -e APPLE_REDIRECT_URI="\${APPLE_REDIRECT_URI:-}" \
-  -e OPENAI_API_KEY="\${OPENAI_API_KEY:-}" \
-  -e PAYPAL_CLIENT_ID="\${PAYPAL_CLIENT_ID:-}" \
-  -e PAYPAL_CLIENT_SECRET="\${PAYPAL_CLIENT_SECRET:-}" \
-  -e AWS_REGION="\${AWS_REGION:-\$REGION}" \
-  -e S3_BUCKET_NAME="\${S3_BUCKET_NAME:-}" \
-  -e CLOUDFRONT_DOMAIN="\${CLOUDFRONT_DOMAIN:-}" \
-  "\$TARGET_IMAGE";
-
-docker ps --filter "name=\$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}";
-docker logs --tail 50 "\$CONTAINER_NAME" || true;
-echo "Deploy OK";
-EOF
-        )
-
-        # Enviar por SSM (commands = [ "REMOTE_CMD" ])
-        PARAMS_JSON=$(jq -n --arg c "$REMOTE_CMD" '{commands:[$c]}')
-
+              ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" --query "AutoScalingGroups[0].Instances[?HealthStatus==''Healthy''&&LifecycleState==''InService''].InstanceId" --output text 2>/dev/null || echo "");
+              if [ -n "$ASG_INSTANCES" ]; then INSTANCE_IDS="$INSTANCE_IDS $ASG_INSTANCES"; fi;
+            done;
+          fi;
+        fi;
+        if [ -z "$INSTANCE_IDS" ]; then echo "No se encontraron instancias activas"; exit 0; fi;
+        echo "Instancias: $INSTANCE_IDS";
+        REMOTE_CMD="set -euo pipefail; REGION=$DEPLOY_REGION; TARGET_IMAGE=$TARGET_IMAGE; CONTAINER_NAME=$CONTAINER_NAME; APP_CONFIG_SECRET_ID=$APP_CONFIG_SECRET_ID; DB_CREDENTIALS_SECRET_ID=$DB_CREDENTIALS_SECRET_ID; PORT=$CONTAINER_PORT; ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text); command -v jq >/dev/null 2>&1 || { echo Falta jq; exit 1; }; aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com; docker pull \$TARGET_IMAGE; APP_CONFIG_JSON=\$(aws secretsmanager get-secret-value --secret-id \$APP_CONFIG_SECRET_ID --query SecretString --output text); DB_JSON=\$(aws secretsmanager get-secret-value --secret-id \$DB_CREDENTIALS_SECRET_ID --query SecretString --output text); while IFS== read -r k v; do export \$k=\$v; done < <(echo \"\$APP_CONFIG_JSON\" | jq -r ''to_entries|map(\"\(.key)=\(.value|tostring)\")|.[]''); DB_HOST=\$(echo \"\$DB_JSON\" | jq -r ''.host''); DB_PORT=\$(echo \"\$DB_JSON\" | jq -r ''.port''); DB_NAME=\$(echo \"\$DB_JSON\" | jq -r ''.dbname''); DB_USER=\$(echo \"\$DB_JSON\" | jq -r ''.username''); DB_PASS=\$(echo \"\$DB_JSON\" | jq -r ''.password''); export DATABASE_URL=postgresql://\$DB_USER:\$DB_PASS@\$DB_HOST:\$DB_PORT/\$DB_NAME; docker stop \$CONTAINER_NAME 2>/dev/null || true; docker rm \$CONTAINER_NAME 2>/dev/null || true; docker run -d --name \$CONTAINER_NAME --restart unless-stopped -p \$PORT:\$PORT -e NODE_ENV=production -e DATABASE_URL=\"\$DATABASE_URL\" -e JWT_ACCESS_SECRET=\"\${JWT_ACCESS_SECRET:-}\" \$TARGET_IMAGE; docker ps --filter name=\$CONTAINER_NAME --format \"table {{.Names}}\t{{.Status}}\t{{.Ports}}\"; docker logs --tail 50 \$CONTAINER_NAME || true;";
+        PARAMS_JSON=$(jq -n --arg c "$REMOTE_CMD" "{commands: [\$c]}");
         for INSTANCE_ID in $INSTANCE_IDS; do
-          echo "=== Enviando a $INSTANCE_ID ==="
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --parameters "$PARAMS_JSON" \
-            --timeout-seconds 900 \
-            --query 'Command.CommandId' \
-            --output text)
-
-          echo "SSM CommandId: $COMMAND_ID"
-
-          # Espera
-          for i in $(seq 1 60); do
-            STATUS=$(aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query 'Status' \
-              --output text 2>/dev/null || echo "Pending")
-            echo "  Estado: $STATUS ($i/60)"
-
-            if [ "$STATUS" = "Success" ]; then
-              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || true
-              break
-            fi
-
-            if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "TimedOut" ] || [ "$STATUS" = "Cancelled" ]; then
-              echo "❌ Deploy falló: $STATUS"
-              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || true
-              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || true
-              exit 1
-            fi
-
-            sleep 10
-          done
-        done
-
-        echo "=== Deployment completado ==="
+          echo "Enviando a $INSTANCE_ID";
+          COMMAND_ID=$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --parameters "$PARAMS_JSON" --timeout-seconds 900 --query Command.CommandId --output text);
+          echo "SSM CommandId: $COMMAND_ID";
+        done;
+        echo "Deploy enviado.";
+        '
 
 artifacts:
   files:
