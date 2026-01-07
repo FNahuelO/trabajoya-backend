@@ -22,9 +22,11 @@ COPY . .
 # Generar cliente de Prisma
 RUN npx prisma generate
 
-# Compilar la aplicación (aumentar memoria de Node.js)
-ENV NODE_OPTIONS=--max-old-space-size=2048
-RUN npm run build
+# Compilar la aplicación (aumentar memoria de Node.js a 4GB)
+# Establecer NODE_OPTIONS como variable de entorno para todo el stage builder
+ENV NODE_OPTIONS=--max-old-space-size=4096
+# Usar el script de build optimizado
+RUN npm run build:prod
 
 # Compilar scripts de seed (necesarios en producción)
 RUN npx tsc prisma/seed-if-empty.ts --outDir dist/prisma --module commonjs --target es2021 --esModuleInterop --skipLibCheck || echo "Warning: Could not compile seed script"
