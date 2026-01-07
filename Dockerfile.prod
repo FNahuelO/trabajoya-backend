@@ -1,4 +1,5 @@
-FROM node:20-alpine AS base
+# Usar imagen pública de AWS ECR Public Gallery (sin límites de rate)
+FROM public.ecr.aws/docker/library/node:20-alpine AS base
 
 # Instalar OpenSSL y otras dependencias necesarias para Prisma
 RUN apk add --no-cache openssl libc6-compat
