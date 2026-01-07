@@ -68,22 +68,65 @@ echo "✅ Proceso de migraciones completado"
 echo "🔍 Verificando tablas críticas..."
 node -e "
 const { PrismaClient } = require('@prisma/client');
+const { execSync } = require('child_process');
 const prisma = new PrismaClient();
 
 async function checkTables() {
+  let videoMeetingExists = false;
+  let mediaAssetExists = false;
+  
   try {
-    // Verificar tablas críticas
     await prisma.\$queryRaw\`SELECT 1 FROM \"VideoMeeting\" LIMIT 0\`;
     console.log('   ✅ Tabla VideoMeeting existe');
+    videoMeetingExists = true;
   } catch (e) {
-    console.log('   ❌ Tabla VideoMeeting NO existe:', e.message);
+    console.log('   ❌ Tabla VideoMeeting NO existe');
+    videoMeetingExists = false;
   }
   
   try {
     await prisma.\$queryRaw\`SELECT 1 FROM \"MediaAsset\" LIMIT 0\`;
     console.log('   ✅ Tabla MediaAsset existe');
+    mediaAssetExists = true;
   } catch (e) {
-    console.log('   ❌ Tabla MediaAsset NO existe:', e.message);
+    console.log('   ❌ Tabla MediaAsset NO existe');
+    mediaAssetExists = false;
+  }
+  
+  // Si las tablas no existen pero Prisma dice que no hay migraciones pendientes,
+  // significa que la migración está registrada pero nunca se ejecutó
+  if (!videoMeetingExists || !mediaAssetExists) {
+    console.log('');
+    console.log('   ⚠️  PROBLEMA DETECTADO: Las tablas faltan pero Prisma dice que no hay migraciones pendientes.');
+    console.log('   Esto significa que la migración está registrada pero nunca se ejecutó.');
+    console.log('   Intentando resolver marcando la migración como no aplicada y re-ejecutándola...');
+    console.log('');
+    
+    try {
+      // Marcar la migración como no aplicada
+      execSync('npx prisma migrate resolve --rolled-back 20260107020313_add_video_meeting_and_m', { stdio: 'inherit' });
+      console.log('   ✅ Migración marcada como no aplicada');
+      
+      // Intentar aplicar nuevamente
+      console.log('   🔄 Aplicando migración nuevamente...');
+      execSync('npx prisma migrate deploy --skip-seed', { stdio: 'inherit' });
+      console.log('   ✅ Migración aplicada correctamente');
+      
+      // Verificar nuevamente
+      try {
+        await prisma.\$queryRaw\`SELECT 1 FROM \"VideoMeeting\" LIMIT 0\`;
+        await prisma.\$queryRaw\`SELECT 1 FROM \"MediaAsset\" LIMIT 0\`;
+        console.log('   ✅ Tablas verificadas correctamente después de la corrección');
+      } catch (e) {
+        console.log('   ❌ ERROR: Las tablas aún no existen después de intentar corregir');
+        console.log('   Por favor, ejecuta manualmente el SQL de la migración');
+      }
+    } catch (error) {
+      console.log('   ⚠️  No se pudo resolver automáticamente. Error:', error.message);
+      console.log('   Por favor, ejecuta manualmente:');
+      console.log('   npx prisma migrate resolve --rolled-back 20260107020313_add_video_meeting_and_m');
+      console.log('   npx prisma migrate deploy');
+    }
   }
   
   await prisma.\$disconnect();
