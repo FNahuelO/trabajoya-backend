@@ -8,6 +8,8 @@ import {
   Param,
   Query,
   UseGuards,
+  BadRequestException,
+  ValidationPipe,
 } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { CatalogsService } from "./catalogs.service";
@@ -113,7 +115,7 @@ export class CatalogsController {
   @Patch("admin/catalogs/reorder")
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
-  async reorder(@Body() dto: ReorderCatalogDto) {
+  async reorder(@Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: false })) dto: ReorderCatalogDto) {
     const data = await this.catalogsService.reorder(dto);
     return createResponse({
       success: true,

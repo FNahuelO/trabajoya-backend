@@ -1,12 +1,26 @@
 import { Injectable } from "@nestjs/common";
-import { I18nService } from "nestjs-i18n";
+import { PrismaService } from "../prisma/prisma.service";
+
+// Mapeo de categorías a tipos de catálogo
+const categoryToCatalogType: Record<string, string> = {
+  jobTypes: "JOB_TYPES",
+  experienceLevels: "EXPERIENCE_LEVELS",
+  applicationStatuses: "APPLICATION_STATUSES",
+  modalities: "MODALITIES",
+  languageLevels: "LANGUAGE_LEVELS",
+  companySizes: "COMPANY_SIZES",
+  sectors: "SECTORS",
+  studyTypes: "STUDY_TYPES",
+  studyStatuses: "STUDY_STATUSES",
+  maritalStatuses: "MARITAL_STATUSES",
+};
 
 @Injectable()
 export class OptionsService {
-  constructor(private readonly i18n: I18nService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Obtiene las opciones traducidas según el idioma especificado
+   * Obtiene las opciones traducidas según el idioma especificado desde catálogos
    */
   async getOptions(category: string, lang: string) {
     const validCategories = [
@@ -26,19 +40,27 @@ export class OptionsService {
       throw new Error(`Categoría inválida: ${category}`);
     }
 
-    const options = await this.i18n.t(`options.${category}`, {
-      lang,
+    const catalogType = categoryToCatalogType[category] as any;
+    const langUpper = lang.toUpperCase() as "ES" | "EN" | "PT";
+
+    const catalogs = await this.prisma.catalog.findMany({
+      where: {
+        type: catalogType,
+        isActive: true,
+      },
+      include: {
+        translations: {
+          where: { lang: langUpper },
+        },
+      },
+      orderBy: { order: "asc" },
     });
 
-    // Convertir el objeto a un array de opciones con value y label
-    const optionsArray = Object.entries(
-      options as unknown as Record<string, string>
-    ).map(([value, label]) => ({
-      value,
-      label,
+    // Convertir a formato { value, label }
+    return catalogs.map((catalog) => ({
+      value: catalog.code,
+      label: catalog.translations[0]?.label || catalog.code,
     }));
-
-    return optionsArray;
   }
 
   /**
@@ -76,10 +98,23 @@ export class OptionsService {
     lang: string
   ): Promise<string> {
     try {
-      const label = await this.i18n.t(`options.${category}.${value}`, {
-        lang,
+      const catalogType = categoryToCatalogType[category] as any;
+      const langUpper = lang.toUpperCase() as "ES" | "EN" | "PT";
+
+      const catalog = await this.prisma.catalog.findFirst({
+        where: {
+          type: catalogType,
+          code: value,
+          isActive: true,
+        },
+        include: {
+          translations: {
+            where: { lang: langUpper },
+          },
+        },
       });
-      return label as string;
+
+      return catalog?.translations[0]?.label || value;
     } catch (error) {
       return value; // Si no encuentra traducción, devuelve el valor original
     }

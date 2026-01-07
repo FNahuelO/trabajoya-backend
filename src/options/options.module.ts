@@ -1,10 +1,11 @@
 import { Module } from "@nestjs/common";
 import { OptionsController } from "./options.controller";
 import { OptionsService } from "./options.service";
-import { I18nCustomModule } from "../i18n/i18n.module";
+import { PrismaModule } from "../prisma/prisma.module";
+import { CatalogsModule } from "../catalogs/catalogs.module";
 
 @Module({
-  imports: [I18nCustomModule],
+  imports: [PrismaModule, CatalogsModule],
   controllers: [OptionsController],
   providers: [OptionsService],
   exports: [OptionsService],

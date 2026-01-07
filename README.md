@@ -90,6 +90,12 @@ JWT_ACCESS_TTL="900"
 GOOGLE_CLIENT_ID="your-google-client-id"
 APPLE_CLIENT_ID="your-apple-client-id"
 
+# CORS - Orígenes permitidos (separados por comas)
+# Ejemplo: "http://localhost:5173,https://backoffice.trabajo-ya.com,https://app.trabajo-ya.com"
+# Si no se configura, permite todos los orígenes (*)
+# Nota: Los dominios que contengan "trabajo-ya.com" o "trabajoya" se permiten automáticamente
+ALLOWED_ORIGINS="*"
+
 # Configuración de Email con AWS SES (Free Tier)
 MAIL_PROVIDER="ses"  # Opciones: "ses" (producción) o "smtp" (desarrollo)
 MAIL_FROM="noreply@tudominio.com"  # Email verificado en AWS SES
