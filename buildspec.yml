@@ -119,7 +119,7 @@ phases:
           
           if [ -s "$CLEAN_ENV_FILE" ]; then
             echo "Usando --env-file con $(wc -l < "$CLEAN_ENV_FILE") variables..."
-            ERROR_OUTPUT=$(docker run -d \
+            DOCKER_OUTPUT=$(docker run -d \
               --name CONTAINER_PH \
               --restart unless-stopped \
               -p 4000:4000 \
@@ -130,9 +130,10 @@ phases:
             if [ $DOCKER_EXIT_CODE -eq 0 ]; then
               CONTAINER_CREATED=1
               echo "✅ Contenedor creado con variables de entorno preservadas"
+              echo "Container ID: $DOCKER_OUTPUT"
             else
               echo "⚠️  Fallo al crear con env-file (exit code: $DOCKER_EXIT_CODE)"
-              echo "Error: $ERROR_OUTPUT"
+              echo "Error: $DOCKER_OUTPUT"
               docker rm -f CONTAINER_PH 2>/dev/null || true
             fi
           fi
@@ -141,49 +142,118 @@ phases:
         # Si no se creó, intentar con configuración mínima
         if [ "$CONTAINER_CREATED" -eq 0 ]; then
           echo "Creando contenedor con configuración mínima (NODE_ENV=production)..."
-          ERROR_OUTPUT=$(docker run -d \
+          echo "Imagen: $NEW_IMAGE"
+          echo "Comando completo: docker run -d --name CONTAINER_PH --restart unless-stopped -p 4000:4000 -e NODE_ENV=production \"$NEW_IMAGE\""
+          
+          # Verificar que la imagen existe antes de intentar crear el contenedor
+          echo "Verificando que la imagen existe..."
+          if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^$(echo "$NEW_IMAGE" | cut -d: -f1):$(echo "$NEW_IMAGE" | cut -d: -f2)$"; then
+            echo "✅ Imagen encontrada localmente"
+          else
+            echo "⚠️  Imagen no encontrada con formato exacto, listando imágenes similares..."
+            docker images | grep "$(echo "$NEW_IMAGE" | cut -d: -f1)" || echo "No se encontraron imágenes similares"
+          fi
+          
+          # Verificar si el puerto está en uso
+          echo "Verificando puerto 4000..."
+          if docker ps --format "{{.Ports}}" | grep -q "4000"; then
+            echo "⚠️  Puerto 4000 está en uso por otro contenedor:"
+            docker ps --filter "publish=4000"
+          else
+            echo "✅ Puerto 4000 está disponible"
+          fi
+          
+          # Ejecutar docker run y capturar tanto stdout como stderr
+          echo ""
+          echo "Ejecutando docker run..."
+          set +e  # No salir en error para poder capturar el resultado
+          DOCKER_OUTPUT=$(docker run -d \
             --name CONTAINER_PH \
             --restart unless-stopped \
             -p 4000:4000 \
             -e NODE_ENV=production \
             "$NEW_IMAGE" 2>&1)
           DOCKER_EXIT_CODE=$?
+          set -e  # Volver a activar exit on error
           
-          if [ $DOCKER_EXIT_CODE -eq 0 ]; then
+          echo "=========================================="
+          echo "RESULTADO DEL DOCKER RUN:"
+          echo "Exit code: $DOCKER_EXIT_CODE"
+          echo "Output completo:"
+          echo "$DOCKER_OUTPUT"
+          echo "=========================================="
+          
+          if [ $DOCKER_EXIT_CODE -eq 0 ] && [ -n "$DOCKER_OUTPUT" ]; then
             CONTAINER_CREATED=1
             echo "✅ Contenedor creado con configuración mínima"
+            echo "Container ID: $DOCKER_OUTPUT"
           else
-            echo "❌ ERROR: No se pudo crear el contenedor (exit code: $DOCKER_EXIT_CODE)"
-            echo "Error completo: $ERROR_OUTPUT"
+            echo "❌ ERROR: No se pudo crear el contenedor"
+            echo "Exit code: $DOCKER_EXIT_CODE"
+            echo "Output: $DOCKER_OUTPUT"
             echo ""
-            echo "Verificando si la imagen existe..."
-            docker images | grep "$(echo "$NEW_IMAGE" | cut -d: -f1)" || echo "Imagen no encontrada localmente"
+            echo "Diagnóstico adicional:"
+            echo "- Verificando si el contenedor existe (aunque haya fallado)..."
+            docker ps -a | grep CONTAINER_PH || echo "No existe ningún contenedor con ese nombre"
             echo ""
             echo "El user-data script debería recrearlo automáticamente"
           fi
         fi
 
         # Verificar que el contenedor está corriendo
-        if [ "$CONTAINER_CREATED" -eq 1 ]; then
-          sleep 3
+        echo ""
+        echo "=== Verificación final del contenedor ==="
+
+        # Siempre verificar si existe el contenedor, independientemente de CONTAINER_CREATED
+        if docker ps -a --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
+          echo "Contenedor encontrado en el sistema Docker"
+          
           if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
-            echo "✅ Contenedor recreado y corriendo exitosamente"
-            echo "Verificando logs iniciales (últimas 15 líneas)..."
-            docker logs --tail 15 CONTAINER_PH 2>&1 || true
+            echo "✅ Contenedor está corriendo"
+            echo ""
+            echo "Información del contenedor:"
+            docker ps --filter "name=CONTAINER_PH" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            echo ""
+            echo "Verificando logs iniciales (últimas 20 líneas)..."
+            docker logs --tail 20 CONTAINER_PH 2>&1 || true
           else
-            echo "⚠️  Contenedor creado pero no está corriendo. Verificando estado..."
-            docker ps -a | grep CONTAINER_PH || true
-            echo "Revisando logs del contenedor..."
-            docker logs CONTAINER_PH 2>&1 | tail -20 || true
-            echo "Revisando por qué el contenedor no está corriendo..."
-            docker inspect CONTAINER_PH 2>&1 | grep -A 10 "State" || true
+            echo "⚠️  Contenedor existe pero NO está corriendo"
+            echo ""
+            echo "Estado del contenedor:"
+            docker ps -a --filter "name=CONTAINER_PH" --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
+            echo ""
+            echo "Revisando logs del contenedor (últimas 30 líneas)..."
+            docker logs --tail 30 CONTAINER_PH 2>&1 || echo "No se pudieron obtener logs"
+            echo ""
+            echo "Revisando estado detallado del contenedor..."
+            docker inspect CONTAINER_PH 2>&1 | grep -A 15 '"State"' || echo "No se pudo inspeccionar el contenedor"
+            echo ""
+            echo "Intentando iniciar el contenedor..."
+            docker start CONTAINER_PH 2>&1 || echo "No se pudo iniciar el contenedor"
+            sleep 2
+            if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
+              echo "✅ Contenedor iniciado exitosamente"
+            else
+              echo "❌ Contenedor no se pudo iniciar. Revisando logs de error..."
+              docker logs CONTAINER_PH 2>&1 | tail -10 || true
+            fi
           fi
         else
-          echo "⚠️  No se pudo crear el contenedor. Verificando si existe..."
-          docker ps -a | grep CONTAINER_PH || echo "No hay contenedor con ese nombre"
-          echo "El user-data script debería recrearlo automáticamente si es necesario"
+          echo "❌ No se encontró ningún contenedor con el nombre CONTAINER_PH"
+          echo ""
+          echo "Listando todos los contenedores (activos y detenidos):"
+          docker ps -a || echo "Error al listar contenedores"
+          echo ""
+          if [ "$CONTAINER_CREATED" -eq 0 ]; then
+            echo "El script de actualización no pudo crear el contenedor."
+            echo "El user-data script debería recrearlo automáticamente si es necesario"
+          else
+            echo "El script reportó que creó el contenedor, pero no se encuentra en el sistema."
+            echo "Esto podría indicar un problema con Docker o con el nombre del contenedor."
+          fi
         fi
-        echo "Actualizacion completada"
+        echo ""
+        echo "=== Actualizacion completada ==="
         EOF
         sed -i "s|REGION_PH|${DEPLOY_REGION}|g" /tmp/update.sh
         sed -i "s|TARGET_IMAGE_PH|${TARGET_IMAGE}|g" /tmp/update.sh
