@@ -18,6 +18,13 @@ phases:
     commands:
       - echo "Login a ECR Public Gallery para imágenes base sin límites..."
       - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws 2>/dev/null || echo "⚠️  No se pudo hacer login a ECR Public, continuando..."
+      - echo "Verificando Dockerfile antes del build..."
+      - echo "=== Contenido de las primeras 5 líneas del Dockerfile ==="
+      - head -5 Dockerfile.prod || echo "⚠️  Dockerfile.prod no encontrado"
+      - echo "=== Buscando línea FROM ==="
+      - grep "^FROM" Dockerfile.prod || echo "⚠️  No se encontró línea FROM en Dockerfile"
+      - echo "=== Verificando si el cambio está presente ==="
+      - grep -q "public.ecr.aws" Dockerfile.prod && echo "✅ Dockerfile usa ECR Public" || echo "❌ Dockerfile NO usa ECR Public"
       - echo "Build iniciado el $(date)"
       - echo "Verificando si la imagen ya existe en ECR..."
       - |
@@ -31,7 +38,10 @@ phases:
           echo "✅ Imagen nueva, procediendo con build..."
         fi
       - echo "Iniciando build sin cache para asegurar uso de imagen correcta..."
-      - docker build --no-cache -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
+      - echo "=== Pre-pull de imagen base desde ECR Public ==="
+      - docker pull public.ecr.aws/docker/library/node:20-alpine || echo "⚠️  No se pudo hacer pull, continuando..."
+      - echo "=== Iniciando build ==="
+      - docker build --no-cache --pull -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
       - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
       - |
         NEW_DIGEST=$(docker inspect $REPOSITORY_URI:$IMAGE_TAG --format='{{index .RepoDigests 0}}' | cut -d'@' -f2 || echo "new-image")
