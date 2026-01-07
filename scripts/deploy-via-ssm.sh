@@ -67,10 +67,21 @@ ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text 2>/dev/n
 
 aws ecr get-login-password --region "\$REGION" | docker login --username AWS --password-stdin "\$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com" >/dev/null 2>&1 || { echo "❌ Error al hacer login a ECR"; exit 1; }
 
-docker pull "\$TARGET_IMAGE" >/dev/null 2>&1 || {
-  docker pull "\${TARGET_IMAGE%:*}:latest" >/dev/null 2>&1 || { echo "❌ No se pudo descargar imagen"; exit 1; }
+echo "📥 Descargando imagen: \$TARGET_IMAGE"
+docker pull "\$TARGET_IMAGE" || {
+  echo "⚠️  No se pudo descargar \$TARGET_IMAGE, intentando con :latest"
+  docker pull "\${TARGET_IMAGE%:*}:latest" || { echo "❌ No se pudo descargar imagen"; exit 1; }
   TARGET_IMAGE="\${TARGET_IMAGE%:*}:latest"
 }
+
+# Verificar que la imagen se descargó correctamente
+IMAGE_ID=\$(docker images "\$TARGET_IMAGE" --format "{{.ID}}" | head -1)
+if [ -z "\$IMAGE_ID" ]; then
+  echo "❌ Error: La imagen \$TARGET_IMAGE no se encuentra localmente"
+  exit 1
+fi
+
+echo "✅ Imagen descargada: \$TARGET_IMAGE (ID: \$IMAGE_ID)"
 
 # Obtener configuración desde Secrets Manager
 if command -v jq >/dev/null 2>&1; then
@@ -119,10 +130,17 @@ docker run -d \
   --restart unless-stopped \
   -p "\$PORT:\$PORT" \
   "\${DOCKER_ENV_ARGS[@]}" \
-  "\$TARGET_IMAGE" >/dev/null 2>&1 || { echo "❌ Error al crear contenedor"; exit 1; }
+  "\$TARGET_IMAGE" || { echo "❌ Error al crear contenedor"; exit 1; }
+
+# Verificar que el contenedor está usando la imagen correcta
+CONTAINER_IMAGE=\$(docker inspect "\$CONTAINER_NAME" --format "{{.Config.Image}}" 2>/dev/null || echo "")
+if [ "\$CONTAINER_IMAGE" != "\$TARGET_IMAGE" ]; then
+  echo "⚠️  Advertencia: El contenedor está usando la imagen \$CONTAINER_IMAGE en lugar de \$TARGET_IMAGE"
+fi
 
 echo "✅ Contenedor actualizado"
-docker ps --filter name="\$CONTAINER_NAME" --format "{{.Names}} - {{.Status}}"
+echo "📦 Imagen usada: \$CONTAINER_IMAGE"
+docker ps --filter name="\$CONTAINER_NAME" --format "{{.Names}} - {{.Status}} - {{.Image}}"
 EOF
 
 # Codificar el script en base64 para enviarlo por SSM
