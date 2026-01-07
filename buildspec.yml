@@ -22,12 +22,10 @@ phases:
 
   build:
     commands:
-      - echo "Login a ECR Public Gallery para imágenes base sin límites..."
+      - echo "Login a ECR Public Gallery (opcional)..."
       - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws 2>/dev/null || echo "⚠️ No se pudo hacer login a ECR Public, continuando..."
       - echo "Build iniciado el $(date)"
-      - echo "=== Pre-pull de imagen base desde ECR Public ==="
       - docker pull public.ecr.aws/docker/library/node:20-alpine || echo "⚠️ No se pudo hacer pull, continuando..."
-      - echo "=== Iniciando build ==="
       - docker build --no-cache --pull -f Dockerfile.prod -t "$REPOSITORY_URI:$IMAGE_TAG" .
       - docker tag "$REPOSITORY_URI:$IMAGE_TAG" "$REPOSITORY_URI:latest"
 
@@ -37,19 +35,19 @@ phases:
       - docker push "$REPOSITORY_URI:$IMAGE_TAG"
       - docker push "$REPOSITORY_URI:latest"
 
-      - echo "Actualizando instancias EC2 via SSM (sin .sh)..."
       - |
-        set -e
+        set -euo pipefail
 
         TARGET_IMAGE="${REPOSITORY_URI}:${IMAGE_TAG}"
         CONTAINER_NAME="${PROJECT_NAME}-backend"
         DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 
+        echo "=== Deploy via SSM ==="
         echo "Imagen objetivo: $TARGET_IMAGE"
         echo "Contenedor: $CONTAINER_NAME"
         echo "Region: $DEPLOY_REGION"
 
-        # 1) Encontrar instancias
+        # Encontrar instancias
         if [ -n "${EC2_INSTANCE_ID:-}" ]; then
           INSTANCE_IDS="$EC2_INSTANCE_ID"
         else
@@ -77,79 +75,38 @@ phases:
 
         echo "Instancias encontradas: $INSTANCE_IDS"
 
-        # 2) Comando remoto (INLINE) - NO .sh
-        #    - login ecr
-        #    - pull imagen
-        #    - traer secrets JSON
-        #    - export envs
-        #    - armar DATABASE_URL
-        #    - docker run con -e <vars>
-        REMOTE_COMMAND=$(cat <<EOF
-set -euo pipefail
+        # Armar el comando remoto (una sola línea segura)
+        REMOTE_CMD=$(
+          cat <<EOF
+set -euo pipefail;
+REGION="${DEPLOY_REGION}";
+TARGET_IMAGE="${TARGET_IMAGE}";
+CONTAINER_NAME="${CONTAINER_NAME}";
+APP_CONFIG_SECRET_ID="${APP_CONFIG_SECRET_ID}";
+DB_CREDENTIALS_SECRET_ID="${DB_CREDENTIALS_SECRET_ID}";
+PORT="${CONTAINER_PORT}";
+ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text);
+command -v jq >/dev/null 2>&1 || { echo "Falta jq. Instala: sudo yum/dnf install -y jq"; exit 1; };
+aws ecr get-login-password --region "\$REGION" | docker login --username AWS --password-stdin "\$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com";
+docker pull "\$TARGET_IMAGE";
+APP_CONFIG_JSON=\$(aws secretsmanager get-secret-value --secret-id "\$APP_CONFIG_SECRET_ID" --query SecretString --output text);
+DB_JSON=\$(aws secretsmanager get-secret-value --secret-id "\$DB_CREDENTIALS_SECRET_ID" --query SecretString --output text);
 
-REGION="${DEPLOY_REGION}"
-TARGET_IMAGE="${TARGET_IMAGE}"
-CONTAINER_NAME="${CONTAINER_NAME}"
-APP_CONFIG_SECRET_ID="${APP_CONFIG_SECRET_ID}"
-DB_CREDENTIALS_SECRET_ID="${DB_CREDENTIALS_SECRET_ID}"
-PORT="${CONTAINER_PORT}"
+# Export app/config
+while IFS="=" read -r k v; do export "\$k=\$v"; done < <(echo "\$APP_CONFIG_JSON" | jq -r 'to_entries|map("\(.key)=\(.value|tostring)")|.[]');
 
-echo "=== Deploy en \$(hostname) ==="
-echo "Region: \$REGION"
-echo "Imagen: \$TARGET_IMAGE"
-echo "Contenedor: \$CONTAINER_NAME"
+# Build DATABASE_URL from db credentials
+DB_HOST=\$(echo "\$DB_JSON" | jq -r '.host');
+DB_PORT=\$(echo "\$DB_JSON" | jq -r '.port');
+DB_NAME=\$(echo "\$DB_JSON" | jq -r '.dbname');
+DB_USER=\$(echo "\$DB_JSON" | jq -r '.username');
+DB_PASS=\$(echo "\$DB_JSON" | jq -r '.password');
+export DATABASE_URL="postgresql://\${DB_USER}:\${DB_PASS}@\${DB_HOST}:\${DB_PORT}/\${DB_NAME}";
 
-ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)
+docker stop "\$CONTAINER_NAME" 2>/dev/null || true;
+docker rm "\$CONTAINER_NAME" 2>/dev/null || true;
 
-echo "Login a ECR..."
-aws ecr get-login-password --region "\$REGION" | docker login --username AWS --password-stdin "\$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com"
-
-echo "Pull imagen..."
-docker pull "\$TARGET_IMAGE"
-
-echo "Descargando secrets..."
-APP_CONFIG_JSON=\$(aws secretsmanager get-secret-value --secret-id "\$APP_CONFIG_SECRET_ID" --query SecretString --output text)
-DB_JSON=\$(aws secretsmanager get-secret-value --secret-id "\$DB_CREDENTIALS_SECRET_ID" --query SecretString --output text)
-
-if [ -z "\$APP_CONFIG_JSON" ] || [ "\$APP_CONFIG_JSON" = "None" ]; then
-  echo "❌ No se pudo leer \$APP_CONFIG_SECRET_ID"
-  exit 1
-fi
-if [ -z "\$DB_JSON" ] || [ "\$DB_JSON" = "None" ]; then
-  echo "❌ No se pudo leer \$DB_CREDENTIALS_SECRET_ID"
-  exit 1
-fi
-
-# Requiere jq en la EC2
-command -v jq >/dev/null 2>&1 || { echo "❌ Falta jq en la instancia. Instalalo (dnf/yum install -y jq)"; exit 1; }
-
-# Exportar variables del app/config
-# (Ojo: esto exporta todas las keys del JSON)
-while IFS='=' read -r k v; do
-  export "\$k=\$v"
-done < <(echo "\$APP_CONFIG_JSON" | jq -r 'to_entries|map("\(.key)=\(.value|tostring)")|.[]')
-
-# Armar DATABASE_URL desde database/credentials
-DB_HOST=\$(echo "\$DB_JSON" | jq -r '.host')
-DB_PORT=\$(echo "\$DB_JSON" | jq -r '.port')
-DB_NAME=\$(echo "\$DB_JSON" | jq -r '.dbname')
-DB_USER=\$(echo "\$DB_JSON" | jq -r '.username')
-DB_PASS=\$(echo "\$DB_JSON" | jq -r '.password')
-
-export DATABASE_URL="postgresql://\${DB_USER}:\${DB_PASS}@\${DB_HOST}:\${DB_PORT}/\${DB_NAME}"
-
-echo "Deteniendo contenedor anterior si existe..."
-docker stop "\$CONTAINER_NAME" 2>/dev/null || true
-docker rm "\$CONTAINER_NAME" 2>/dev/null || true
-
-echo "Iniciando contenedor con envs..."
-# Pasamos DATABASE_URL y además TODAS las keys del app/config vía --env-file virtual (sin archivo)
-# Como docker no acepta env-from-stdin, las pasamos con -e explícito para las críticas y el resto con expansión controlada.
-
-docker run -d \
-  --name "\$CONTAINER_NAME" \
-  --restart unless-stopped \
-  -p "\$PORT:\$PORT" \
+docker run -d --name "\$CONTAINER_NAME" --restart unless-stopped -p "\$PORT:\$PORT" \
   -e NODE_ENV=production \
   -e DATABASE_URL="\$DATABASE_URL" \
   -e JWT_ACCESS_SECRET="\${JWT_ACCESS_SECRET:-}" \
@@ -169,56 +126,50 @@ docker run -d \
   -e AWS_REGION="\${AWS_REGION:-\$REGION}" \
   -e S3_BUCKET_NAME="\${S3_BUCKET_NAME:-}" \
   -e CLOUDFRONT_DOMAIN="\${CLOUDFRONT_DOMAIN:-}" \
-  "\$TARGET_IMAGE"
+  "\$TARGET_IMAGE";
 
-echo "=== Verificación ==="
-docker ps --filter "name=\$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-echo "Logs (tail 50):"
-docker logs --tail 50 "\$CONTAINER_NAME" || true
-echo "✅ Deploy OK"
+docker ps --filter "name=\$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}";
+docker logs --tail 50 "\$CONTAINER_NAME" || true;
+echo "Deploy OK";
 EOF
-)
+        )
 
-        # 3) Enviar a cada instancia
+        # Enviar por SSM (commands = [ "REMOTE_CMD" ])
+        PARAMS_JSON=$(jq -n --arg c "$REMOTE_CMD" '{commands:[$c]}')
+
         for INSTANCE_ID in $INSTANCE_IDS; do
-          echo ""
-          echo "=== Deploy en instancia: $INSTANCE_ID ==="
-
+          echo "=== Enviando a $INSTANCE_ID ==="
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=$(printf '%s' "$REMOTE_COMMAND" | jq -R -s -c 'split("\n")')" \
+            --parameters "$PARAMS_JSON" \
             --timeout-seconds 900 \
             --query 'Command.CommandId' \
             --output text)
 
-          echo "Comando SSM enviado: $COMMAND_ID"
-          echo "Esperando resultado..."
+          echo "SSM CommandId: $COMMAND_ID"
 
-          WAIT_COUNT=0
-          while [ $WAIT_COUNT -lt 60 ]; do
+          # Espera
+          for i in $(seq 1 60); do
             STATUS=$(aws ssm get-command-invocation \
               --command-id "$COMMAND_ID" \
               --instance-id "$INSTANCE_ID" \
               --query 'Status' \
               --output text 2>/dev/null || echo "Pending")
-
-            echo "  Estado: $STATUS (intento $((WAIT_COUNT + 1))/60)"
+            echo "  Estado: $STATUS ($i/60)"
 
             if [ "$STATUS" = "Success" ]; then
-              echo "✅ Instancia actualizada exitosamente"
               aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || true
               break
             fi
 
             if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "TimedOut" ] || [ "$STATUS" = "Cancelled" ]; then
-              echo "❌ ERROR deploy: $STATUS"
+              echo "❌ Deploy falló: $STATUS"
               aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || true
               aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || true
               exit 1
             fi
 
-            WAIT_COUNT=$((WAIT_COUNT + 1))
             sleep 10
           done
         done
