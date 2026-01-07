@@ -68,20 +68,81 @@ phases:
         echo "Login a ECR..."
         aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
         echo "Descargando imagen TARGET_IMAGE_PH..."
-        docker pull TARGET_IMAGE_PH || {
+        NEW_IMAGE="TARGET_IMAGE_PH"
+        docker pull "$NEW_IMAGE" || {
           echo "Intentando con latest..."
-          docker pull REPO_PH:latest
+          NEW_IMAGE="REPO_PH:latest"
+          docker pull "$NEW_IMAGE" || {
+            echo "ERROR: No se pudo descargar ninguna imagen"
+            exit 1
+          }
         }
+        echo "Imagen descargada: $NEW_IMAGE"
+
+        # Obtener la configuración del contenedor anterior ANTES de eliminarlo (para preservar variables de entorno)
+        OLD_ENV_FILE="/tmp/old_container_env.txt"
+        rm -f "$OLD_ENV_FILE"
+        if docker ps -a --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
+          echo "Preservando configuración del contenedor anterior..."
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' CONTAINER_PH > "$OLD_ENV_FILE" 2>/dev/null || true
+          # También obtener puertos y otras configuraciones
+          OLD_PORTS=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{$p}} {{end}}' CONTAINER_PH 2>/dev/null || echo "")
+        fi
+
+        # Detener y eliminar el contenedor existente si está corriendo
         if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
-          echo "Reiniciando contenedor CONTAINER_PH..."
-          docker restart CONTAINER_PH && echo "Contenedor reiniciado OK" || {
-            echo "Fallo al reiniciar, deteniendo..."
-            docker stop CONTAINER_PH
-            docker rm CONTAINER_PH
-            echo "Contenedor detenido - user-data lo recreara"
+          echo "Deteniendo contenedor CONTAINER_PH..."
+          docker stop CONTAINER_PH || true
+        fi
+        if docker ps -a --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
+          echo "Eliminando contenedor CONTAINER_PH..."
+          docker rm CONTAINER_PH || true
+        fi
+
+        # Recrear el contenedor con la nueva imagen
+        echo "Recreando contenedor CONTAINER_PH con nueva imagen: $NEW_IMAGE"
+        # Intentar usar la misma configuración que tenía antes, o usar configuración mínima
+        if [ -f "$OLD_ENV_FILE" ] && [ -s "$OLD_ENV_FILE" ]; then
+          echo "Usando variables de entorno del contenedor anterior..."
+          ENV_ARGS=$(cat "$OLD_ENV_FILE" | grep -v '^$' | sed 's/^/--env /' | tr '\n' ' ')
+          docker run -d \
+            --name CONTAINER_PH \
+            --restart unless-stopped \
+            -p 4000:4000 \
+            $ENV_ARGS \
+            "$NEW_IMAGE" || {
+            echo "Fallo al crear con env anterior, usando configuración mínima..."
+            docker run -d \
+              --name CONTAINER_PH \
+              --restart unless-stopped \
+              -p 4000:4000 \
+              -e NODE_ENV=production \
+              "$NEW_IMAGE"
           }
         else
-          echo "Contenedor no estaba corriendo - user-data lo iniciara"
+          echo "Usando configuración mínima..."
+          docker run -d \
+            --name CONTAINER_PH \
+            --restart unless-stopped \
+            -p 4000:4000 \
+            -e NODE_ENV=production \
+            "$NEW_IMAGE" || {
+            echo "ERROR: No se pudo crear el contenedor"
+            echo "El user-data script debería recrearlo automáticamente"
+            exit 1
+          }
+        fi
+
+        # Verificar que el contenedor está corriendo
+        sleep 2
+        if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_PH$'; then
+          echo "✅ Contenedor recreado y corriendo exitosamente"
+          echo "Verificando logs iniciales..."
+          docker logs --tail 20 CONTAINER_PH 2>&1 | head -10 || true
+        else
+          echo "⚠️  Contenedor creado pero no está corriendo. Verificando estado..."
+          docker ps -a | grep CONTAINER_PH || true
+          echo "El user-data script debería recrearlo automáticamente"
         fi
         echo "Actualizacion completada"
         EOF
