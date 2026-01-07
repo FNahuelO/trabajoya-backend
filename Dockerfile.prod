@@ -18,7 +18,14 @@ COPY package*.json ./
 RUN npm ci
 
 # Copiar código fuente (incluyendo scripts)
+# Usar BUILD_DATE como build arg para invalidar caché cuando cambie el código
+ARG BUILD_DATE
+ARG GIT_COMMIT
 COPY . .
+# Verificar que el código fuente se copió correctamente
+RUN echo "Build Date: ${BUILD_DATE:-unknown}" && \
+    echo "Git Commit: ${GIT_COMMIT:-unknown}" && \
+    test -f src/config/aws-config.service.ts || (echo "ERROR: aws-config.service.ts no encontrado" && exit 1)
 # Asegurar que scripts/entrypoint.sh existe y tiene permisos
 RUN chmod +x scripts/entrypoint.sh || echo "Warning: scripts/entrypoint.sh no encontrado en builder"
 

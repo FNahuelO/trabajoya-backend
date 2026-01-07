@@ -22,7 +22,7 @@ export class AwsConfigService implements OnModuleInit {
 
     this.secretsManagerClient = new SecretsManagerClient({ region });
     this.ssmClient = new SSMClient({ region });
-    
+
     this.logger.log(`[AwsConfigService] Inicializado con región: ${region}`);
   }
 
@@ -164,36 +164,54 @@ export class AwsConfigService implements OnModuleInit {
       this.configService.get<string>("STACK_PREFIX") || "trabajoya-prod";
     const region = this.configService.get<string>("AWS_REGION") || "us-east-1";
 
-    this.logger.log(`[SSM] Cargando parámetros con prefijo: ${stackPrefix} en región: ${region}`);
+    this.logger.log(
+      `[SSM] Cargando parámetros con prefijo: ${stackPrefix} en región: ${region}`
+    );
 
     const parameters = [
       { name: `/${stackPrefix}/s3/bucket`, envVar: "S3_BUCKET_NAME" },
-      { name: `/${stackPrefix}/cloudfront/domain`, envVar: "CLOUDFRONT_DOMAIN" },
-      { name: `/${stackPrefix}/cloudfront/distribution-id`, envVar: "CLOUDFRONT_DISTRIBUTION_ID" },
-      { name: `/${stackPrefix}/cloudfront/keypair-id`, envVar: "CLOUDFRONT_KEY_PAIR_ID" },
+      {
+        name: `/${stackPrefix}/cloudfront/domain`,
+        envVar: "CLOUDFRONT_DOMAIN",
+      },
+      {
+        name: `/${stackPrefix}/cloudfront/distribution-id`,
+        envVar: "CLOUDFRONT_DISTRIBUTION_ID",
+      },
+      {
+        name: `/${stackPrefix}/cloudfront/keypair-id`,
+        envVar: "CLOUDFRONT_KEY_PAIR_ID",
+      },
     ];
 
     for (const param of parameters) {
-      try {
-        // Validar que el nombre del parámetro no tenga prefijos inválidos
-        // AWS SSM no permite nombres que empiecen con "ssm" (case-insensitive)
-        const normalizedName = param.name.trim();
-        if (/^ssm/i.test(normalizedName)) {
-          this.logger.warn(
-            `[SSM] Nombre inválido (no puede empezar con 'ssm'): ${param.name}. Omitiendo.`
-          );
-          continue;
-        }
+      // Validar que el nombre del parámetro no tenga prefijos inválidos
+      // AWS SSM no permite nombres que empiecen con "ssm" (case-insensitive)
+      const normalizedName = param.name.trim();
 
+      if (/^ssm/i.test(normalizedName)) {
+        this.logger.warn(
+          `[SSM] Nombre inválido (no puede empezar con 'ssm'): ${param.name}. Omitiendo.`
+        );
+        continue;
+      }
+
+      try {
         this.logger.log(`[SSM] Intentando cargar: ${normalizedName}`);
         const command = new GetParameterCommand({ Name: normalizedName });
         const response = await this.ssmClient.send(command);
 
         if (response.Parameter?.Value) {
           process.env[param.envVar] = response.Parameter.Value;
-          this.logger.log(`[SSM] ✅ Cargado: ${param.name} -> ${param.envVar} = ${response.Parameter.Value.substring(0, 20)}...`);
+          this.logger.log(
+            `[SSM] ✅ Cargado: ${param.name} -> ${
+              param.envVar
+            } = ${response.Parameter.Value.substring(0, 20)}...`
+          );
         } else {
-          this.logger.warn(`[SSM] ⚠️  Encontrado pero sin valor: ${param.name}`);
+          this.logger.warn(
+            `[SSM] ⚠️  Encontrado pero sin valor: ${param.name}`
+          );
         }
       } catch (error: any) {
         // Si el error es porque el parámetro no existe o tiene un nombre inválido
@@ -204,18 +222,27 @@ export class AwsConfigService implements OnModuleInit {
           this.logger.warn(
             `[SSM] ❌ No encontrado: ${normalizedName} (buscando: ${param.name}). Error: ${error.name}`
           );
-        } else if (error.name === "ValidationException" || error.message?.includes("can't be prefixed with")) {
+        } else if (
+          error.name === "ValidationException" ||
+          error.message?.includes("can't be prefixed with")
+        ) {
           this.logger.warn(
             `[SSM] ⚠️  Nombre inválido: ${param.name}. ${error.message}`
           );
         } else {
           // Otros errores (permisos, red, etc.)
           this.logger.error(
-            `[SSM] ❌ Error cargando ${param.name}: ${error.name || 'Unknown'} - ${error.message || error}. Verifique permisos IAM y región ${region}.`
+            `[SSM] ❌ Error cargando ${param.name}: ${
+              error.name || "Unknown"
+            } - ${
+              error.message || error
+            }. Verifique permisos IAM y región ${region}.`
           );
           // Mostrar más detalles del error
           if (error.$metadata) {
-            this.logger.error(`[SSM] Detalles: ${JSON.stringify(error.$metadata)}`);
+            this.logger.error(
+              `[SSM] Detalles: ${JSON.stringify(error.$metadata)}`
+            );
           }
         }
         // Continuar con otros parámetros - no es crítico si fallan
