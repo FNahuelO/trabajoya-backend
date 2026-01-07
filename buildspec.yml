@@ -3,240 +3,32 @@ version: 0.2
 phases:
   pre_build:
     commands:
-      - echo "Logging in to Amazon ECR..."
+      - echo "Login a Amazon ECR"
       - aws --version
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION \
+        | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
+
       - REPOSITORY_URI=$ECR_REPOSITORY_URI
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
-      - echo "Repository URI is $REPOSITORY_URI"
-      - echo "Image tag is $IMAGE_TAG"
-      - echo "Checking source code location..."
-      - echo CODEBUILD_SRC_DIR is $CODEBUILD_SRC_DIR
-      - echo "CODEBUILD_SRC_DIR variables"
-      - env | grep CODEBUILD_SRC || true
-      - |
-        if [ -d "$CODEBUILD_SRC_DIR" ]; then
-          echo 'CODEBUILD_SRC_DIR exists, contents:'
-          ls -la "$CODEBUILD_SRC_DIR" || true
-        fi
-      - echo "Checking for source in common locations..."
-      - find /codebuild -type d -name 'src' 2>/dev/null | head -5 || true
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
-      - echo "Attempting Docker Hub login if credentials are available..."
-      - |
-        DOCKERHUB_USER=$(aws secretsmanager get-secret-value --secret-id /trabajoya/dockerhub/username --region $AWS_DEFAULT_REGION --query SecretString --output text 2>/dev/null || echo '')
-        DOCKERHUB_PASS=$(aws secretsmanager get-secret-value --secret-id /trabajoya/dockerhub/password --region $AWS_DEFAULT_REGION --query SecretString --output text 2>/dev/null || echo '')
-        if [ -n "$DOCKERHUB_USER" ] && [ -n "$DOCKERHUB_PASS" ]; then
-          echo 'Logging in to Docker Hub...'
-          echo "$DOCKERHUB_PASS" | docker login --username "$DOCKERHUB_USER" --password-stdin docker.io || echo 'Docker Hub login failed, continuing without auth'
-        else
-          echo 'No Docker Hub credentials found, will use public pulls (may hit rate limits)'
-        fi
+
+      - echo "Repositorio: $REPOSITORY_URI"
+      - echo "Tag: $IMAGE_TAG"
+
+      - cd $CODEBUILD_SRC_DIR
+
   build:
     commands:
-      - echo "Build started on `date`"
-      - echo "Building the Docker image..."
-      - echo CODEBUILD_SRC_DIR is $CODEBUILD_SRC_DIR
-      - echo Current directory is $(pwd)
-      - echo "Checking for ZIP files that need extraction..."
-      - find /codebuild -name '*.zip' -type f 2>/dev/null | head -5 || echo 'No ZIP files found'
-      - |
-        echo Checking if CODEBUILD_SRC_DIR is empty and needs to download source...
-        if [ -d "$CODEBUILD_SRC_DIR" ] && [ -z "$(ls -A $CODEBUILD_SRC_DIR 2>/dev/null | grep -v '^\.$' | grep -v '^\.\.$')" ]; then
-          echo "CODEBUILD_SRC_DIR is empty, downloading source from GitHub..."
-          GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id trabajo-ya --region $AWS_DEFAULT_REGION --query SecretString --output text 2>/dev/null || echo "")
-          if [ -n "$GITHUB_TOKEN" ]; then
-            cd "$CODEBUILD_SRC_DIR" && git clone --depth 1 --branch main https://${GITHUB_TOKEN}@github.com/FNahuelO/trabajoya-backend.git . 2>&1 | head -20 || echo "Failed to clone"
-            ls -la | head -20 || true
-          else
-            echo "Could not get GitHub token from Secrets Manager"
-          fi
-        fi
-      - echo "Checking all possible source locations..."
-      - echo "Checking CODEBUILD_SRC_DIR..."
-      - |
-        if [ -d "$CODEBUILD_SRC_DIR" ]; then
-          echo "CODEBUILD_SRC_DIR exists, file count: $(find $CODEBUILD_SRC_DIR -type f 2>/dev/null | wc -l)"
-          ls -la "$CODEBUILD_SRC_DIR" | head -20 || true
-          cd "$CODEBUILD_SRC_DIR" || true
-        fi
-      - echo "Checking /codebuild/output/srcDownload..."
-      - |
-        if [ -d /codebuild/output/srcDownload ]; then
-          echo 'Found srcDownload directory'
-          find /codebuild/output/srcDownload -type f 2>/dev/null | head -10 || echo 'No files found'
-          if [ -d /codebuild/output/srcDownload/src ]; then
-            echo 'Found srcDownload/src'
-            ls -la /codebuild/output/srcDownload/src | head -20 || true
-            if [ -z "$(ls -A /codebuild/output/srcDownload/src 2>/dev/null)" ]; then
-              echo 'srcDownload/src is empty'
-            else
-              cd /codebuild/output/srcDownload/src || true
-            fi
-          fi
-        fi
-      - echo "Searching for Dockerfile.prod in entire filesystem..."
-      - |
-        DOCKERFILE_PATH=$(find /codebuild -name 'Dockerfile.prod' -type f 2>/dev/null | head -1)
-        if [ -n "$DOCKERFILE_PATH" ]; then
-          echo "Found Dockerfile.prod at: $DOCKERFILE_PATH"
-          BUILD_CONTEXT=$(dirname "$DOCKERFILE_PATH")
-          DOCKERFILE="$DOCKERFILE_PATH"
-          cd "$BUILD_CONTEXT" || true
-        else
-          echo 'Dockerfile.prod not found, checking current directory...'
-          if [ -f Dockerfile.prod ]; then
-            DOCKERFILE='Dockerfile.prod'
-            BUILD_CONTEXT='.'
-          elif [ -f Backend/Dockerfile.prod ]; then
-            echo 'Found Dockerfile.prod in Backend directory'
-            cd Backend
-            DOCKERFILE='Dockerfile.prod'
-            BUILD_CONTEXT='.'
-          else
-            echo 'Error: Dockerfile.prod not found'
-            echo 'Current directory:'
-            pwd
-            echo 'Listing all files in current directory:'
-            ls -la || true
-            echo 'Searching for any Dockerfile:'
-            find . -name 'Dockerfile*' -type f 2>/dev/null || echo 'No Dockerfiles found'
-            exit 1
-          fi
-        fi
-        echo "Using DOCKERFILE: $DOCKERFILE"
-        echo "Using BUILD_CONTEXT: $BUILD_CONTEXT"
-        echo "Current directory before build: $(pwd)"
-      - |
-        echo Building Docker image with retry logic...
-        MAX_RETRIES=3
-        RETRY_COUNT=0
-        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-          if docker build -f $DOCKERFILE -t $REPOSITORY_URI:latest $BUILD_CONTEXT; then
-            echo 'Docker build succeeded'
-            break
-          else
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              WAIT_TIME=$((RETRY_COUNT * 30))
-              echo "Build failed, retrying in ${WAIT_TIME} seconds... (attempt $RETRY_COUNT/$MAX_RETRIES)"
-              sleep $WAIT_TIME
-            else
-              echo 'Docker build failed after all retries'
-              exit 1
-            fi
-          fi
-        done
-      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+      - echo "Build iniciado el $(date)"
+      - docker build -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
+
   post_build:
     commands:
-      - echo "=========================================="
-      - echo "INICIANDO POST_BUILD - Actualizacion ASG"
-      - echo "=========================================="
-      - echo "Pushing Docker images..."
-      - docker push $REPOSITORY_URI:latest
+      - echo "Push de imagen a ECR"
       - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
-      - echo "Imagenes subidas a ECR. Iniciando actualizacion de instancias..."
-      - |
-        # Forzar actualización de instancias EC2 en Auto Scaling Group
-        # Esto hace que las instancias se recreen y descarguen la nueva imagen :latest
-        ASG_NAME=${AUTO_SCALING_GROUP_NAME:-""}
 
-        # Si no está configurada, intentar detectar el ASG del stack
-        if [ -z "$ASG_NAME" ]; then
-          echo "Variable AUTO_SCALING_GROUP_NAME no configurada. Intentando detectar ASG del stack..."
-          STACK_NAME=${STACK_NAME:-"TrabajoYaStack-prod"}
-          
-          # Buscar ASG en el stack de CloudFormation
-          ASG_NAME=$(aws cloudformation describe-stack-resources \
-            --stack-name "$STACK_NAME" \
-            --query "StackResources[?ResourceType=='AWS::AutoScaling::AutoScalingGroup' && contains(LogicalResourceId, 'Backend')].PhysicalResourceId" \
-            --output text 2>/dev/null | head -1 || echo '')
-          
-          if [ -n "$ASG_NAME" ] && [ "$ASG_NAME" != "None" ]; then
-            echo "ASG detectado automaticamente: $ASG_NAME"
-          else
-            echo "No se pudo detectar el ASG automaticamente. Configura AUTO_SCALING_GROUP_NAME en CodeBuild."
-          fi
-        else
-          echo "Usando ASG de variable de entorno: $ASG_NAME"
-        fi
-
-        if [ -n "$ASG_NAME" ] && [ "$ASG_NAME" != "None" ]; then
-          echo "Forzando actualizacion de instancias en Auto Scaling Group: $ASG_NAME"
-          echo 'Verificando permisos y obteniendo informacion del ASG...'
-          ASG_INFO=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" --output json 2>&1)
-          ASG_ERROR=$?
-          if [ $ASG_ERROR -ne 0 ]; then
-            echo "Error al obtener informacion del ASG (codigo: $ASG_ERROR):"
-            echo "$ASG_INFO"
-            echo 'Verificando si los permisos estan configurados correctamente...'
-          else
-            if [ -n "$ASG_INFO" ] && [ "$ASG_INFO" != '{}' ] && echo "$ASG_INFO" | grep -q 'AutoScalingGroups'; then
-              DESIRED=$(echo "$ASG_INFO" | jq -r '.AutoScalingGroups[0].DesiredCapacity // 0' 2>/dev/null || echo '0')
-              MIN=$(echo "$ASG_INFO" | jq -r '.AutoScalingGroups[0].MinSize // 0' 2>/dev/null || echo '0')
-              MAX=$(echo "$ASG_INFO" | jq -r '.AutoScalingGroups[0].MaxSize // 0' 2>/dev/null || echo '0')
-              echo "Estado del ASG: Desired=$DESIRED, Min=$MIN, Max=$MAX"
-              
-              INSTANCES=$(echo "$ASG_INFO" | jq -r '.AutoScalingGroups[0].Instances[]?.InstanceId // empty' 2>/dev/null | tr '\n' ' ' || echo '')
-              
-              if [ -n "$INSTANCES" ] && [ "$INSTANCES" != ' ' ]; then
-                echo "Instancias actuales en el ASG:"
-                echo "$INSTANCES" | tr ' ' '\n' | while read INSTANCE_ID; do
-                  if [ -n "$INSTANCE_ID" ]; then
-                    STATE=$(echo "$ASG_INFO" | jq -r ".AutoScalingGroups[0].Instances[] | select(.InstanceId == \"$INSTANCE_ID\") | .LifecycleState // \"unknown\"" 2>/dev/null || echo 'unknown')
-                    echo "   - $INSTANCE_ID (Estado: $STATE)"
-                  fi
-                done
-                
-                echo 'Iniciando instance refresh (rolling update)...'
-                REFRESH_OUTPUT=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$ASG_NAME" --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' --output json 2>&1)
-                REFRESH_ERROR=$?
-                if [ $REFRESH_ERROR -eq 0 ]; then
-                  # Intentar extraer InstanceRefreshId de diferentes estructuras posibles
-                  REFRESH_ID=$(echo "$REFRESH_OUTPUT" | jq -r '.InstanceRefresh.InstanceRefreshId // .InstanceRefreshId // empty' 2>/dev/null || echo '')
-                  if [ -n "$REFRESH_ID" ] && [ "$REFRESH_ID" != "None" ] && [ "$REFRESH_ID" != 'null' ] && [ "$REFRESH_ID" != '' ]; then
-                    echo "Instance refresh iniciado: $REFRESH_ID"
-                    echo '   Las instancias se actualizaran gradualmente manteniendo el servicio disponible'
-                  else
-                    echo 'No se pudo extraer el InstanceRefreshId de la respuesta:'
-                    echo "$REFRESH_OUTPUT"
-                  fi
-                else
-                  echo 'Error al iniciar instance refresh:'
-                  echo "$REFRESH_OUTPUT"
-                  echo 'Verificando si ya hay uno en progreso...'
-                  ACTIVE_REFRESH=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$ASG_NAME" --query 'InstanceRefreshes[?Status==`InProgress` || Status==`Pending`].InstanceRefreshId' --output text 2>&1 | head -1 || echo '')
-                  if [ -n "$ACTIVE_REFRESH" ] && [ "$ACTIVE_REFRESH" != "None" ]; then
-                    echo "Ya hay un instance refresh en progreso: $ACTIVE_REFRESH"
-                  else
-                    echo 'No hay instance refresh activo. El ASG deberia crear nuevas instancias automaticamente con la nueva imagen.'
-                  fi
-                fi
-              else
-                echo "No se encontraron instancias en el ASG (DesiredCapacity=$DESIRED)."
-                if [ "$DESIRED" -eq 0 ]; then
-                  echo 'DesiredCapacity es 0. El ASG creara instancias cuando sea necesario.'
-                else
-                  echo 'El ASG deberia crear nuevas instancias automaticamente con la nueva imagen.'
-                fi
-              fi
-            else
-              echo 'No se pudo obtener informacion valida del ASG. Respuesta recibida:'
-              echo "$ASG_INFO" | head -20
-            fi
-          fi
-        else
-          echo "No se pudo determinar el ASG. Saltando actualizacion de instancias."
-          echo "   Para habilitar actualizacion automatica, configura en CodeBuild:"
-          echo "   - AUTO_SCALING_GROUP_NAME: nombre del Auto Scaling Group"
-          echo "   - STACK_NAME: nombre del stack de CloudFormation (opcional, por defecto: TrabajoYaStack-prod)"
-          echo ""
-          echo "   Ejemplo: AUTO_SCALING_GROUP_NAME=TrabajoYaStack-prod-BackendASG08C95C34-zb3tOO7qgnCl"
-        fi
-      - echo "=========================================="
-      - echo "POST_BUILD COMPLETADO"
-artifacts:
-  files:
-    - imageDetail.json
+      - echo "Forzando redeploy del servicio ECS (sin matar instancias)"
+      - aws ecs update-service \
+          --cluster trabajoya-prod-cluster \
+          --service trabajoya-prod-backend \
+          --force-new-deployment
