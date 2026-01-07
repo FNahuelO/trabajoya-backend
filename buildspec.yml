@@ -30,7 +30,26 @@ phases:
         # Esto hace que las instancias se recreen y descarguen la nueva imagen :latest
         ASG_NAME=${AUTO_SCALING_GROUP_NAME:-""}
 
-        if [ -n "$ASG_NAME" ]; then
+        # Si no está configurada, intentar detectar el ASG del stack
+        if [ -z "$ASG_NAME" ]; then
+          echo "🔍 Variable AUTO_SCALING_GROUP_NAME no configurada. Intentando detectar ASG del stack..."
+          STACK_NAME=${STACK_NAME:-"TrabajoYaStack-prod"}
+          
+          # Buscar ASG en el stack de CloudFormation
+          ASG_NAME=$(aws cloudformation describe-stack-resources \
+            --stack-name "$STACK_NAME" \
+            --query "StackResources[?ResourceType=='AWS::AutoScaling::AutoScalingGroup' && contains(LogicalResourceId, 'Backend')].PhysicalResourceId" \
+            --output text 2>/dev/null | head -1 || echo '')
+          
+          if [ -n "$ASG_NAME" ] && [ "$ASG_NAME" != "None" ]; then
+            echo "✅ ASG detectado automáticamente: $ASG_NAME"
+          else
+            echo "⚠️  No se pudo detectar el ASG automáticamente."
+            echo "   Configura la variable AUTO_SCALING_GROUP_NAME en CodeBuild o STACK_NAME si es diferente."
+          fi
+        fi
+
+        if [ -n "$ASG_NAME" ] && [ "$ASG_NAME" != "None" ]; then
           echo "🔄 Forzando actualización de instancias en Auto Scaling Group: $ASG_NAME"
           
           # Obtener instancias actuales del ASG
@@ -79,11 +98,12 @@ phases:
             echo "⚠️  No se encontraron instancias en el ASG. El ASG creará nuevas instancias automáticamente."
           fi
         else
-          echo "ℹ️  Variable AUTO_SCALING_GROUP_NAME no definida. Saltando actualización de instancias."
-          echo "   Para habilitar actualización automática, configura esta variable en CodeBuild:"
+          echo "⚠️  No se pudo determinar el ASG. Saltando actualización de instancias."
+          echo "   Para habilitar actualización automática, configura en CodeBuild:"
           echo "   - AUTO_SCALING_GROUP_NAME: nombre del Auto Scaling Group"
+          echo "   - STACK_NAME: nombre del stack de CloudFormation (opcional, por defecto: TrabajoYaStack-prod)"
           echo ""
-          echo "   Ejemplo: TrabajoYaStack-prod-BackendASG08C95C34-zb3tOO7qgnCl"
+          echo "   Ejemplo: AUTO_SCALING_GROUP_NAME=TrabajoYaStack-prod-BackendASG08C95C34-zb3tOO7qgnCl"
         fi
 artifacts:
   files:
