@@ -92,8 +92,12 @@ PULL_RETRY_COUNT=0
 # Primero intentar con el tag original
 while [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ] && [ "\$PULL_SUCCESS" = "false" ]; do
   echo "🔄 Intento \$((PULL_RETRY_COUNT + 1)) de \$MAX_PULL_RETRIES: Intentando pull de \$TARGET_IMAGE..."
+  # IMPORTANTE: con `set -e`, un comando fallido dentro de `$(...)` termina el script.
+  # Desactivamos -e solo para capturar correctamente el exit code y poder reintentar.
+  set +e
   PULL_OUTPUT=\$(docker pull "\$TARGET_IMAGE" 2>&1)
   PULL_EXIT_CODE=\$?
+  set -e
   
   if [ \$PULL_EXIT_CODE -eq 0 ]; then
     PULL_SUCCESS=true
@@ -120,8 +124,10 @@ if [ "\$PULL_SUCCESS" = "false" ] && [ "\$ORIGINAL_TAG" != "latest" ]; then
   
   while [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ] && [ "\$PULL_SUCCESS" = "false" ]; do
     echo "🔄 Intento \$((PULL_RETRY_COUNT + 1)) de \$MAX_PULL_RETRIES: Intentando pull de \$LATEST_IMAGE..."
+    set +e
     PULL_OUTPUT=\$(docker pull "\$LATEST_IMAGE" 2>&1)
     PULL_EXIT_CODE=\$?
+    set -e
     
     if [ \$PULL_EXIT_CODE -eq 0 ]; then
       PULL_SUCCESS=true
