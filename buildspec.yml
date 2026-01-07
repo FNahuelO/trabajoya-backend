@@ -29,14 +29,13 @@ phases:
     commands:
       - docker push "$REPOSITORY_URI:$IMAGE_TAG"
       - docker push "$REPOSITORY_URI:latest"
-      - >
-        bash -lc '
-        set -euo pipefail;
-        TARGET_IMAGE="${REPOSITORY_URI}:${IMAGE_TAG}";
-        CONTAINER_NAME="${PROJECT_NAME}-backend";
-        DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-east-1}";
-        echo "Imagen objetivo: $TARGET_IMAGE";
-        echo "Region: $DEPLOY_REGION";
+      - |
+        bash -c "set -euo pipefail; \
+        TARGET_IMAGE='${REPOSITORY_URI}:${IMAGE_TAG}'; \
+        CONTAINER_NAME='${PROJECT_NAME}-backend'; \
+        DEPLOY_REGION='${AWS_DEFAULT_REGION:-us-east-1}'; \
+        echo \"Imagen objetivo: \$TARGET_IMAGE\"; \
+        echo \"Region: \$DEPLOY_REGION\"; \ 
         if [ -n "${EC2_INSTANCE_ID:-}" ]; then INSTANCE_IDS="$EC2_INSTANCE_ID"; else
           ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName,''trabajoya'')||contains(AutoScalingGroupName,''prod'')].AutoScalingGroupName" --output text 2>/dev/null || echo "");
           INSTANCE_IDS="";
