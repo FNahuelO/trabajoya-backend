@@ -2,7 +2,9 @@ version: 0.2
 
 env:
   variables:
-    DATABASE_URL_SECRET_ID: /trabajoya-prod/env/DATABASE_URL
+    APP_CONFIG_SECRET_ID: /trabajoya-prod/app/config
+    PROJECT_NAME: trabajoya-prod
+    CONTAINER_PORT: "4000"
 
 phases:
   pre_build:
@@ -13,18 +15,13 @@ phases:
       - export REPOSITORY_URI=$ECR_REPOSITORY_URI
       - export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - export IMAGE_TAG=${COMMIT_HASH:-latest}
-      - echo "Repositorio:$REPOSITORY_URI"
-      - echo "Tag:$IMAGE_TAG"
+      - echo "Repositorio: $REPOSITORY_URI"
+      - echo "Tag: $IMAGE_TAG"
       - cd $CODEBUILD_SRC_DIR
 
   build:
     commands:
-      - echo "Login a ECR Public Gallery para imágenes base sin límites..."
-      - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws 2>/dev/null || echo "⚠️  No se pudo hacer login a ECR Public, continuando..."
       - echo "Build iniciado el $(date)"
-      - echo "=== Pre-pull de imagen base desde ECR Public ==="
-      - docker pull public.ecr.aws/docker/library/node:20-alpine || echo "⚠️  No se pudo hacer pull, continuando..."
-      - echo "=== Iniciando build ==="
       - docker build --no-cache --pull -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
       - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
 
@@ -33,24 +30,30 @@ phases:
       - echo "Push de imagen a ECR"
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - docker push $REPOSITORY_URI:latest
-      - echo "Actualizando instancias EC2..."
-      - |
-        TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
-        PROJECT_NAME="${PROJECT_NAME:-trabajoya-prod}"
-        CONTAINER_NAME="${PROJECT_NAME}-backend"
-        DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
-        echo "Imagen objetivo: $TARGET_IMAGE"
-        echo "Region: $DEPLOY_REGION"
-        echo "Buscando instancias EC2..."
 
-        if [ -n "$EC2_INSTANCE_ID" ]; then
+      - echo "Deploy por SSM (sin scripts)..."
+      - |
+        set -e
+
+        TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
+        DEPLOY_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+        CONTAINER_NAME="${PROJECT_NAME}-backend"
+        SECRET_ID="${APP_CONFIG_SECRET_ID}"
+        PORT="${CONTAINER_PORT}"
+
+        # Encontrar instancia(s)
+        if [ -n "${EC2_INSTANCE_ID:-}" ]; then
           INSTANCE_IDS="$EC2_INSTANCE_ID"
         else
-          ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName,'trabajoya')||contains(AutoScalingGroupName,'prod')].AutoScalingGroupName" --output text 2>/dev/null || echo "")
+          ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups \
+            --query "AutoScalingGroups[?contains(AutoScalingGroupName,'trabajoya')||contains(AutoScalingGroupName,'prod')].AutoScalingGroupName" \
+            --output text 2>/dev/null || echo "")
           INSTANCE_IDS=""
           if [ -n "$ASG_NAMES" ]; then
             for ASG_NAME in $ASG_NAMES; do
-              ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy'&&LifecycleState=='InService'].InstanceId" --output text 2>/dev/null || echo "")
+              ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
+                --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy'&&LifecycleState=='InService'].InstanceId" \
+                --output text 2>/dev/null || echo "")
               if [ -n "$ASG_INSTANCES" ]; then
                 INSTANCE_IDS="$INSTANCE_IDS $ASG_INSTANCES"
               fi
@@ -63,113 +66,84 @@ phases:
           exit 0
         fi
 
-        echo "Instancias encontradas: $INSTANCE_IDS"
+        echo "Instancias: $INSTANCE_IDS"
+        echo "Imagen: $TARGET_IMAGE"
+        echo "Secret: $SECRET_ID"
 
-        cat > /tmp/update.sh << 'EOF'
-        #!/bin/bash
-        set -euo pipefail
+        # Comando remoto (inline, sin archivos)
+        REMOTE_CMD=$(cat <<EOF
+set -euo pipefail
+REGION="$DEPLOY_REGION"
+CONTAINER_NAME="$CONTAINER_NAME"
+TARGET_IMAGE="$TARGET_IMAGE"
+SECRET_ID="$SECRET_ID"
+PORT="$PORT"
 
-        echo "=== Actualizando contenedor ==="
-        REGION="REGION_PH"
-        TARGET_IMAGE="TARGET_IMAGE_PH"
-        REPOSITORY_URI="REPO_PH"
-        CONTAINER_NAME="CONTAINER_PH"
-        DATABASE_URL_SECRET_ID="DB_SECRET_PH"
+ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)
+aws ecr get-login-password --region "\$REGION" | docker login --username AWS --password-stdin "\$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com"
 
-        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+docker pull "\$TARGET_IMAGE"
 
-        echo "Region: $REGION"
-        echo "Account: $ACCOUNT_ID"
+# Bajamos el JSON del secret y lo convertimos a env-file
+CONFIG_JSON=\$(aws secretsmanager get-secret-value --region "\$REGION" --secret-id "\$SECRET_ID" --query SecretString --output text)
 
-        echo "Login a ECR..."
-        aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
+python3 - <<'PY'
+import json, os, sys
+s = os.environ.get("CONFIG_JSON")
+if not s or s == "None":
+  print("No CONFIG_JSON")
+  sys.exit(1)
+data = json.loads(s)
+with open("/tmp/app.env", "w") as f:
+  for k, v in data.items():
+    if v is None: 
+      continue
+    v = str(v).replace("\\n","\\\\n")
+    f.write(f"{k}={v}\\n")
+PY
 
-        echo "Pull imagen..."
-        docker pull "$TARGET_IMAGE" || {
-          echo "Intentando con latest..."
-          docker pull "$REPOSITORY_URI:latest"
-          TARGET_IMAGE="$REPOSITORY_URI:latest"
-        }
+# Reinicio contenedor con env-file
+docker stop "\$CONTAINER_NAME" 2>/dev/null || true
+docker rm "\$CONTAINER_NAME" 2>/dev/null || true
 
-        echo "Obteniendo DATABASE_URL desde Secrets Manager: $DATABASE_URL_SECRET_ID"
-        DATABASE_URL=$(aws secretsmanager get-secret-value \
-          --secret-id "$DATABASE_URL_SECRET_ID" \
-          --query SecretString \
-          --output text)
+docker run -d --name "\$CONTAINER_NAME" --restart unless-stopped -p "\$PORT:\$PORT" --env-file /tmp/app.env "\$TARGET_IMAGE"
 
-        if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "None" ]; then
-          echo "❌ ERROR: DATABASE_URL no encontrado en Secrets Manager ($DATABASE_URL_SECRET_ID)"
-          exit 1
-        fi
+docker ps --filter "name=\$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+docker logs --tail 50 "\$CONTAINER_NAME" || true
+EOF
+)
 
-        echo "Deteniendo contenedor si existe..."
-        docker stop "$CONTAINER_NAME" 2>/dev/null || true
-        docker rm "$CONTAINER_NAME" 2>/dev/null || true
-
-        echo "Recreando contenedor con DATABASE_URL..."
-        docker run -d \
-          --name "$CONTAINER_NAME" \
-          --restart unless-stopped \
-          -p 4000:4000 \
-          -e NODE_ENV=production \
-          -e DATABASE_URL="$DATABASE_URL" \
-          "$TARGET_IMAGE"
-
-        echo "=== Verificación ==="
-        docker ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-        echo "Logs (tail 30):"
-        docker logs --tail 30 "$CONTAINER_NAME" || true
-        echo "=== Deploy OK ==="
-        EOF
-
-        sed -i "s|REGION_PH|${DEPLOY_REGION}|g" /tmp/update.sh
-        sed -i "s|TARGET_IMAGE_PH|${TARGET_IMAGE}|g" /tmp/update.sh
-        sed -i "s|REPO_PH|${REPOSITORY_URI}|g" /tmp/update.sh
-        sed -i "s|CONTAINER_PH|${CONTAINER_NAME}|g" /tmp/update.sh
-        sed -i "s|DB_SECRET_PH|${DATABASE_URL_SECRET_ID}|g" /tmp/update.sh
-
-        SCRIPT_B64=$(base64 -w 0 /tmp/update.sh)
+        # OJO: pasar CONFIG_JSON como env a python en remoto
+        # Lo hacemos metiéndolo en el mismo comando con export.
+        # Usamos base64 solo para evitar problemas de escape, pero NO guardamos ningún .sh.
+        REMOTE_B64=$(printf "%s" "$REMOTE_CMD" | base64 -w 0)
 
         for INSTANCE_ID in $INSTANCE_IDS; do
-          echo ""
-          echo "=== Actualizando instancia: $INSTANCE_ID ==="
+          echo "Deploy en: $INSTANCE_ID"
 
-          SSM_COMMAND=$(jq -n --arg script "$SCRIPT_B64" \
-            '{"commands":["echo " + $script + " | base64 -d > /tmp/update_remote.sh && chmod +x /tmp/update_remote.sh && /tmp/update_remote.sh"]}')
+          SSM_JSON=$(jq -n --arg cmd "$REMOTE_B64" '{
+            commands: [
+              "bash -lc '\''CMD=$(echo " + $cmd + " | base64 -d); export CONFIG_JSON=$(aws secretsmanager get-secret-value --region '"$DEPLOY_REGION"' --secret-id '"$SECRET_ID"' --query SecretString --output text); eval \"$CMD\"'\''"
+            ]
+          }')
 
           COMMAND_ID=$(aws ssm send-command \
+            --region "$DEPLOY_REGION" \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters "$SSM_COMMAND" \
+            --parameters "$SSM_JSON" \
             --timeout-seconds 600 \
             --query 'Command.CommandId' \
             --output text)
 
-          echo "Comando SSM enviado: $COMMAND_ID"
-          echo "Esperando respuesta..."
+          echo "SSM CommandId: $COMMAND_ID"
+          aws ssm wait command-executed --region "$DEPLOY_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || true
 
-          WAIT_COUNT=0
-          while [ $WAIT_COUNT -lt 30 ]; do
-            STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'Status' --output text 2>/dev/null || echo "Pending")
-            echo "  Estado: $STATUS (intento $((WAIT_COUNT + 1))/30)"
-
-            if [ "$STATUS" = "Success" ]; then
-              echo "✅ Instancia actualizada exitosamente"
-              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || true
-              break
-            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "TimedOut" ] || [ "$STATUS" = "Cancelled" ]; then
-              echo "❌ ERROR deploy: $STATUS"
-              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || true
-              aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || true
-              exit 1
-            fi
-
-            WAIT_COUNT=$((WAIT_COUNT + 1))
-            sleep 10
-          done
+          echo "STDOUT:"
+          aws ssm get-command-invocation --region "$DEPLOY_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text || true
+          echo "STDERR:"
+          aws ssm get-command-invocation --region "$DEPLOY_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text || true
         done
-
-        echo "=== Deployment completado ==="
 
 artifacts:
   files:
