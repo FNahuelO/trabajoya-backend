@@ -523,3 +523,27 @@ model CatalogTranslation {
   @@unique([catalogId, lang])
   @@index([catalogId])
 }
+
+model Plan {
+  id                      String   @id @default(uuid())
+  name                    String   @unique
+  code                    String   @unique // Código único para identificar el plan (URGENT, STANDARD, PREMIUM)
+  price                   Float    // Precio en pesos argentinos
+  durationDays            Int      // Duración en días desde la publicación
+  unlimitedCvs            Boolean  @default(true) // Siempre true según los requisitos
+  allowedModifications    Int      @default(0) // Número de modificaciones permitidas del anuncio
+  canModifyCategory       Boolean  @default(false) // Si puede modificar el rubro
+  categoryModifications   Int      @default(0) // Número de veces que puede modificar el rubro (0 o 1)
+  hasFeaturedOption       Boolean  @default(false) // Si tiene opción gráfica destacada
+  launchBenefitAvailable  Boolean  @default(false) // Si tiene beneficio de lanzamiento disponible
+  launchBenefitDuration   Int?     // Duración del beneficio de lanzamiento en días (4 días)
+  isActive                Boolean  @default(true)
+  order                   Int      @default(0)
+  description             String?  // Descripción del plan
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([order])
+}
