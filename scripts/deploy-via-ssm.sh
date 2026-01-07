@@ -68,113 +68,90 @@ ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text 2>/dev/n
 aws ecr get-login-password --region "\$REGION" | docker login --username AWS --password-stdin "\$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com" >/dev/null 2>&1 || { echo "❌ Error al hacer login a ECR"; exit 1; }
 
 echo "📥 Descargando imagen: \$TARGET_IMAGE"
-echo "🔍 Verificando que la imagen existe en ECR..."
 
 # Extraer nombre del repositorio y tag de forma más robusta
 # Formato esperado: ACCOUNT.dkr.ecr.REGION.amazonaws.com/REPO_NAME:TAG
 FULL_REPO=\$(echo "\$TARGET_IMAGE" | cut -d':' -f1)
 REPO_NAME=\$(echo "\$FULL_REPO" | cut -d'/' -f2)
-IMAGE_TAG=\$(echo "\$TARGET_IMAGE" | cut -d':' -f2)
+ORIGINAL_TAG=\$(echo "\$TARGET_IMAGE" | cut -d':' -f2)
 
 echo "   Repositorio completo: \$FULL_REPO"
 echo "   Nombre del repo: \$REPO_NAME"
-echo "   Tag: \$IMAGE_TAG"
+echo "   Tag original: \$ORIGINAL_TAG"
 
-# Esperar un poco para que ECR indexe la imagen (puede haber un pequeño delay)
-echo "⏳ Esperando 10 segundos para que ECR indexe la imagen..."
-sleep 10
+# Esperar un poco para que ECR indexe la imagen
+echo "⏳ Esperando 15 segundos para que ECR indexe la imagen..."
+sleep 15
 
-# Verificar que la imagen existe en ECR (con reintentos más agresivos)
-MAX_RETRIES=10
-RETRY_COUNT=0
-IMAGE_EXISTS=false
+# Estrategia: Intentar pull directamente en lugar de verificar primero con describe-images
+# Docker pull es más confiable que describe-images para detectar imágenes recién subidas
+PULL_SUCCESS=false
+MAX_PULL_RETRIES=8
+PULL_RETRY_COUNT=0
 
-while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
-  if aws ecr describe-images --repository-name "\$REPO_NAME" --image-ids imageTag="\$IMAGE_TAG" --region "\$REGION" >/dev/null 2>&1; then
-    IMAGE_EXISTS=true
-    echo "✅ Imagen \$IMAGE_TAG encontrada en ECR (intento \$((RETRY_COUNT + 1)))"
+# Primero intentar con el tag original
+while [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ] && [ "\$PULL_SUCCESS" = "false" ]; do
+  echo "🔄 Intento \$((PULL_RETRY_COUNT + 1)) de \$MAX_PULL_RETRIES: Intentando pull de \$TARGET_IMAGE..."
+  PULL_OUTPUT=\$(docker pull "\$TARGET_IMAGE" 2>&1)
+  PULL_EXIT_CODE=\$?
+  
+  if [ \$PULL_EXIT_CODE -eq 0 ]; then
+    PULL_SUCCESS=true
+    echo "✅ Imagen \$TARGET_IMAGE descargada correctamente"
+    echo "\$PULL_OUTPUT" | tail -3
     break
-  fi
-  RETRY_COUNT=\$((RETRY_COUNT + 1))
-  if [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; then
-    echo "⚠️  Intento \$RETRY_COUNT falló, esperando 5 segundos antes de reintentar..."
-    sleep 5
+  else
+    PULL_RETRY_COUNT=\$((PULL_RETRY_COUNT + 1))
+    if [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ]; then
+      echo "⚠️  Pull falló, esperando 8 segundos antes de reintentar..."
+      echo "\$PULL_OUTPUT" | tail -3
+      sleep 8
+    fi
   fi
 done
 
-if [ "\$IMAGE_EXISTS" = "false" ]; then
-  echo "⚠️  La imagen \$TARGET_IMAGE no se encontró en ECR después de \$MAX_RETRIES intentos"
-  echo "🔍 Buscando imágenes disponibles en ECR..."
-  echo "📋 Últimas 10 imágenes en el repositorio:"
-  aws ecr describe-images --repository-name "\$REPO_NAME" --region "\$REGION" --query 'imageDetails[*].[imageTags[0],imagePushedAt]' --output table 2>/dev/null | head -15 || echo "No se pudieron listar imágenes"
-  echo "🔄 Intentando usar 'latest' como fallback (siempre se etiqueta en el build)..."
-  # Siempre intentar usar latest ya que sabemos que se etiqueta en buildspec.yml
+# Si el pull del tag original falló, intentar con latest
+if [ "\$PULL_SUCCESS" = "false" ] && [ "\$ORIGINAL_TAG" != "latest" ]; then
+  echo "🔄 El tag original falló, intentando con 'latest' como fallback..."
   LATEST_IMAGE="\${TARGET_IMAGE%:*}:latest"
-  if aws ecr describe-images --repository-name "\$REPO_NAME" --image-ids imageTag="latest" --region "\$REGION" >/dev/null 2>&1; then
-    echo "✅ El tag 'latest' existe, usándolo como fallback"
-    TARGET_IMAGE="\$LATEST_IMAGE"
-    IMAGE_TAG="latest"
-  else
-    echo "⚠️  El tag 'latest' tampoco está disponible todavía, pero intentaremos hacer pull de todas formas..."
-    echo "💡 Nota: ECR puede tardar en indexar. Intentando pull directo..."
-    # No salir con error todavía, intentar hacer pull directamente
-    TARGET_IMAGE="\$LATEST_IMAGE"
-    IMAGE_TAG="latest"
-  fi
-fi
-
-# Intentar hacer pull de la imagen (a veces docker pull funciona aunque describe-images no)
-echo "📥 Intentando descargar imagen: \$TARGET_IMAGE"
-PULL_OUTPUT=\$(docker pull "\$TARGET_IMAGE" 2>&1)
-PULL_EXIT_CODE=\$?
-
-if [ \$PULL_EXIT_CODE -eq 0 ]; then
-  echo "✅ Imagen \$TARGET_IMAGE descargada correctamente"
-  echo "\$PULL_OUTPUT" | tail -3
-else
-  echo "⚠️  Error al descargar \$TARGET_IMAGE (exit code: \$PULL_EXIT_CODE)"
-  echo "\$PULL_OUTPUT" | tail -5
-  # Si no estamos usando latest ya, intentar con latest como fallback
-  if [ "\$IMAGE_TAG" != "latest" ]; then
-    echo "🔄 Intentando con :latest como fallback..."
-    LATEST_IMAGE="\${TARGET_IMAGE%:*}:latest"
-    LATEST_PULL_OUTPUT=\$(docker pull "\$LATEST_IMAGE" 2>&1)
-    LATEST_PULL_EXIT_CODE=\$?
-    if [ \$LATEST_PULL_EXIT_CODE -eq 0 ]; then
-      echo "✅ Imagen :latest descargada como fallback"
+  PULL_RETRY_COUNT=0
+  
+  while [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ] && [ "\$PULL_SUCCESS" = "false" ]; do
+    echo "🔄 Intento \$((PULL_RETRY_COUNT + 1)) de \$MAX_PULL_RETRIES: Intentando pull de \$LATEST_IMAGE..."
+    PULL_OUTPUT=\$(docker pull "\$LATEST_IMAGE" 2>&1)
+    PULL_EXIT_CODE=\$?
+    
+    if [ \$PULL_EXIT_CODE -eq 0 ]; then
+      PULL_SUCCESS=true
       TARGET_IMAGE="\$LATEST_IMAGE"
-      IMAGE_TAG="latest"
+      ORIGINAL_TAG="latest"
+      echo "✅ Imagen :latest descargada como fallback"
+      echo "\$PULL_OUTPUT" | tail -3
+      break
     else
-      echo "❌ No se pudo descargar ninguna imagen"
-      echo "📋 Output del pull de latest:"
-      echo "\$LATEST_PULL_OUTPUT" | tail -5
-      echo "⏳ Esperando 15 segundos adicionales y reintentando con latest..."
-      sleep 15
-      LATEST_PULL_OUTPUT=\$(docker pull "\$LATEST_IMAGE" 2>&1)
-      LATEST_PULL_EXIT_CODE=\$?
-      if [ \$LATEST_PULL_EXIT_CODE -eq 0 ]; then
-        echo "✅ Imagen :latest descargada después de espera adicional"
-        TARGET_IMAGE="\$LATEST_IMAGE"
-        IMAGE_TAG="latest"
-      else
-        echo "❌ Error final: No se pudo descargar la imagen después de todos los intentos"
-        exit 1
+      PULL_RETRY_COUNT=\$((PULL_RETRY_COUNT + 1))
+      if [ \$PULL_RETRY_COUNT -lt \$MAX_PULL_RETRIES ]; then
+        echo "⚠️  Pull de latest falló, esperando 8 segundos antes de reintentar..."
+        echo "\$PULL_OUTPUT" | tail -3
+        sleep 8
       fi
     fi
-  else
-    # Ya estamos usando latest, esperar un poco más y reintentar
-    echo "⏳ Esperando 15 segundos adicionales y reintentando pull de latest..."
-    sleep 15
-    LATEST_PULL_OUTPUT=\$(docker pull "\$TARGET_IMAGE" 2>&1)
-    LATEST_PULL_EXIT_CODE=\$?
-    if [ \$LATEST_PULL_EXIT_CODE -eq 0 ]; then
-      echo "✅ Imagen descargada después de espera adicional"
-    else
-      echo "❌ Error final: No se pudo descargar la imagen después de todos los intentos"
-      echo "\$LATEST_PULL_OUTPUT" | tail -5
-      exit 1
-    fi
-  fi
+  done
+fi
+
+# Si todo falló, mostrar información de diagnóstico y salir
+if [ "\$PULL_SUCCESS" = "false" ]; then
+  echo "❌ Error: No se pudo descargar ninguna imagen después de todos los intentos"
+  echo "📋 Último output del pull:"
+  echo "\$PULL_OUTPUT" | tail -10
+  echo ""
+  echo "🔍 Diagnóstico:"
+  echo "   Intentando listar imágenes en ECR..."
+  aws ecr describe-images --repository-name "\$REPO_NAME" --region "\$REGION" --query 'imageDetails[*].[imageTags[0],imagePushedAt]' --output table 2>/dev/null | head -15 || echo "   No se pudieron listar imágenes (puede ser un problema de permisos)"
+  echo ""
+  echo "   Verificando login a ECR..."
+  docker images "\${FULL_REPO}" --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}" 2>/dev/null | head -5 || echo "   No hay imágenes locales de este repositorio"
+  exit 1
 fi
 
 # Verificar que la imagen se descargó correctamente
@@ -348,3 +325,4 @@ for INSTANCE_ID in $INSTANCE_IDS; do
 done
 
 echo "Deployment completado"
+
