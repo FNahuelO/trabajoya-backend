@@ -57,6 +57,22 @@ cat > /tmp/remote_update.sh << 'EOF'
 #!/bin/bash
 set -e
 
+# Función para hacer flush de la salida inmediatamente
+flush_output() {
+  sync
+}
+
+# Log inmediato al inicio para verificar que el script se ejecuta
+echo "🚀 Script remoto iniciado en $(date)"
+flush_output
+echo "📋 Información del sistema:"
+echo "   Hostname: $(hostname)"
+echo "   Usuario: $(whoami)"
+echo "   Directorio actual: $(pwd)"
+echo "   Bash version: $BASH_VERSION"
+echo "   PATH: $PATH"
+echo ""
+
 # These variables will be substituted when the heredoc is created
 REGION="DEPLOY_REGION_PLACEHOLDER"
 TARGET_IMAGE="TARGET_IMAGE_PLACEHOLDER"
@@ -65,9 +81,22 @@ APP_CONFIG_SECRET_ID="APP_CONFIG_SECRET_ID_PLACEHOLDER"
 DB_CREDENTIALS_SECRET_ID="DB_CREDENTIALS_SECRET_ID_PLACEHOLDER"
 PORT="CONTAINER_PORT_PLACEHOLDER"
 
+echo "✅ Variables configuradas:"
+echo "   REGION=$REGION"
+echo "   TARGET_IMAGE=$TARGET_IMAGE"
+echo "   CONTAINER_NAME=$CONTAINER_NAME"
+echo "   PORT=$PORT"
+
 echo "Actualizando contenedor $CONTAINER_NAME..."
+flush_output
 
 # Instalar jq si no existe
+echo "🔍 Verificando herramientas necesarias..."
+echo "   jq: $(command -v jq || echo 'no encontrado')"
+echo "   docker: $(command -v docker || echo 'no encontrado')"
+echo "   aws: $(command -v aws || echo 'no encontrado')"
+flush_output
+
 if ! command -v jq >/dev/null 2>&1; then
   if command -v yum >/dev/null 2>&1; then
     sudo yum install -y jq >/dev/null 2>&1 || true
@@ -78,10 +107,33 @@ if ! command -v jq >/dev/null 2>&1; then
   fi
 fi
 
+echo "🔐 Obteniendo Account ID de AWS..."
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
-[ -z "$ACCOUNT_ID" ] && { echo "❌ No se pudo obtener Account ID"; exit 1; }
+if [ -z "$ACCOUNT_ID" ]; then
+  echo "❌ No se pudo obtener Account ID"
+  echo "   Intentando con detalles del error:"
+  aws sts get-caller-identity 2>&1
+  exit 1
+fi
+echo "✅ Account ID obtenido: $ACCOUNT_ID"
+flush_output
 
-aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com" >/dev/null 2>&1 || { echo "❌ Error al hacer login a ECR"; exit 1; }
+echo "🔐 Haciendo login a ECR..."
+ECR_LOGIN_OUTPUT=$(aws ecr get-login-password --region "$REGION" 2>&1)
+if [ $? -ne 0 ]; then
+  echo "❌ Error al obtener password de ECR:"
+  echo "$ECR_LOGIN_OUTPUT"
+  exit 1
+fi
+
+DOCKER_LOGIN_OUTPUT=$(echo "$ECR_LOGIN_OUTPUT" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com" 2>&1)
+if [ $? -ne 0 ]; then
+  echo "❌ Error al hacer login a ECR con Docker:"
+  echo "$DOCKER_LOGIN_OUTPUT"
+  exit 1
+fi
+echo "✅ Login a ECR exitoso"
+flush_output
 
 echo "📥 Descargando imagen: $TARGET_IMAGE"
 
@@ -288,6 +340,14 @@ docker ps --filter name="$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}
 EOF
 
 # Sustituir placeholders con valores reales
+echo "🔧 Sustituyendo variables en el script remoto..."
+echo "   DEPLOY_REGION=$DEPLOY_REGION"
+echo "   TARGET_IMAGE=$TARGET_IMAGE"
+echo "   CONTAINER_NAME=$CONTAINER_NAME"
+echo "   APP_CONFIG_SECRET_ID=$APP_CONFIG_SECRET_ID"
+echo "   DB_CREDENTIALS_SECRET_ID=$DB_CREDENTIALS_SECRET_ID"
+echo "   CONTAINER_PORT=$CONTAINER_PORT"
+
 sed -i "s|DEPLOY_REGION_PLACEHOLDER|$DEPLOY_REGION|g" /tmp/remote_update.sh
 sed -i "s|TARGET_IMAGE_PLACEHOLDER|$TARGET_IMAGE|g" /tmp/remote_update.sh
 sed -i "s|CONTAINER_NAME_PLACEHOLDER|$CONTAINER_NAME|g" /tmp/remote_update.sh
@@ -295,8 +355,22 @@ sed -i "s|APP_CONFIG_SECRET_ID_PLACEHOLDER|$APP_CONFIG_SECRET_ID|g" /tmp/remote_
 sed -i "s|DB_CREDENTIALS_SECRET_ID_PLACEHOLDER|$DB_CREDENTIALS_SECRET_ID|g" /tmp/remote_update.sh
 sed -i "s|CONTAINER_PORT_PLACEHOLDER|$CONTAINER_PORT|g" /tmp/remote_update.sh
 
+# Verificar que las sustituciones funcionaron
+if grep -q "PLACEHOLDER" /tmp/remote_update.sh; then
+  echo "⚠️  ADVERTENCIA: Algunos placeholders no se sustituyeron correctamente"
+  grep "PLACEHOLDER" /tmp/remote_update.sh | head -5
+fi
+
+# Mostrar primeras líneas del script para verificar
+echo "📄 Primeras 10 líneas del script remoto (después de sustituciones):"
+head -10 /tmp/remote_update.sh | sed 's/^/   /'
+echo "📊 Tamaño del script remoto: $(wc -l < /tmp/remote_update.sh) líneas, $(wc -c < /tmp/remote_update.sh) bytes"
+
 # Codificar el script en base64
+echo "📦 Codificando script en base64..."
 SCRIPT_B64=$(base64 -w 0 /tmp/remote_update.sh 2>/dev/null || base64 /tmp/remote_update.sh | tr -d '\n')
+SCRIPT_SIZE=${#SCRIPT_B64}
+echo "   Script codificado: $SCRIPT_SIZE caracteres en base64"
 
 # Construir JSON de forma segura
 if command -v jq >/dev/null 2>&1; then
@@ -333,12 +407,32 @@ for INSTANCE_ID in $INSTANCE_IDS; do
   fi
   
   echo "✅ Comando SSM enviado, CommandId: $COMMAND_ID"
+  echo "📋 URL del comando en AWS Console: https://$DEPLOY_REGION.console.aws.amazon.com/systems-manager/run-command/$COMMAND_ID?region=$DEPLOY_REGION"
   
   WAIT_COUNT=0
   MAX_WAIT=24
+  LAST_OUTPUT=""
   while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
     sleep 10
     STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'Status' --output text 2>/dev/null || echo "Pending")
+    
+    # Intentar obtener salida parcial incluso si está en progreso
+    if [ "$STATUS" = "InProgress" ] || [ "$STATUS" = "Pending" ]; then
+      CURRENT_OUTPUT=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null | tail -20 || echo "")
+      CURRENT_ERRORS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || echo "")
+      
+      # Si hay nueva salida, mostrarla
+      if [ -n "$CURRENT_OUTPUT" ] && [ "$CURRENT_OUTPUT" != "$LAST_OUTPUT" ]; then
+        echo "📋 Salida parcial del script remoto:"
+        echo "$CURRENT_OUTPUT" | tail -10 | sed 's/^/   /'
+        LAST_OUTPUT="$CURRENT_OUTPUT"
+      fi
+      
+      if [ -n "$CURRENT_ERRORS" ]; then
+        echo "⚠️  Errores parciales detectados:"
+        echo "$CURRENT_ERRORS" | tail -5 | sed 's/^/   /'
+      fi
+    fi
     
     if [ "$STATUS" = "Success" ]; then
       echo "✅ $INSTANCE_ID actualizada"
@@ -389,11 +483,31 @@ for INSTANCE_ID in $INSTANCE_IDS; do
     WAIT_COUNT=$((WAIT_COUNT + 1))
   done
   
-  if [ "$STATUS" != "Success" ] && [ "$STATUS" != "Failed" ] && [ "$STATUS" != "Cancelled" ] && [ "$STATUS" != "TimedOut" ]; then
-    echo "⚠️  Tiempo de espera agotado para $INSTANCE_ID. Estado final: ${STATUS:-Unknown}"
-    echo "📋 Salida disponible:"
-    aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "(Sin salida disponible)"
-  fi
+    if [ "$STATUS" != "Success" ] && [ "$STATUS" != "Failed" ] && [ "$STATUS" != "Cancelled" ] && [ "$STATUS" != "TimedOut" ]; then
+      echo "⚠️  Tiempo de espera agotado para $INSTANCE_ID. Estado final: ${STATUS:-Unknown}"
+      echo ""
+      echo "📋 Información completa del comando:"
+      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" 2>/dev/null || echo "   No se pudo obtener información del comando"
+      echo ""
+      echo "📋 Salida estándar disponible:"
+      OUTPUT_FINAL=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardOutputContent' --output text 2>/dev/null || echo "")
+      if [ -n "$OUTPUT_FINAL" ]; then
+        echo "$OUTPUT_FINAL"
+      else
+        echo "   (Sin salida estándar disponible todavía)"
+      fi
+      echo ""
+      echo "📋 Salida de error disponible:"
+      ERRORS_FINAL=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'StandardErrorContent' --output text 2>/dev/null || echo "")
+      if [ -n "$ERRORS_FINAL" ]; then
+        echo "$ERRORS_FINAL"
+      else
+        echo "   (Sin errores capturados todavía)"
+      fi
+      echo ""
+      echo "🔍 Verificando si el comando sigue ejecutándose..."
+      aws ssm list-command-invocations --command-id "$COMMAND_ID" --details --output json 2>/dev/null | head -30 || echo "   No se pudo listar invocaciones del comando"
+    fi
 done
 
 echo "Deployment completado"
