@@ -16,6 +16,8 @@ phases:
 
   build:
     commands:
+      - echo "Login a ECR Public Gallery para imágenes base sin límites..."
+      - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws 2>/dev/null || echo "⚠️  No se pudo hacer login a ECR Public, continuando..."
       - echo "Build iniciado el $(date)"
       - echo "Verificando si la imagen ya existe en ECR..."
       - |
@@ -28,7 +30,8 @@ phases:
         else
           echo "✅ Imagen nueva, procediendo con build..."
         fi
-      - docker build -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
+      - echo "Iniciando build sin cache para asegurar uso de imagen correcta..."
+      - docker build --no-cache -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
       - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
       - |
         NEW_DIGEST=$(docker inspect $REPOSITORY_URI:$IMAGE_TAG --format='{{index .RepoDigests 0}}' | cut -d'@' -f2 || echo "new-image")
