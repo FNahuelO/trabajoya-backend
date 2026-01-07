@@ -259,13 +259,23 @@ phases:
         sed -i "s|TARGET_IMAGE_PH|${TARGET_IMAGE}|g" /tmp/update.sh
         sed -i "s|REPO_PH|${REPOSITORY_URI}|g" /tmp/update.sh
         sed -i "s|CONTAINER_PH|${CONTAINER_NAME}|g" /tmp/update.sh
+        # Codificar el script en base64 para evitar problemas de escape JSON
+        SCRIPT_B64=$(base64 -w 0 /tmp/update.sh)
         for INSTANCE_ID in $INSTANCE_IDS; do
           echo ""
           echo "=== Actualizando instancia: $INSTANCE_ID ==="
+          # Usar base64 para evitar problemas de escape JSON
+          # Construir el JSON de forma segura usando jq si está disponible, sino usar método alternativo
+          if command -v jq &> /dev/null; then
+            SSM_COMMAND=$(jq -n --arg script "$SCRIPT_B64" '{"commands":["echo " + $script + " | base64 -d > /tmp/update_remote.sh && chmod +x /tmp/update_remote.sh && /tmp/update_remote.sh"]}')
+          else
+            # Fallback: construir JSON manualmente (base64 solo contiene caracteres seguros)
+            SSM_COMMAND="{\"commands\":[\"echo $SCRIPT_B64 | base64 -d > /tmp/update_remote.sh && chmod +x /tmp/update_remote.sh && /tmp/update_remote.sh\"]}"
+          fi
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters '{"commands":["'"$(cat /tmp/update.sh | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')"'"]}' \
+            --parameters "$SSM_COMMAND" \
             --timeout-seconds 600 \
             --query 'Command.CommandId' \
             --output text 2>&1)
