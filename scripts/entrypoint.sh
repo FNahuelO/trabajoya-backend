@@ -9,11 +9,17 @@ if [ -f "./scripts/wait-for-db.js" ]; then
 fi
 
 # Ejecutar migraciones
+echo "📦 Verificando estado de migraciones..."
 if [ -f "./node_modules/.bin/prisma" ]; then
-  ./node_modules/.bin/prisma migrate deploy >/dev/null 2>&1 || npx prisma migrate deploy >/dev/null 2>&1 || true
+  echo "🔍 Ejecutando: ./node_modules/.bin/prisma migrate deploy"
+  ./node_modules/.bin/prisma migrate deploy || npx prisma migrate deploy || true
 elif command -v npx >/dev/null 2>&1; then
-  npx prisma migrate deploy >/dev/null 2>&1 || true
+  echo "🔍 Ejecutando: npx prisma migrate deploy"
+  npx prisma migrate deploy || true
+else
+  echo "⚠️  Prisma no encontrado, saltando migraciones"
 fi
+echo "✅ Migraciones completadas"
 
 # Ejecutar seed si existe
 [ -f "dist/prisma/seed-if-empty.js" ] && node dist/prisma/seed-if-empty.js >/dev/null 2>&1 || true
