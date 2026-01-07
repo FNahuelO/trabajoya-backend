@@ -40,6 +40,7 @@ export class S3UploadService {
 
   /**
    * Genera una presigned URL para subir un archivo
+   * NOTA: Si se especifica ContentLength, debe coincidir exactamente con el tamaño del archivo subido
    */
   async generatePresignedUrl(
     key: string,
@@ -47,12 +48,24 @@ export class S3UploadService {
   ): Promise<PresignedUrlResponse> {
     const expiresIn = options.expiresIn || 3600; // 1 hora por defecto
 
-    const command = new PutObjectCommand({
+    // Construir el comando con solo los parámetros necesarios
+    // No incluir ContentLength si no se especifica, para evitar problemas de validación
+    const commandParams: any = {
       Bucket: this.bucketName,
       Key: key,
-      ContentType: options.contentType,
-      ContentLength: options.contentLength,
-    });
+    };
+
+    if (options.contentType) {
+      commandParams.ContentType = options.contentType;
+    }
+
+    // Solo incluir ContentLength si se especifica explícitamente
+    // Esto evita problemas cuando el tamaño real del archivo no coincide
+    if (options.contentLength !== undefined && options.contentLength !== null) {
+      commandParams.ContentLength = options.contentLength;
+    }
+
+    const command = new PutObjectCommand(commandParams);
 
     const uploadUrl = await getSignedUrl(this.s3Client, command, {
       expiresIn,
