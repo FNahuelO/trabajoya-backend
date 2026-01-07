@@ -21,10 +21,14 @@ phases:
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
   post_build:
     commands:
+      - echo "=========================================="
+      - echo "🚀 INICIANDO POST_BUILD - Actualización ASG"
+      - echo "=========================================="
       - echo Pushing Docker images...
       - docker push $REPOSITORY_URI:latest
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDetail.json
+      - echo "✅ Imágenes subidas a ECR. Iniciando actualización de instancias..."
       - |
         # Forzar actualización de instancias EC2 en Auto Scaling Group
         # Esto hace que las instancias se recreen y descarguen la nueva imagen :latest
