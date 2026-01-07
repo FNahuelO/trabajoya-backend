@@ -51,10 +51,9 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
 # Copiar scripts necesarios
 COPY --from=builder /app/scripts ./scripts
-# Copiar migración de emergencia si existe
-COPY --from=builder /app/prisma/MIGRATION_TO_APPLY.sql ./prisma/MIGRATION_TO_APPLY.sql || true
 # Copiar tsconfig para ts-node (necesario para ejecutar seed)
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
+# Nota: MIGRATION_TO_APPLY.sql ya está incluido al copiar /app/prisma en la línea 51
 
 # Generar cliente de Prisma (necesario para runtime)
 RUN npx prisma generate
