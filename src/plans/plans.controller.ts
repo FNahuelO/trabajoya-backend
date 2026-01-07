@@ -15,12 +15,38 @@ import { PlansService } from "./plans.service";
 import { CreatePlanDto, UpdatePlanDto } from "./dto";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { AdminGuard } from "../common/guards/admin.guard";
+import { Public } from "../common/decorators/public.decorator";
 import { createResponse } from "../common/mapper/api-response.mapper";
 
 @ApiTags("plans")
 @Controller("api")
 export class PlansController {
   constructor(private readonly plansService: PlansService) {}
+
+  // Endpoint público para obtener planes activos
+  @Public()
+  @Get("plans")
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "pageSize", required: false, type: Number })
+  async getPublicPlans(
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string
+  ) {
+    const data = await this.plansService.findAll(
+      parseInt(page || "1"),
+      parseInt(pageSize || "20")
+    );
+    // Filtrar solo planes activos
+    const activePlans = {
+      ...data,
+      items: data.items.filter((plan) => plan.isActive),
+    };
+    return createResponse({
+      success: true,
+      message: "Planes obtenidos correctamente",
+      data: activePlans,
+    });
+  }
 
   @Get("admin/plans")
   @UseGuards(JwtAuthGuard, AdminGuard)
