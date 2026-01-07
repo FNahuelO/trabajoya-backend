@@ -49,8 +49,11 @@ export class S3UploadService {
           "[S3UploadService] ⚠️  S3_BUCKET_NAME no está configurado. Las operaciones de S3 fallarán."
         );
       } else {
+        const region = typeof this.s3Client.config.region === 'function' 
+          ? 'us-east-1' 
+          : this.s3Client.config.region || 'us-east-1';
         console.log(
-          `[S3UploadService] ✅ Bucket configurado: ${this._bucketName} (region: ${this.s3Client.config.region})`
+          `[S3UploadService] ✅ Bucket configurado: ${this._bucketName} (region: ${region})`
         );
       }
     }
@@ -84,11 +87,13 @@ export class S3UploadService {
       commandParams.ContentType = options.contentType;
     }
 
-    // Solo incluir ContentLength si se especifica explícitamente
-    // Esto evita problemas cuando el tamaño real del archivo no coincide
-    if (options.contentLength !== undefined && options.contentLength !== null) {
-      commandParams.ContentLength = options.contentLength;
-    }
+    // NOTA: No incluir ContentLength en la presigned URL
+    // Si se especifica ContentLength, el tamaño del archivo subido DEBE coincidir exactamente
+    // Esto causa problemas cuando el frontend calcula el tamaño de forma diferente
+    // Es mejor dejar que S3 valide el tamaño después de la subida
+    // if (options.contentLength !== undefined && options.contentLength !== null) {
+    //   commandParams.ContentLength = options.contentLength;
+    // }
 
     try {
       const command = new PutObjectCommand(commandParams);
@@ -100,7 +105,7 @@ export class S3UploadService {
       console.log(
         `[S3UploadService] Presigned URL generada para: ${key} (ContentType: ${
           options.contentType || "no especificado"
-        })`
+        }, Bucket: ${this.bucketName}, ExpiresIn: ${expiresIn}s)`
       );
 
       return {
