@@ -5,16 +5,12 @@ phases:
     commands:
       - echo "Login a Amazon ECR"
       - aws --version
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION \
-        | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
-
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
       - REPOSITORY_URI=$ECR_REPOSITORY_URI
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
-      - IMAGE_TAG=${COMMIT_HASH:=latest}
-
+      - IMAGE_TAG=${COMMIT_HASH:-latest}
       - echo "Repositorio: $REPOSITORY_URI"
       - echo "Tag: $IMAGE_TAG"
-
       - cd $CODEBUILD_SRC_DIR
 
   build:
@@ -26,9 +22,9 @@ phases:
     commands:
       - echo "Push de imagen a ECR"
       - docker push $REPOSITORY_URI:$IMAGE_TAG
-
-      - echo "Forzando redeploy del servicio ECS (sin matar instancias)"
-      - aws ecs update-service \
+      - echo "Forzando redeploy del servicio ECS"
+      - |
+        aws ecs update-service \
           --cluster trabajoya-prod-cluster \
           --service trabajoya-prod-backend \
           --force-new-deployment
