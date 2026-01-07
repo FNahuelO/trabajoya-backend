@@ -11,8 +11,8 @@ phases:
       - echo "Repository URI is $REPOSITORY_URI"
       - echo "Image tag is $IMAGE_TAG"
       - echo "Checking source code location..."
-      - echo "CODEBUILD_SRC_DIR: $CODEBUILD_SRC_DIR"
-      - echo "CODEBUILD_SRC_DIR_* variables:"
+      - echo CODEBUILD_SRC_DIR is $CODEBUILD_SRC_DIR
+      - echo CODEBUILD_SRC_DIR variables:
       - env | grep CODEBUILD_SRC || true
       - |
         if [ -d "$CODEBUILD_SRC_DIR" ]; then
@@ -36,8 +36,8 @@ phases:
     commands:
       - echo "Build started on `date`"
       - echo "Building the Docker image..."
-      - echo "CODEBUILD_SRC_DIR: $CODEBUILD_SRC_DIR"
-      - echo "Current directory: $(pwd)"
+      - echo CODEBUILD_SRC_DIR is $CODEBUILD_SRC_DIR
+      - echo Current directory is $(pwd)
       - echo "Checking for ZIP files that need extraction..."
       - find /codebuild -name '*.zip' -type f 2>/dev/null | head -5 || echo 'No ZIP files found'
       - |
