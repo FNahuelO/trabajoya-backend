@@ -24,27 +24,37 @@ export interface PresignedUrlResponse {
 @Injectable()
 export class S3UploadService {
   private s3Client: S3Client;
-  public readonly bucketName: string;
+  private _bucketName: string | null = null;
 
   constructor(private configService: ConfigService) {
     const region = this.configService.get<string>("AWS_REGION") || "us-east-1";
-    this.bucketName = this.configService.get<string>("S3_BUCKET_NAME") || "";
-
-    if (!this.bucketName) {
-      console.warn(
-        "[S3UploadService] ⚠️  S3_BUCKET_NAME no está configurado. Las operaciones de S3 fallarán."
-      );
-    } else {
-      console.log(
-        `[S3UploadService] ✅ Bucket configurado: ${this.bucketName} (region: ${region})`
-      );
-    }
 
     this.s3Client = new S3Client({
       region,
       // Las credenciales se obtienen automáticamente desde el IAM Role de EC2
       // o desde variables de entorno AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY
     });
+  }
+
+  /**
+   * Obtiene el nombre del bucket de forma lazy (cuando se necesita)
+   * Esto permite que AwsConfigService cargue los parámetros SSM primero
+   */
+  get bucketName(): string {
+    if (this._bucketName === null) {
+      this._bucketName = this.configService.get<string>("S3_BUCKET_NAME") || "";
+      
+      if (!this._bucketName) {
+        console.warn(
+          "[S3UploadService] ⚠️  S3_BUCKET_NAME no está configurado. Las operaciones de S3 fallarán."
+        );
+      } else {
+        console.log(
+          `[S3UploadService] ✅ Bucket configurado: ${this._bucketName} (region: ${this.s3Client.config.region})`
+        );
+      }
+    }
+    return this._bucketName;
   }
 
   /**
