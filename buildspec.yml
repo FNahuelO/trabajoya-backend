@@ -22,22 +22,15 @@ phases:
   build:
     commands:
       - echo "Build iniciado el $(date)"
-      - echo "Commit: $CODEBUILD_RESOLVED_SOURCE_VERSION"
+      - echo "Commit=$CODEBUILD_RESOLVED_SOURCE_VERSION"
       - echo "Verificando código fuente antes del build..."
       - ls -la src/config/aws-config.service.ts || echo "⚠️  Archivo no encontrado"
       - echo "Verificando contenido del archivo..."
       - grep -q "Cargando parámetros SSM" src/config/aws-config.service.ts && echo "✅ Código actualizado detectado" || echo "⚠️  Código antiguo detectado"
       - echo "Construyendo imagen Docker con --no-cache (sin caché)..."
-      - |
-        docker build \
-          --no-cache \
-          --pull \
-          --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-          --build-arg GIT_COMMIT="$CODEBUILD_RESOLVED_SOURCE_VERSION" \
-          -f Dockerfile.prod \
-          -t "$REPOSITORY_URI:$IMAGE_TAG" .
+      - docker build --no-cache --pull --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --build-arg GIT_COMMIT="$CODEBUILD_RESOLVED_SOURCE_VERSION" -f Dockerfile.prod -t "$REPOSITORY_URI:$IMAGE_TAG" .
       - docker tag "$REPOSITORY_URI:$IMAGE_TAG" "$REPOSITORY_URI:latest"
-      - echo "✅ Build completado: $REPOSITORY_URI:$IMAGE_TAG"
+      - echo "✅ Build completado=$REPOSITORY_URI:$IMAGE_TAG"
 
   post_build:
     commands:
