@@ -10,8 +10,15 @@ else
   echo "⚠️  wait-for-db.js no encontrado, continuando..."
 fi
 
-# ✅ NO ejecutar migraciones aquí - se hacen en CodeBuild
-echo "📦 Migraciones ya aplicadas en CI/CD"
+# ✅ Ejecutar migraciones antes de iniciar la app (opción más económica)
+echo "🔄 Ejecutando migraciones de base de datos..."
+if [ -f "node_modules/.bin/prisma" ] || command -v npx > /dev/null 2>&1; then
+  npx prisma migrate deploy || {
+    echo "⚠️  Error al ejecutar migraciones. La app continuará pero puede fallar si la DB no está actualizada."
+  }
+else
+  echo "⚠️  Prisma no encontrado. Saltando migraciones."
+fi
 
 echo "🌱 Verificando si se necesita ejecutar seed..."
 # Solo en primera vez, con lock para evitar race conditions

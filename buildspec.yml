@@ -47,146 +47,120 @@ phases:
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - docker push $REPOSITORY_URI:latest
 
-      - echo "Verificando cluster antes de ejecutar migraciones..."
-      - |
-        # Verificar si el cluster existe
-        CLUSTER_STATUS=$(aws ecs describe-clusters --clusters trabajoya-prod-cluster --query 'clusters[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
+      - echo "✅ Migraciones se ejecutarán automáticamente al iniciar el contenedor"
+      - echo "💡 Esto no tiene costo adicional - las migraciones corren en el mismo contenedor"
 
-        if [ "$CLUSTER_STATUS" != "ACTIVE" ]; then
-          echo "⚠️  Cluster 'trabajoya-prod-cluster' no encontrado o no está activo (status: $CLUSTER_STATUS)"
-          echo "💡 Saltando migraciones. Las migraciones se ejecutarán al iniciar el contenedor si está configurado así."
-          echo "SKIP_MIGRATIONS=true" >> /tmp/build.env
-        else
-          echo "✅ Cluster encontrado y activo"
-          echo "🔍 Verificando task definition para migraciones..."
-          
-          # Verificar si existe task definition de migraciones
-          if aws ecs describe-task-definition --task-definition trabajoya-prod-migrations --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null > /dev/null 2>&1; then
-            echo "✅ Task definition de migraciones encontrada"
-            echo "SKIP_MIGRATIONS=false" >> /tmp/build.env
-            echo "MIGRATION_TASK_DEF=trabajoya-prod-migrations" >> /tmp/build.env
-          else
-            echo "⚠️  Task definition 'trabajoya-prod-migrations' no existe"
-            echo "💡 Las migraciones se pueden ejecutar manualmente o se ejecutarán al iniciar el contenedor"
-            echo "SKIP_MIGRATIONS=true" >> /tmp/build.env
-          fi
-        fi
-
-      - echo "Ejecutando migraciones si están configuradas..."
-      - |
-        source /tmp/build.env 2>/dev/null || SKIP_MIGRATIONS="true"
-
-        if [ "$SKIP_MIGRATIONS" = "true" ]; then
-          echo "⏭️  Saltando ejecución de migraciones"
-          exit 0
-        fi
-
-        # Obtener configuración de red del servicio
-        NETWORK_CONFIG=$(aws ecs describe-services \
-          --cluster trabajoya-prod-cluster \
-          --services trabajoya-prod-backend \
-          --query 'services[0].networkConfiguration.awsvpcConfiguration' \
-          --output json 2>/dev/null)
-
-        if [ -z "$NETWORK_CONFIG" ] || [ "$NETWORK_CONFIG" = "null" ]; then
-          echo "⚠️  No se pudo obtener configuración de red del servicio"
-          echo "⏭️  Saltando migraciones. Ejecútalas manualmente o configura la red"
-          exit 0
-        fi
-
-        echo "🚀 Ejecutando migraciones..."
-        CONTAINER_NAME="backend"
-        if [ "$MIGRATION_TASK_DEF" = "trabajoya-prod-migrations" ]; then
-          CONTAINER_NAME="migrations"
-        fi
-
-        aws ecs run-task \
-          --cluster trabajoya-prod-cluster \
-          --task-definition $MIGRATION_TASK_DEF \
-          --launch-type FARGATE \
-          --network-configuration "awsvpcConfiguration=$NETWORK_CONFIG" \
-          --overrides "{\"containerOverrides\":[{\"name\":\"$CONTAINER_NAME\",\"command\":[\"npx\",\"prisma\",\"migrate\",\"deploy\"]}]}" || {
-          echo "⚠️  Error al ejecutar migraciones. Continuando con el deployment..."
-        }
-
-      - echo "Verificando si se necesita actualizar el servicio..."
+      - echo "🔄 Actualizando instancias EC2 existentes (sin crear nuevas)..."
       - |
         source /tmp/build.env 2>/dev/null || SKIP_DEPLOY="false"
-
-        # Verificar imagen actual del servicio
-        CURRENT_IMAGE=$(aws ecs describe-services \
-          --cluster trabajoya-prod-cluster \
-          --services trabajoya-prod-backend \
-          --query 'services[0].deployments[?status==`PRIMARY`].taskDefinition' \
-          --output text | xargs -I {} aws ecs describe-task-definition \
-          --task-definition {} \
-          --query 'taskDefinition.containerDefinitions[0].image' \
-          --output text 2>/dev/null || echo "")
-
-        TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
-        echo "Imagen actual en servicio: $CURRENT_IMAGE"
-        echo "Imagen objetivo: $TARGET_IMAGE"
 
         if [ "$SKIP_DEPLOY" = "true" ]; then
           echo "⏭️  Saltando deployment - imagen no ha cambiado"
           exit 0
         fi
 
-        if [ "$CURRENT_IMAGE" = "$TARGET_IMAGE" ]; then
-          echo "⏭️  El servicio ya está usando la imagen $TARGET_IMAGE"
-          echo "✅ No se requiere actualización - evitando crear nuevas tareas"
+        TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
+        PROJECT_NAME="${PROJECT_NAME:-trabajoya-prod}"
+        CONTAINER_NAME="${PROJECT_NAME}-backend"
+
+        echo "Imagen objetivo: $TARGET_IMAGE"
+        echo "Nombre del contenedor: $CONTAINER_NAME"
+
+        # Buscar Auto Scaling Group por nombre
+        ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
+          --query "AutoScalingGroups[?contains(AutoScalingGroupName, '${PROJECT_NAME}') && contains(AutoScalingGroupName, 'ASG')].AutoScalingGroupName" \
+          --output text 2>/dev/null | head -n 1)
+
+        if [ -z "$ASG_NAME" ]; then
+          echo "⚠️  No se encontró Auto Scaling Group. Buscando instancias directamente..."
+          # Buscar instancias por tag
+          INSTANCE_IDS=$(aws ec2 describe-instances \
+            --filters "Name=tag:aws:autoscaling:groupName,Values=*${PROJECT_NAME}*" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[*].Instances[*].InstanceId" \
+            --output text 2>/dev/null)
+        else
+          echo "✅ Auto Scaling Group encontrado: $ASG_NAME"
+          # Obtener IDs de instancias del ASG
+          INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "$ASG_NAME" \
+            --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy' && LifecycleState=='InService'].InstanceId" \
+            --output text 2>/dev/null)
+        fi
+
+        if [ -z "$INSTANCE_IDS" ]; then
+          echo "⚠️  No se encontraron instancias activas"
+          echo "💡 Verifica que el Auto Scaling Group tenga instancias ejecutándose"
           exit 0
         fi
 
-        echo "📦 Actualizando task definition con nuevo tag"
-        TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition trabajoya-prod-backend --query 'taskDefinition')
-        NEW_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "$TARGET_IMAGE" '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
-        NEW_REVISION=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.revision' --output text)
-        echo "Nueva revisión registrada: $NEW_REVISION"
+        echo "📋 Instancias encontradas: $INSTANCE_IDS"
 
-      - echo "🔄 Actualizando servicio SOLO si hay cambios reales"
-      - |
-        source /tmp/build.env 2>/dev/null || SKIP_DEPLOY="false"
+        # Preparar comandos SSM para actualizar y reiniciar el contenedor
+        # El script hace pull de la nueva imagen y reinicia el contenedor (si está configurado con restart policy)
+        SSM_COMMANDS=(
+          "set -e"
+          "REGION=\$(curl -s http://169.254.169.254/latest/meta-data/placement/region)"
+          "ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)"
+          "aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com"
+          "docker pull ${TARGET_IMAGE} || docker pull ${REPOSITORY_URI}:latest"
+          "if docker ps --format '{{.Names}}' | grep -q '^${CONTAINER_NAME}$'; then docker restart ${CONTAINER_NAME} && echo '✅ Contenedor reiniciado' || (docker stop ${CONTAINER_NAME} && docker rm ${CONTAINER_NAME} && echo '⚠️  Contenedor detenido - será recreado por user-data o health check'); else echo '⚠️  Contenedor no estaba corriendo - será iniciado por user-data'; fi"
+          "echo '✅ Actualización completada'"
+        )
 
-        if [ "$SKIP_DEPLOY" = "true" ]; then
-          exit 0
-        fi
+        # Convertir array a formato JSON para SSM
+        COMMANDS_JSON=$(printf '%s\n' "${SSM_COMMANDS[@]}" | jq -R . | jq -s .)
 
-        # Verificar una vez más antes de actualizar
-        CURRENT_IMAGE=$(aws ecs describe-services \
-          --cluster trabajoya-prod-cluster \
-          --services trabajoya-prod-backend \
-          --query 'services[0].deployments[?status==`PRIMARY`].taskDefinition' \
-          --output text | xargs -I {} aws ecs describe-task-definition \
-          --task-definition {} \
-          --query 'taskDefinition.containerDefinitions[0].image' \
-          --output text 2>/dev/null || echo "")
+        # Enviar comando a todas las instancias para actualizar el contenedor
+        for INSTANCE_ID in $INSTANCE_IDS; do
+          echo "🚀 Actualizando instancia: $INSTANCE_ID"
+          
+          # Usar SSM Run Command para ejecutar el script de actualización
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=${COMMANDS_JSON}" \
+            --output-s3-bucket-name "${PROJECT_NAME}-cicd-artifacts" \
+            --output-s3-key-prefix "ssm-commands" \
+            --timeout-seconds 600 \
+            --query 'Command.CommandId' \
+            --output text 2>/dev/null)
+          
+          if [ -n "$COMMAND_ID" ] && [ "$COMMAND_ID" != "None" ]; then
+            echo "✅ Comando enviado a instancia $INSTANCE_ID (CommandId: $COMMAND_ID)"
+            
+            # Esperar a que el comando se complete (máximo 10 minutos)
+            echo "⏳ Esperando que se complete la actualización (puede tardar unos minutos)..."
+            for i in {1..60}; do
+              STATUS=$(aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$INSTANCE_ID" \
+                --query 'Status' \
+                --output text 2>/dev/null || echo "Pending")
+              
+              if [ "$STATUS" = "Success" ]; then
+                echo "✅ Instancia $INSTANCE_ID actualizada exitosamente"
+                break
+              elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+                echo "⚠️  Instancia $INSTANCE_ID falló con estado: $STATUS"
+                break
+              fi
+              
+              if [ $i -lt 60 ]; then
+                sleep 10
+              fi
+            done
+            
+            if [ "$STATUS" != "Success" ] && [ "$STATUS" != "Failed" ] && [ "$STATUS" != "Cancelled" ] && [ "$STATUS" != "TimedOut" ]; then
+              echo "⚠️  El comando aún está ejecutándose. Continuando..."
+            fi
+          else
+            echo "⚠️  No se pudo enviar comando a instancia $INSTANCE_ID"
+            echo "💡 Asegúrate de que SSM Agent esté instalado y configurado"
+          fi
+        done
 
-        if [ "$CURRENT_IMAGE" = "$REPOSITORY_URI:$IMAGE_TAG" ]; then
-          echo "✅ El servicio ya está actualizado - no se crearán nuevas tareas"
-          exit 0
-        fi
+        echo "💡 Nota: El contenedor se reiniciará automáticamente usando el mismo user-data script"
+        echo "💡 Las migraciones se ejecutarán automáticamente al iniciar el contenedor"
 
-        echo "🚀 Iniciando deployment optimizado..."
-        aws ecs update-service \
-          --cluster trabajoya-prod-cluster \
-          --service trabajoya-prod-backend \
-          --task-definition trabajoya-prod-backend:$NEW_REVISION \
-          --deployment-configuration "maximumPercent=150,minimumHealthyPercent=50" \
-          --health-check-grace-period-seconds 30
-
-      - echo "⏳ Esperando que el deployment se estabilice..."
-      - |
-        source /tmp/build.env 2>/dev/null || SKIP_DEPLOY="false"
-
-        if [ "$SKIP_DEPLOY" = "true" ]; then
-          exit 0
-        fi
-
-        aws ecs wait services-stable \
-          --cluster trabajoya-prod-cluster \
-          --services trabajoya-prod-backend \
-          --max-attempts 60 \
-          --delay 10
-
-      - echo "✅ Deploy completado. Servicio actualizado sin crear tareas innecesarias"
+      - echo "✅ Deploy completado. Instancias actualizadas sin crear nuevas"
