@@ -47,14 +47,67 @@ phases:
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - docker push $REPOSITORY_URI:latest
 
-      - echo "Ejecutando migraciones ANTES del deploy"
+      - echo "Verificando cluster antes de ejecutar migraciones..."
       - |
+        # Verificar si el cluster existe
+        CLUSTER_STATUS=$(aws ecs describe-clusters --clusters trabajoya-prod-cluster --query 'clusters[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
+
+        if [ "$CLUSTER_STATUS" != "ACTIVE" ]; then
+          echo "⚠️  Cluster 'trabajoya-prod-cluster' no encontrado o no está activo (status: $CLUSTER_STATUS)"
+          echo "💡 Saltando migraciones. Las migraciones se ejecutarán al iniciar el contenedor si está configurado así."
+          echo "SKIP_MIGRATIONS=true" >> /tmp/build.env
+        else
+          echo "✅ Cluster encontrado y activo"
+          echo "🔍 Verificando task definition para migraciones..."
+          
+          # Verificar si existe task definition de migraciones
+          if aws ecs describe-task-definition --task-definition trabajoya-prod-migrations --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null > /dev/null 2>&1; then
+            echo "✅ Task definition de migraciones encontrada"
+            echo "SKIP_MIGRATIONS=false" >> /tmp/build.env
+            echo "MIGRATION_TASK_DEF=trabajoya-prod-migrations" >> /tmp/build.env
+          else
+            echo "⚠️  Task definition 'trabajoya-prod-migrations' no existe"
+            echo "💡 Las migraciones se pueden ejecutar manualmente o se ejecutarán al iniciar el contenedor"
+            echo "SKIP_MIGRATIONS=true" >> /tmp/build.env
+          fi
+        fi
+
+      - echo "Ejecutando migraciones si están configuradas..."
+      - |
+        source /tmp/build.env 2>/dev/null || SKIP_MIGRATIONS="true"
+
+        if [ "$SKIP_MIGRATIONS" = "true" ]; then
+          echo "⏭️  Saltando ejecución de migraciones"
+          exit 0
+        fi
+
+        # Obtener configuración de red del servicio
+        NETWORK_CONFIG=$(aws ecs describe-services \
+          --cluster trabajoya-prod-cluster \
+          --services trabajoya-prod-backend \
+          --query 'services[0].networkConfiguration.awsvpcConfiguration' \
+          --output json 2>/dev/null)
+
+        if [ -z "$NETWORK_CONFIG" ] || [ "$NETWORK_CONFIG" = "null" ]; then
+          echo "⚠️  No se pudo obtener configuración de red del servicio"
+          echo "⏭️  Saltando migraciones. Ejecútalas manualmente o configura la red"
+          exit 0
+        fi
+
+        echo "🚀 Ejecutando migraciones..."
+        CONTAINER_NAME="backend"
+        if [ "$MIGRATION_TASK_DEF" = "trabajoya-prod-migrations" ]; then
+          CONTAINER_NAME="migrations"
+        fi
+
         aws ecs run-task \
           --cluster trabajoya-prod-cluster \
-          --task-definition trabajoya-prod-migrations \
+          --task-definition $MIGRATION_TASK_DEF \
           --launch-type FARGATE \
-          --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxx],securityGroups=[sg-xxxxx],assignPublicIp=ENABLED}" \
-          --overrides "{\"containerOverrides\":[{\"name\":\"migrations\",\"command\":[\"npx\",\"prisma\",\"migrate\",\"deploy\"]}]}"
+          --network-configuration "awsvpcConfiguration=$NETWORK_CONFIG" \
+          --overrides "{\"containerOverrides\":[{\"name\":\"$CONTAINER_NAME\",\"command\":[\"npx\",\"prisma\",\"migrate\",\"deploy\"]}]}" || {
+          echo "⚠️  Error al ejecutar migraciones. Continuando con el deployment..."
+        }
 
       - echo "Verificando si se necesita actualizar el servicio..."
       - |
