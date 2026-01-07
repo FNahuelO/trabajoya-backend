@@ -65,27 +65,62 @@ phases:
 
         echo "Imagen objetivo: $TARGET_IMAGE"
         echo "Nombre del contenedor: $CONTAINER_NAME"
+        echo "Buscando instancias EC2..."
 
-        # Buscar Auto Scaling Group por nombre
-        ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
-          --query "AutoScalingGroups[?contains(AutoScalingGroupName, '${PROJECT_NAME}') && contains(AutoScalingGroupName, 'ASG')].AutoScalingGroupName" \
-          --output text 2>/dev/null | head -n 1)
+        # Buscar todas las instancias EC2 en ejecución que podrían ser del proyecto
+        # Buscar por múltiples criterios:
+        # 1. Por tag de ASG
+        # 2. Por nombre de instancia
+        # 3. Por cualquier tag relacionado
 
-        if [ -z "$ASG_NAME" ]; then
-          echo "⚠️  No se encontró Auto Scaling Group. Buscando instancias directamente..."
-          # Buscar instancias por tag
+        echo "🔍 Buscando instancias por múltiples criterios..."
+
+        # Primero intentar encontrar por ASG
+        ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups \
+          --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'trabajoya') || contains(AutoScalingGroupName, 'prod')].AutoScalingGroupName" \
+          --output text 2>/dev/null)
+
+        INSTANCE_IDS=""
+
+        if [ -n "$ASG_NAMES" ]; then
+          echo "✅ Auto Scaling Groups encontrados: $ASG_NAMES"
+          for ASG_NAME in $ASG_NAMES; do
+            echo "   Procesando ASG: $ASG_NAME"
+            ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups \
+              --auto-scaling-group-names "$ASG_NAME" \
+              --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy' && LifecycleState=='InService'].InstanceId" \
+              --output text 2>/dev/null)
+            if [ -n "$ASG_INSTANCES" ]; then
+              INSTANCE_IDS="$INSTANCE_IDS $ASG_INSTANCES"
+            fi
+          done
+          INSTANCE_IDS=$(echo $INSTANCE_IDS | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
+        fi
+
+        # Si no encontramos por ASG, buscar directamente por instancias
+        if [ -z "$INSTANCE_IDS" ]; then
+          echo "⚠️  No se encontraron instancias por ASG. Buscando directamente..."
           INSTANCE_IDS=$(aws ec2 describe-instances \
-            --filters "Name=tag:aws:autoscaling:groupName,Values=*${PROJECT_NAME}*" \
-                      "Name=instance-state-name,Values=running" \
+            --filters \
+              "Name=instance-state-name,Values=running" \
+              "Name=tag:Name,Values=*trabajoya*" \
             --query "Reservations[*].Instances[*].InstanceId" \
             --output text 2>/dev/null)
-        else
-          echo "✅ Auto Scaling Group encontrado: $ASG_NAME"
-          # Obtener IDs de instancias del ASG
-          INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-names "$ASG_NAME" \
-            --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy' && LifecycleState=='InService'].InstanceId" \
-            --output text 2>/dev/null)
+          
+          # Si aún no encuentra, buscar todas las instancias corriendo
+          if [ -z "$INSTANCE_IDS" ]; then
+            echo "⚠️  Buscando todas las instancias corriendo..."
+            ALL_INSTANCES=$(aws ec2 describe-instances \
+              --filters "Name=instance-state-name,Values=running" \
+              --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0]]" \
+              --output text 2>/dev/null)
+            
+            echo "📋 Instancias encontradas:"
+            echo "$ALL_INSTANCES"
+            
+            # Extraer solo los IDs
+            INSTANCE_IDS=$(echo "$ALL_INSTANCES" | awk '{print $1}' | tr '\n' ' ' | xargs)
+          fi
         fi
 
         if [ -z "$INSTANCE_IDS" ]; then
