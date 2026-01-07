@@ -102,10 +102,17 @@ export class S3UploadService {
         expiresIn,
       });
 
+      // Log detallado para debugging
+      const urlParams = new URL(uploadUrl).searchParams;
       console.log(
-        `[S3UploadService] Presigned URL generada para: ${key} (ContentType: ${
-          options.contentType || "no especificado"
-        }, Bucket: ${this.bucketName}, ExpiresIn: ${expiresIn}s)`
+        `[S3UploadService] Presigned URL generada para: ${key}`,
+        {
+          bucket: this.bucketName,
+          contentType: options.contentType || "no especificado",
+          expiresIn: `${expiresIn}s`,
+          urlHasContentType: urlParams.has('ContentType') || urlParams.has('content-type'),
+          contentTypeInUrl: urlParams.get('ContentType') || urlParams.get('content-type'),
+        }
       );
 
       return {
