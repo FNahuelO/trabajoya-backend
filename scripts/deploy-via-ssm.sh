@@ -69,17 +69,38 @@ aws ecr get-login-password --region "\$REGION" | docker login --username AWS --p
 
 echo "📥 Descargando imagen: \$TARGET_IMAGE"
 echo "🔍 Verificando que la imagen existe en ECR..."
-if ! docker pull "\$TARGET_IMAGE" 2>&1 | grep -q "Error\|denied\|not found"; then
+
+# Verificar primero que la imagen existe en ECR
+REPO_NAME=\$(echo "\$TARGET_IMAGE" | cut -d'/' -f2 | cut -d':' -f1)
+IMAGE_TAG=\$(echo "\$TARGET_IMAGE" | cut -d':' -f2)
+if ! aws ecr describe-images --repository-name "\$REPO_NAME" --image-ids imageTag="\$IMAGE_TAG" --region "\$REGION" >/dev/null 2>&1; then
+  echo "❌ La imagen \$TARGET_IMAGE no existe en ECR"
+  echo "🔍 Buscando imágenes disponibles en ECR..."
+  aws ecr describe-images --repository-name "\$REPO_NAME" --region "\$REGION" --query 'imageDetails[*].[imageTags[0],imagePushedAt]' --output table 2>/dev/null | head -10 || echo "No se pudieron listar imágenes"
+  exit 1
+fi
+
+# Intentar hacer pull de la imagen
+PULL_OUTPUT=\$(docker pull "\$TARGET_IMAGE" 2>&1)
+PULL_EXIT_CODE=\$?
+
+if [ \$PULL_EXIT_CODE -eq 0 ]; then
   echo "✅ Imagen \$TARGET_IMAGE descargada correctamente"
+  echo "\$PULL_OUTPUT" | tail -3
 else
-  echo "⚠️  No se pudo descargar \$TARGET_IMAGE, intentando con :latest"
+  echo "❌ Error al descargar \$TARGET_IMAGE (exit code: \$PULL_EXIT_CODE)"
+  echo "\$PULL_OUTPUT"
+  echo "⚠️  Intentando con :latest como fallback..."
   LATEST_IMAGE="\${TARGET_IMAGE%:*}:latest"
-  if ! docker pull "\$LATEST_IMAGE" 2>&1 | grep -q "Error\|denied\|not found"; then
-    echo "✅ Imagen :latest descargada, pero verificando que sea reciente..."
+  LATEST_PULL_OUTPUT=\$(docker pull "\$LATEST_IMAGE" 2>&1)
+  LATEST_PULL_EXIT_CODE=\$?
+  if [ \$LATEST_PULL_EXIT_CODE -eq 0 ]; then
+    echo "✅ Imagen :latest descargada como fallback"
     TARGET_IMAGE="\$LATEST_IMAGE"
   else
-    echo "❌ No se pudo descargar ninguna imagen. Verificando ECR..."
-    aws ecr describe-images --repository-name "\${TARGET_IMAGE#*/}" --image-ids imageTag="\${TARGET_IMAGE##*:}" --region "\$REGION" 2>&1 || echo "⚠️  Imagen no encontrada en ECR"
+    echo "❌ No se pudo descargar ninguna imagen"
+    echo "📋 Output del pull de latest:"
+    echo "\$LATEST_PULL_OUTPUT"
     exit 1
   fi
 fi
@@ -88,8 +109,10 @@ fi
 IMAGE_ID=\$(docker images "\$TARGET_IMAGE" --format "{{.ID}}" | head -1)
 if [ -z "\$IMAGE_ID" ]; then
   echo "❌ Error: La imagen \$TARGET_IMAGE no se encuentra localmente después del pull"
-  echo "📋 Imágenes disponibles:"
-  docker images "\${TARGET_IMAGE%:*}" --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}" | head -5
+  echo "📋 Imágenes disponibles en el repositorio:"
+  docker images "\${TARGET_IMAGE%:*}" --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}" | head -10
+  echo "📋 Todas las imágenes Docker:"
+  docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}" | head -10
   exit 1
 fi
 
