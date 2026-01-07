@@ -1,162 +1,69 @@
-version: 0.2
-
-phases:
-  pre_build:
-    commands:
-      - echo "Login a Amazon ECR"
-      - aws --version
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
-      - |
-        export REPOSITORY_URI=$ECR_REPOSITORY_URI
-        export COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
-        export IMAGE_TAG=${COMMIT_HASH:-latest}
-        echo "Repositorio: $REPOSITORY_URI"
-        echo "Tag: $IMAGE_TAG"
-      - cd $CODEBUILD_SRC_DIR
-
-  build:
-    commands:
-      - echo "Login a ECR Public Gallery para imágenes base sin límites..."
-      - aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws 2>/dev/null || echo "⚠️  No se pudo hacer login a ECR Public, continuando..."
-      - echo "Verificando Dockerfile antes del build..."
-      - echo "=== Contenido de las primeras 5 líneas del Dockerfile ==="
-      - head -5 Dockerfile.prod || echo "⚠️  Dockerfile.prod no encontrado"
-      - echo "=== Buscando línea FROM ==="
-      - grep "^FROM" Dockerfile.prod || echo "⚠️  No se encontró línea FROM en Dockerfile"
-      - echo "=== Verificando si el cambio está presente ==="
-      - grep -q "public.ecr.aws" Dockerfile.prod && echo "✅ Dockerfile usa ECR Public" || echo "❌ Dockerfile NO usa ECR Public"
-      - echo "Build iniciado el $(date)"
-      - echo "Verificando si la imagen ya existe en ECR..."
-      - |
-        ECR_REPO_NAME=$(echo $ECR_REPOSITORY_URI | cut -d'/' -f2)
-        if aws ecr describe-images --repository-name $ECR_REPO_NAME --image-ids imageTag=$IMAGE_TAG 2>/dev/null; then
-          echo "⚠️  Imagen con tag $IMAGE_TAG ya existe. Verificando si hay cambios..."
-          OLD_DIGEST=$(aws ecr describe-images --repository-name $ECR_REPO_NAME --image-ids imageTag=$IMAGE_TAG --query 'imageDetails[0].imageDigest' --output text)
-          echo "Digest actual: $OLD_DIGEST"
-          export OLD_DIGEST
-        else
-          echo "✅ Imagen nueva, procediendo con build..."
-        fi
-      - echo "Iniciando build sin cache para asegurar uso de imagen correcta..."
-      - echo "=== Pre-pull de imagen base desde ECR Public ==="
-      - docker pull public.ecr.aws/docker/library/node:20-alpine || echo "⚠️  No se pudo hacer pull, continuando..."
-      - echo "=== Iniciando build ==="
-      - docker build --no-cache --pull -f Dockerfile.prod -t $REPOSITORY_URI:$IMAGE_TAG .
-      - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
-      - |
-        NEW_DIGEST=$(docker inspect $REPOSITORY_URI:$IMAGE_TAG --format='{{index .RepoDigests 0}}' | cut -d'@' -f2 || echo "new-image")
-        echo "Nuevo digest: $NEW_DIGEST"
-        if [ -n "$OLD_DIGEST" ] && [ "$NEW_DIGEST" = "$OLD_DIGEST" ]; then
-          echo "⚠️  La imagen no ha cambiado. Marcando para skip de deployment..."
-          echo "SKIP_DEPLOY=true" > /tmp/build.env
-        else
-          echo "✅ Imagen nueva o modificada. Deployment necesario."
-          echo "SKIP_DEPLOY=false" > /tmp/build.env
-        fi
-
-  post_build:
-    commands:
-      - echo "Push de imagen a ECR"
-      - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - docker push $REPOSITORY_URI:latest
-
-      - echo "✅ Migraciones se ejecutarán automáticamente al iniciar el contenedor"
-      - echo "💡 Esto no tiene costo adicional - las migraciones corren en el mismo contenedor"
-
-      - echo "🔄 Actualizando instancias EC2 existentes (sin crear nuevas)..."
-      - |
-        source /tmp/build.env 2>/dev/null || SKIP_DEPLOY="false"
-
-        if [ "$SKIP_DEPLOY" = "true" ]; then
-          echo "⏭️  Saltando deployment - imagen no ha cambiado"
-          exit 0
-        fi
-
-        TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
-        PROJECT_NAME="${PROJECT_NAME:-trabajoya-prod}"
-        CONTAINER_NAME="${PROJECT_NAME}-backend"
-
-        echo "Imagen objetivo: $TARGET_IMAGE"
-        echo "Nombre del contenedor: $CONTAINER_NAME"
-        echo "Buscando instancias EC2..."
-
-        # Permitir especificar instancia directamente por variable de entorno
-        if [ -n "$EC2_INSTANCE_ID" ]; then
-          echo "✅ Usando instancia especificada en variable de entorno: $EC2_INSTANCE_ID"
-          INSTANCE_IDS="$EC2_INSTANCE_ID"
-        else
-          # Buscar todas las instancias EC2 en ejecución que podrían ser del proyecto
-        # Buscar por múltiples criterios:
-        # 1. Por tag de ASG
-        # 2. Por nombre de instancia
-        # 3. Por cualquier tag relacionado
-
-        echo "🔍 Buscando instancias por múltiples criterios..."
-
-        # Primero intentar encontrar por ASG
-        ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups \
-          --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'trabajoya') || contains(AutoScalingGroupName, 'prod')].AutoScalingGroupName" \
-          --output text 2>/dev/null)
-
+post_build:
+  commands:
+    - echo "Push de imagen a ECR"
+    - docker push $REPOSITORY_URI:$IMAGE_TAG
+    - docker push $REPOSITORY_URI:latest
+    - echo "✅ Migraciones se ejecutarán automáticamente al iniciar el contenedor"
+    - echo "💡 Esto no tiene costo adicional - las migraciones corren en el mismo contenedor"
+    - echo "🔄 Actualizando instancias EC2 existentes (sin crear nuevas)..."
+    - |
+      source /tmp/build.env 2>/dev/null || SKIP_DEPLOY="false"
+      
+      if [ "$SKIP_DEPLOY" = "true" ]; then
+        echo "⏭️  Saltando deployment - imagen no ha cambiado"
+        exit 0
+      fi
+      
+      TARGET_IMAGE="$REPOSITORY_URI:$IMAGE_TAG"
+      PROJECT_NAME="${PROJECT_NAME:-trabajoya-prod}"
+      CONTAINER_NAME="${PROJECT_NAME}-backend"
+      
+      echo "Imagen objetivo: $TARGET_IMAGE"
+      echo "Nombre del contenedor: $CONTAINER_NAME"
+      echo "Buscando instancias EC2..."
+      
+      # Permitir especificar instancia directamente
+      if [ -n "$EC2_INSTANCE_ID" ]; then
+        echo "✅ Usando instancia especificada: $EC2_INSTANCE_ID"
+        INSTANCE_IDS="$EC2_INSTANCE_ID"
+      else
+        # Buscar por ASG
+        echo "🔍 Buscando Auto Scaling Groups..."
+        ASG_NAMES=""
+        ASG_NAMES=$(aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'trabajoya') || contains(AutoScalingGroupName, 'prod')].AutoScalingGroupName" --output text 2>/dev/null || echo "")
+        
         INSTANCE_IDS=""
-
+        
         if [ -n "$ASG_NAMES" ]; then
           echo "✅ Auto Scaling Groups encontrados: $ASG_NAMES"
           for ASG_NAME in $ASG_NAMES; do
             echo "   Procesando ASG: $ASG_NAME"
-            ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups \
-              --auto-scaling-group-names "$ASG_NAME" \
-              --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy' && LifecycleState=='InService'].InstanceId" \
-              --output text 2>/dev/null)
+            ASG_INSTANCES=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy' && LifecycleState=='InService'].InstanceId" --output text 2>/dev/null || echo "")
             if [ -n "$ASG_INSTANCES" ]; then
               INSTANCE_IDS="$INSTANCE_IDS $ASG_INSTANCES"
             fi
           done
           INSTANCE_IDS=$(echo $INSTANCE_IDS | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
         fi
-
-        # Si no encontramos por ASG, buscar directamente por instancias
+        
+        # Si no encuentra por ASG, buscar directamente
         if [ -z "$INSTANCE_IDS" ]; then
           echo "⚠️  No se encontraron instancias por ASG. Buscando directamente..."
-          INSTANCE_IDS=$(aws ec2 describe-instances \
-            --filters \
-              "Name=instance-state-name,Values=running" \
-              "Name=tag:Name,Values=*trabajoya*" \
-            --query "Reservations[*].Instances[*].InstanceId" \
-            --output text 2>/dev/null)
+          INSTANCE_IDS=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" "Name=tag:Name,Values=*trabajoya*" --query "Reservations[*].Instances[*].InstanceId" --output text 2>/dev/null || echo "")
           
-          # Si aún no encuentra, buscar todas las instancias corriendo
           if [ -z "$INSTANCE_IDS" ]; then
             echo "⚠️  Buscando todas las instancias corriendo..."
-            ALL_INSTANCES=$(aws ec2 describe-instances \
-              --filters "Name=instance-state-name,Values=running" \
-              --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],PrivateIpAddress]" \
-              --output text 2>/dev/null)
+            ALL_INSTANCES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].[InstanceId,Tags[?Key=='Name'].Value|[0],PrivateIpAddress]" --output text 2>/dev/null || echo "")
             
-            echo "📋 Todas las instancias corriendo encontradas:"
+            echo "📋 Instancias corriendo encontradas:"
             echo "$ALL_INSTANCES"
-            echo ""
-            echo "💡 Si ninguna de estas es correcta, puedes:"
-            echo "   1. Establecer la variable de entorno EC2_INSTANCE_ID en CodeBuild"
-            echo "   2. O buscar por el nombre del stack de CloudFormation"
             
-            # Buscar por stack de CloudFormation
-            STACK_NAME=$(aws cloudformation list-stacks \
-              --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
-              --query "StackSummaries[?contains(StackName, 'trabajoya') && contains(StackName, 'prod')].StackName" \
-              --output text 2>/dev/null | head -n 1)
+            # Buscar por CloudFormation stack
+            STACK_NAME=$(aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query "StackSummaries[?contains(StackName, 'trabajoya') && contains(StackName, 'prod')].StackName" --output text 2>/dev/null | head -n 1 || echo "")
             
             if [ -n "$STACK_NAME" ]; then
-              echo "🔍 Stack de CloudFormation encontrado: $STACK_NAME"
-              echo "   Buscando recursos EC2 en el stack..."
-              
-              # Buscar instancias por stack
-              STACK_INSTANCES=$(aws ec2 describe-instances \
-                --filters \
-                  "Name=instance-state-name,Values=running" \
-                  "Name=tag:aws:cloudformation:stack-name,Values=$STACK_NAME" \
-                --query "Reservations[*].Instances[*].InstanceId" \
-                --output text 2>/dev/null)
+              echo "🔍 Stack encontrado: $STACK_NAME"
+              STACK_INSTANCES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" "Name=tag:aws:cloudformation:stack-name,Values=$STACK_NAME" --query "Reservations[*].Instances[*].InstanceId" --output text 2>/dev/null || echo "")
               
               if [ -n "$STACK_INSTANCES" ]; then
                 echo "✅ Instancias encontradas en stack: $STACK_INSTANCES"
@@ -165,80 +72,63 @@ phases:
             fi
           fi
         fi
-
-        if [ -z "$INSTANCE_IDS" ]; then
-          echo "⚠️  No se encontraron instancias activas"
-          echo "💡 Verifica que el Auto Scaling Group tenga instancias ejecutándose"
-          exit 0
-        fi
-
-        echo "📋 Instancias encontradas: $INSTANCE_IDS"
-
-        # Preparar comandos SSM para actualizar y reiniciar el contenedor
-        # El script hace pull de la nueva imagen y reinicia el contenedor (si está configurado con restart policy)
-        SSM_COMMANDS=(
-          "set -e"
-          "REGION=\$(curl -s http://169.254.169.254/latest/meta-data/placement/region)"
-          "ACCOUNT_ID=\$(aws sts get-caller-identity --query Account --output text)"
-          "aws ecr get-login-password --region \$REGION | docker login --username AWS --password-stdin \$ACCOUNT_ID.dkr.ecr.\$REGION.amazonaws.com"
-          "docker pull ${TARGET_IMAGE} || docker pull ${REPOSITORY_URI}:latest"
-          "if docker ps --format '{{.Names}}' | grep -q '^${CONTAINER_NAME}$'; then docker restart ${CONTAINER_NAME} && echo '✅ Contenedor reiniciado' || (docker stop ${CONTAINER_NAME} && docker rm ${CONTAINER_NAME} && echo '⚠️  Contenedor detenido - será recreado por user-data o health check'); else echo '⚠️  Contenedor no estaba corriendo - será iniciado por user-data'; fi"
-          "echo '✅ Actualización completada'"
-        )
-
-        # Convertir array a formato JSON para SSM
-        COMMANDS_JSON=$(printf '%s\n' "${SSM_COMMANDS[@]}" | jq -R . | jq -s .)
-
-        # Enviar comando a todas las instancias para actualizar el contenedor
-        for INSTANCE_ID in $INSTANCE_IDS; do
-          echo "🚀 Actualizando instancia: $INSTANCE_ID"
+      fi
+      
+      if [ -z "$INSTANCE_IDS" ]; then
+        echo "⚠️  No se encontraron instancias activas"
+        exit 0
+      fi
+      
+      echo "📋 Instancias encontradas: $INSTANCE_IDS"
+      
+      # Preparar comandos para SSM
+      cat > /tmp/update-commands.json << 'EOFCMDS'
+      [
+        "set -e",
+        "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
+        "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
+        "aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com",
+        "docker pull TARGET_IMAGE_PLACEHOLDER || docker pull REPOSITORY_PLACEHOLDER:latest",
+        "if docker ps --format '{{.Names}}' | grep -q '^CONTAINER_NAME_PLACEHOLDER$'; then docker restart CONTAINER_NAME_PLACEHOLDER && echo '✅ Contenedor reiniciado' || (docker stop CONTAINER_NAME_PLACEHOLDER && docker rm CONTAINER_NAME_PLACEHOLDER && echo '⚠️  Contenedor detenido'); else echo '⚠️  Contenedor no corriendo'; fi",
+        "echo '✅ Actualización completada'"
+      ]
+      EOFCMDS
+      
+      # Reemplazar placeholders
+      sed -i "s|TARGET_IMAGE_PLACEHOLDER|${TARGET_IMAGE}|g" /tmp/update-commands.json
+      sed -i "s|REPOSITORY_PLACEHOLDER|${REPOSITORY_URI}|g" /tmp/update-commands.json
+      sed -i "s|CONTAINER_NAME_PLACEHOLDER|${CONTAINER_NAME}|g" /tmp/update-commands.json
+      
+      COMMANDS_JSON=$(cat /tmp/update-commands.json)
+      
+      # Actualizar cada instancia
+      for INSTANCE_ID in $INSTANCE_IDS; do
+        echo "🚀 Actualizando instancia: $INSTANCE_ID"
+        
+        COMMAND_ID=$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name "AWS-RunShellScript" --parameters "commands=${COMMANDS_JSON}" --timeout-seconds 600 --query 'Command.CommandId' --output text 2>/dev/null || echo "")
+        
+        if [ -n "$COMMAND_ID" ] && [ "$COMMAND_ID" != "None" ]; then
+          echo "✅ Comando enviado (ID: $COMMAND_ID)"
           
-          # Usar SSM Run Command para ejecutar el script de actualización
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --parameters "commands=${COMMANDS_JSON}" \
-            --output-s3-bucket-name "${PROJECT_NAME}-cicd-artifacts" \
-            --output-s3-key-prefix "ssm-commands" \
-            --timeout-seconds 600 \
-            --query 'Command.CommandId' \
-            --output text 2>/dev/null)
-          
-          if [ -n "$COMMAND_ID" ] && [ "$COMMAND_ID" != "None" ]; then
-            echo "✅ Comando enviado a instancia $INSTANCE_ID (CommandId: $COMMAND_ID)"
+          echo "⏳ Esperando actualización..."
+          for i in $(seq 1 30); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query 'Status' --output text 2>/dev/null || echo "Pending")
             
-            # Esperar a que el comando se complete (máximo 10 minutos)
-            echo "⏳ Esperando que se complete la actualización (puede tardar unos minutos)..."
-            for i in {1..60}; do
-              STATUS=$(aws ssm get-command-invocation \
-                --command-id "$COMMAND_ID" \
-                --instance-id "$INSTANCE_ID" \
-                --query 'Status' \
-                --output text 2>/dev/null || echo "Pending")
-              
-              if [ "$STATUS" = "Success" ]; then
-                echo "✅ Instancia $INSTANCE_ID actualizada exitosamente"
-                break
-              elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
-                echo "⚠️  Instancia $INSTANCE_ID falló con estado: $STATUS"
-                break
-              fi
-              
-              if [ $i -lt 60 ]; then
-                sleep 10
-              fi
-            done
-            
-            if [ "$STATUS" != "Success" ] && [ "$STATUS" != "Failed" ] && [ "$STATUS" != "Cancelled" ] && [ "$STATUS" != "TimedOut" ]; then
-              echo "⚠️  El comando aún está ejecutándose. Continuando..."
+            if [ "$STATUS" = "Success" ]; then
+              echo "✅ Instancia $INSTANCE_ID actualizada exitosamente"
+              break
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+              echo "⚠️  Instancia $INSTANCE_ID falló: $STATUS"
+              break
             fi
-          else
-            echo "⚠️  No se pudo enviar comando a instancia $INSTANCE_ID"
-            echo "💡 Asegúrate de que SSM Agent esté instalado y configurado"
-          fi
-        done
-
-        echo "💡 Nota: El contenedor se reiniciará automáticamente usando el mismo user-data script"
-        echo "💡 Las migraciones se ejecutarán automáticamente al iniciar el contenedor"
-
-      - echo "✅ Deploy completado. Instancias actualizadas sin crear nuevas"
+            
+            if [ $i -lt 30 ]; then
+              sleep 10
+            fi
+          done
+        else
+          echo "⚠️  No se pudo enviar comando a $INSTANCE_ID"
+        fi
+      done
+      
+      echo "💡 Las migraciones se ejecutarán al iniciar el contenedor"
