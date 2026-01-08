@@ -290,6 +290,34 @@ export class S3UploadService {
   }
 
   /**
+   * Obtiene un objeto de S3 como Buffer
+   */
+  async getObject(key: string): Promise<Buffer> {
+    if (!this.bucketName) {
+      throw new Error(
+        "S3_BUCKET_NAME no está configurado. Configure la variable de entorno o el parámetro SSM."
+      );
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+    });
+
+    const response = await this.s3Client.send(command);
+    
+    // Convertir el stream a Buffer
+    const chunks: Uint8Array[] = [];
+    if (response.Body) {
+      for await (const chunk of response.Body as any) {
+        chunks.push(chunk);
+      }
+    }
+    
+    return Buffer.concat(chunks);
+  }
+
+  /**
    * Genera una URL directa de S3 para leer un objeto
    * Si el bucket es público, retorna la URL directa
    * Si no, genera una presigned URL de lectura

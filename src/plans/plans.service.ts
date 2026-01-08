@@ -105,6 +105,7 @@ export class PlansService {
         canModifyCategory: dto.canModifyCategory ?? false,
         categoryModifications: dto.categoryModifications ?? 0,
         hasFeaturedOption: dto.hasFeaturedOption ?? false,
+        hasAIFeature: dto.hasAIFeature ?? false,
         launchBenefitAvailable: dto.launchBenefitAvailable ?? false,
         launchBenefitDuration: dto.launchBenefitDuration,
         isActive: dto.isActive ?? true,

@@ -16,6 +16,12 @@ export interface CompleteUploadDto {
   key: string;
 }
 
+export interface CompleteUploadResult {
+  mediaAssetId: string;
+  key: string;
+  extractedData?: ExtractedCVData; // Datos extraídos del CV si es aplicable
+}
+
 @Injectable()
 export class UploadService {
   private readonly maxFileSizeByType: Record<MediaType, number> = {
@@ -152,13 +158,31 @@ export class UploadService {
       },
     });
 
-    // Si es un CV y existe el servicio de parsing, extraer datos (opcional)
-    if (
-      mediaAsset.type === "CV" &&
-      this.cvParser
-    ) {
-      // Esto podría ejecutarse de forma asíncrona en un job
-      // Por ahora lo dejamos como está
+    // Si es un CV, extraer texto y parsear con OpenAI
+    let extractedData: ExtractedCVData | undefined;
+    if (mediaAsset.type === "CV" && this.cvParser) {
+      try {
+        // Descargar el PDF desde S3
+        const pdfBuffer = await this.s3UploadService.getObject(dto.key);
+        
+        // Extraer texto del PDF
+        const text = await this.extractTextFromPdf(pdfBuffer);
+        
+        // Parsear el CV con OpenAI
+        extractedData = await this.cvParser.parseCVText(text);
+        
+        // Guardar los datos extraídos en el MediaAsset para referencia futura
+        await this.prisma.mediaAsset.update({
+          where: { id: updated.id },
+          data: {
+            metadata: extractedData as any, // Guardar como JSON
+          },
+        });
+      } catch (error: any) {
+        // Log del error pero no fallar el upload
+        console.error("Error al extraer datos del CV:", error);
+        // Continuar sin los datos extraídos
+      }
     }
 
     // Actualizar el perfil del usuario con la URL del archivo
@@ -167,6 +191,7 @@ export class UploadService {
     return {
       mediaAssetId: updated.id,
       key: updated.key,
+      extractedData, // Incluir datos extraídos en la respuesta
     };
   }
 
@@ -230,5 +255,91 @@ export class UploadService {
       "video/x-msvideo": ".avi",
     };
     return mimeToExt[mimeType] || "";
+  }
+
+  /**
+   * Extraer texto de un PDF usando pdfjs-dist
+   */
+  private async extractTextFromPdf(buffer: Buffer): Promise<string> {
+    try {
+      // Importar pdfjs-dist dinámicamente
+      // Usar la versión legacy que funciona mejor en Node.js
+      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      
+      // Cargar el documento PDF desde el buffer
+      const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(buffer),
+        useSystemFonts: true,
+        verbosity: 0, // Reducir logs
+      });
+      
+      const pdfDocument = await loadingTask.promise;
+      const numPages = pdfDocument.numPages;
+      
+      let fullText = "";
+      
+      // Extraer texto de cada página
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdfDocument.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        
+        // Concatenar todos los items de texto de la página
+        // Mantener el orden y espaciado básico
+        const pageText = textContent.items
+          .map((item: any) => item.str || "")
+          .join(" ");
+        
+        fullText += pageText + "\n";
+      }
+      
+      return fullText.trim();
+    } catch (error: any) {
+      console.error("Error al extraer texto del PDF:", error);
+      throw new Error(`No se pudo extraer texto del PDF: ${error.message}`);
+    }
+  }
+
+  /**
+   * Parsear CV manualmente desde una key de S3
+   */
+  async parseCVFromKey(
+    userId: string,
+    key: string
+  ): Promise<{ extractedData: ExtractedCVData }> {
+    // Verificar que el archivo existe y pertenece al usuario
+    const mediaAsset = await this.prisma.mediaAsset.findUnique({
+      where: { key },
+    });
+
+    if (!mediaAsset) {
+      throw new NotFoundException("Archivo no encontrado");
+    }
+
+    if (mediaAsset.ownerUserId !== userId) {
+      throw new BadRequestException("No tienes permisos para este archivo");
+    }
+
+    if (mediaAsset.type !== "CV") {
+      throw new BadRequestException("El archivo no es un CV");
+    }
+
+    // Descargar el PDF desde S3
+    const pdfBuffer = await this.s3UploadService.getObject(key);
+    
+    // Extraer texto del PDF
+    const text = await this.extractTextFromPdf(pdfBuffer);
+    
+    // Parsear el CV con OpenAI
+    const extractedData = await this.cvParser.parseCVText(text);
+    
+    // Guardar los datos extraídos en el MediaAsset
+    await this.prisma.mediaAsset.update({
+      where: { id: mediaAsset.id },
+      data: {
+        metadata: extractedData as any,
+      },
+    });
+
+    return { extractedData };
   }
 }

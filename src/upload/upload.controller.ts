@@ -4,10 +4,12 @@ import {
   Body,
   Req,
   UseGuards,
+  Param,
 } from "@nestjs/common";
 import { UploadService, PresignUploadDto, CompleteUploadDto } from "./upload.service";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { createResponse } from "../common/mapper/api-response.mapper";
 
 @ApiTags("upload")
 @Controller("api/uploads")
@@ -73,10 +75,33 @@ export class UploadController {
     @Body() dto: CompleteUploadDto
   ) {
     const result = await this.service.completeUpload(req.user?.sub, dto);
-    return {
+    return createResponse({
       success: true,
-      message: "Upload completado correctamente",
+      message: result.extractedData
+        ? "Upload completado correctamente. Datos del CV extraídos."
+        : "Upload completado correctamente",
       data: result,
-    };
+    });
+  }
+
+  /**
+   * Parsear CV manualmente desde un archivo ya subido
+   */
+  @Post("parse-cv/:key")
+  @ApiOperation({ summary: "Parsear CV manualmente desde un archivo subido" })
+  @ApiResponse({
+    status: 200,
+    description: "CV parseado correctamente",
+  })
+  async parseCV(
+    @Req() req: any,
+    @Param("key") key: string
+  ) {
+    const result = await this.service.parseCVFromKey(req.user?.sub, key);
+    return createResponse({
+      success: true,
+      message: "CV parseado correctamente",
+      data: result,
+    });
   }
 }

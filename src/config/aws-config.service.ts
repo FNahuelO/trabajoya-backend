@@ -42,12 +42,14 @@ export class AwsConfigService implements OnModuleInit {
 
       // Cargar secretos de la aplicación desde Secrets Manager
       // Intentar con APP_SECRETS_ARN primero, luego con APP_CONFIG_SECRET_ID
-      const appSecretsArn = 
+      const appSecretsArn =
         this.configService.get<string>("APP_SECRETS_ARN") ||
         this.configService.get<string>("APP_CONFIG_SECRET_ID");
-      
+
       if (appSecretsArn) {
-        this.logger.log(`Cargando secretos de aplicación desde: ${appSecretsArn}`);
+        this.logger.log(
+          `Cargando secretos de aplicación desde: ${appSecretsArn}`
+        );
         await this.loadAppSecrets(appSecretsArn);
       } else {
         this.logger.warn(
@@ -80,6 +82,8 @@ export class AwsConfigService implements OnModuleInit {
       const command = new GetSecretValueCommand({ SecretId: secretArn });
       const response = await this.secretsManagerClient.send(command);
       const secrets = JSON.parse(response.SecretString || "{}");
+
+      this.logger.log(`Secrets cargados: ${JSON.stringify(secrets)}`);
 
       // Establecer variables de entorno desde los secretos
       if (secrets.JWT_ACCESS_SECRET) {
@@ -125,13 +129,19 @@ export class AwsConfigService implements OnModuleInit {
         process.env.PAYPAL_CLIENT_ID = secrets.PAYPAL_CLIENT_ID;
         this.logger.log("✅ PAYPAL_CLIENT_ID cargado desde Secrets Manager");
       } else {
-        this.logger.warn("⚠️  PAYPAL_CLIENT_ID no encontrado en Secrets Manager");
+        this.logger.warn(
+          "⚠️  PAYPAL_CLIENT_ID no encontrado en Secrets Manager"
+        );
       }
       if (secrets.PAYPAL_CLIENT_SECRET) {
         process.env.PAYPAL_CLIENT_SECRET = secrets.PAYPAL_CLIENT_SECRET;
-        this.logger.log("✅ PAYPAL_CLIENT_SECRET cargado desde Secrets Manager");
+        this.logger.log(
+          "✅ PAYPAL_CLIENT_SECRET cargado desde Secrets Manager"
+        );
       } else {
-        this.logger.warn("⚠️  PAYPAL_CLIENT_SECRET no encontrado en Secrets Manager");
+        this.logger.warn(
+          "⚠️  PAYPAL_CLIENT_SECRET no encontrado en Secrets Manager"
+        );
       }
 
       this.loadedSecrets = { ...this.loadedSecrets, ...secrets };
@@ -215,7 +225,6 @@ export class AwsConfigService implements OnModuleInit {
 
         if (response.Parameter?.Value) {
           process.env[param.envVar] = response.Parameter.Value;
-          
         } else {
           this.logger.warn(
             `[SSM] ⚠️  Encontrado pero sin valor: ${param.name}`

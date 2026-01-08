@@ -33,75 +33,27 @@ export class CVParserService {
     }
 
     try {
-      // Limitar el texto a un tamaño razonable para la IA (máximo ~8000 tokens)
-      const maxTextLength = 30000; // Aproximadamente 8000 tokens
+      // Reducir el texto a un tamaño más pequeño para ahorrar tokens (~4000 tokens máximo)
+      const maxTextLength = 15000; // Reducido de 30000 a 15000 (~4000 tokens)
       const truncatedText =
         text.length > maxTextLength
           ? text.substring(0, maxTextLength) + "..."
           : text;
 
-      const prompt = `Eres un parser de CVs especializado. Quiero que leas el siguiente CV en texto plano y devuelvas SOLO un JSON válido que respete EXACTAMENTE esta estructura (sin texto adicional, sin markdown, solo JSON):
+      // Prompt optimizado y más corto para reducir tokens
+      const prompt = `Extrae datos del CV en JSON. Estructura:
+{"fullName":string|null,"phone":string|null,"email":string|null,"city":string|null,"province":string|null,"country":string|null,"postalCode":string|null,"linkedInUrl":string|null,"githubUrl":string|null,"portfolioUrl":string|null,"websiteUrl":string|null,"resumeTitle":string|null,"professionalDescription":string|null,"skills":string[],"education":[{"degree":string|null,"institution":string|null,"startDate":string|null,"endDate":string|null,"isCurrent":boolean|null,"country":string|null,"studyArea":string|null,"studyType":string|null,"status":string|null}],"experiences":[{"position":string|null,"company":string|null,"startDate":string|null,"endDate":string|null,"isCurrent":boolean|null,"description":string|null,"companyCountry":string|null,"jobArea":string|null,"companyActivity":string|null,"experienceLevel":"JUNIOR"|"SEMISENIOR"|"SENIOR"|null}]}
 
-{
-  "fullName": string | null,
-  "phone": string | null,
-  "email": string | null,
-  "address": string | null,
-  "city": string | null,
-  "province": string | null,
-  "country": string | null,
-  "postalCode": string | null,
-  "linkedInUrl": string | null,
-  "githubUrl": string | null,
-  "portfolioUrl": string | null,
-  "websiteUrl": string | null,
-  "resumeTitle": string | null,
-  "professionalDescription": string | null,
-  "skills": string[],
-  "education": [
-    {
-      "degree": string | null,
-      "institution": string | null,
-      "startDate": string | null,
-      "endDate": string | null,
-      "isCurrent": boolean | null,
-      "country": string | null,
-      "studyArea": string | null,
-      "studyType": string | null,
-      "status": string | null,
-      "description": string | null,
-      "gpa": number | null,
-      "honors": string | null
-    }
-  ],
-  "experiences": [
-    {
-      "position": string | null,
-      "company": string | null,
-      "startDate": string | null,
-      "endDate": string | null,
-      "isCurrent": boolean | null,
-      "description": string | null,
-      "companyCountry": string | null,
-      "jobArea": string | null,
-      "companyActivity": string | null,
-      "experienceLevel": "JUNIOR" | "SEMISENIOR" | "SENIOR" | null
-    }
-  ]
-}
+Reglas:
+- JSON válido, sin markdown
+- null si no existe, [] para arrays vacíos
+- Fechas: "YYYY-MM-DD" (año solo: "YYYY-01-01"/"YYYY-12-31")
+- isCurrent: true si "presente"/"actual"/"current"
+- Skills: normaliza ("JS"→"JavaScript", "React.js"→"React")
+- experienceLevel: "senior"/"sr"/"lead"→SENIOR, "semi"/"middle"→SEMISENIOR, "junior"/"jr"/"trainee"→JUNIOR
+- URLs: completa con https:// si falta
 
-Reglas importantes:
-- Devuelve SIEMPRE un JSON sintácticamente válido.
-- Si un dato no está en el CV, usa null o un arreglo vacío según corresponda.
-- Normaliza fechas a formato "YYYY-MM-DD" cuando puedas inferirlas (aunque solo tengas el año, usa "YYYY-01-01" para inicio y "YYYY-12-31" para fin).
-- Para isCurrent: true si la experiencia/educación está en curso (presente, actual, etc.), false o null si terminó.
-- Extrae experiencias laborales con puesto, empresa y fechas aproximadas si están disponibles.
-- Extrae educación (título, institución, fechas).
-- Extrae skills técnicas y blandas como una lista de strings únicos.
-- Si no encuentras información para un campo, usa null (no uses strings vacíos).
-- Para experienceLevel, infiere de palabras clave: "senior", "sénior", "sr" → SENIOR; "semi", "semi-senior", "middle", "intermedio" → SEMISENIOR; "junior", "jr", "trainee", "intern" → JUNIOR.
-
-Texto del CV:
+CV:
 """${truncatedText}"""`;
 
       const response = await this.openai.chat.completions.create({
@@ -109,8 +61,7 @@ Texto del CV:
         messages: [
           {
             role: "system",
-            content:
-              "Eres un asistente especializado en extraer información estructurada de CVs. Siempre devuelves JSON válido sin texto adicional.",
+            content: "Extrae datos de CVs en JSON válido. Sin texto adicional.",
           },
           {
             role: "user",
@@ -118,8 +69,8 @@ Texto del CV:
           },
         ],
         response_format: { type: "json_object" },
-        temperature: 0.1, // Baja temperatura para respuestas más consistentes
-        max_tokens: 2000,
+        temperature: 0.1,
+        max_tokens: 1500, // Reducido de 2000 a 1500
       });
 
       const rawContent = response.choices[0]?.message?.content;

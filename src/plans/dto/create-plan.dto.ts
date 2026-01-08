@@ -58,6 +58,11 @@ export class CreatePlanDto {
   @IsBoolean()
   hasFeaturedOption?: boolean;
 
+  @ApiProperty({ example: false, required: false, default: false, description: "Si el plan tiene acceso a funcionalidades de IA (generación de descripciones)" })
+  @IsOptional()
+  @IsBoolean()
+  hasAIFeature?: boolean;
+
   @ApiProperty({ example: false, required: false, default: false })
   @IsOptional()
   @IsBoolean()

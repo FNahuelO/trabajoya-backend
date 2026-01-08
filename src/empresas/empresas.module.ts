@@ -5,9 +5,10 @@ import { ContentModerationService } from "../common/services/content-moderation.
 import { SubscriptionsModule } from "../subscriptions/subscriptions.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { UploadModule } from "../upload/upload.module";
+import { JobsModule } from "../jobs/jobs.module";
 
 @Module({
-  imports: [SubscriptionsModule, PaymentsModule, UploadModule],
+  imports: [SubscriptionsModule, PaymentsModule, UploadModule, JobsModule],
   controllers: [EmpresasController],
   providers: [EmpresasService, ContentModerationService],
   exports: [EmpresasService],

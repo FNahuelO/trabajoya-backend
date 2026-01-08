@@ -535,6 +535,7 @@ model Plan {
   canModifyCategory       Boolean  @default(false) // Si puede modificar el rubro
   categoryModifications   Int      @default(0) // Número de veces que puede modificar el rubro (0 o 1)
   hasFeaturedOption       Boolean  @default(false) // Si tiene opción gráfica destacada
+  hasAIFeature            Boolean  @default(false) // Si tiene acceso a funcionalidades de IA (generación de descripciones)
   launchBenefitAvailable  Boolean  @default(false) // Si tiene beneficio de lanzamiento disponible
   launchBenefitDuration   Int?     // Duración del beneficio de lanzamiento en días (4 días)
   isActive                Boolean  @default(true)

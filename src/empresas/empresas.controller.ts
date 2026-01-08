@@ -11,7 +11,8 @@ import {
   Patch,
 } from "@nestjs/common";
 import { EmpresasService } from "./empresas.service";
-import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
+import { JobDescriptionService } from "../jobs/job-description.service";
+import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { createResponse } from "src/common/mapper/api-response.mapper";
 
@@ -20,7 +21,10 @@ import { createResponse } from "src/common/mapper/api-response.mapper";
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class EmpresasController {
-  constructor(private service: EmpresasService) {}
+  constructor(
+    private service: EmpresasService,
+    private jobDescriptionService: JobDescriptionService
+  ) {}
 
   @Get("profile")
   async me(@Req() req: any) {
@@ -55,6 +59,27 @@ export class EmpresasController {
       success: true,
       message: "Trabajo creado correctamente",
       data: await this.service.createJob(req.user?.sub, dto),
+    });
+  }
+
+  @Post("jobs/generate-description")
+  @ApiOperation({ summary: "Generar descripción de trabajo con IA (solo PREMIUM/ENTERPRISE)" })
+  async generateJobDescription(@Req() req: any, @Body() dto: any) {
+    // Obtener el perfil de empresa para tener el ID
+    const empresa = await this.service.getByUser(req.user?.sub);
+    if (!empresa || !empresa.id) {
+      throw new Error("Empresa no encontrada");
+    }
+
+    const result = await this.jobDescriptionService.generateJobDescription(
+      empresa.id,
+      dto
+    );
+    
+    return createResponse({
+      success: true,
+      message: "Descripción generada correctamente",
+      data: result,
     });
   }
 
