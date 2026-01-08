@@ -17,12 +17,30 @@ export class PaymentsService {
 
     this.clientId = this.configService.get("PAYPAL_CLIENT_ID");
     this.clientSecret = this.configService.get("PAYPAL_CLIENT_SECRET");
+
+    // Validar que las credenciales estén configuradas
+    if (!this.clientId || !this.clientSecret) {
+      console.error(
+        "⚠️  PAYPAL_CLIENT_ID o PAYPAL_CLIENT_SECRET no están configuradas en las variables de entorno"
+      );
+      console.error(
+        "Por favor, configura estas variables en tu archivo .env o en AWS Secrets Manager"
+      );
+    }
   }
 
   /**
    * Obtener token de acceso de PayPal
    */
   private async getAccessToken(): Promise<string> {
+    // Validar que las credenciales estén configuradas antes de intentar autenticarse
+    if (!this.clientId || !this.clientSecret) {
+      const errorMessage =
+        "Las credenciales de PayPal no están configuradas. Por favor, configura PAYPAL_CLIENT_ID y PAYPAL_CLIENT_SECRET en las variables de entorno.";
+      console.error(`❌ ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+
     try {
       const auth = Buffer.from(
         `${this.clientId}:${this.clientSecret}`
@@ -40,9 +58,20 @@ export class PaymentsService {
       );
 
       return response.data.access_token;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error getting PayPal access token:", error);
-      throw new Error("No se pudo autenticar con PayPal");
+      
+      // Mensaje de error más descriptivo
+      if (error.response?.status === 401) {
+        const errorMessage =
+          "Error de autenticación con PayPal. Verifica que PAYPAL_CLIENT_ID y PAYPAL_CLIENT_SECRET sean correctos y estén configurados.";
+        console.error(`❌ ${errorMessage}`);
+        throw new Error(errorMessage);
+      }
+      
+      throw new Error(
+        `No se pudo autenticar con PayPal: ${error.response?.data?.error_description || error.message}`
+      );
     }
   }
 

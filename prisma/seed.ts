@@ -320,6 +320,12 @@ async function main() {
     { code: "TRAINEE_PASANTE", es: "Trainee / Pasante", en: "Trainee / Intern", pt: "Trainee / Estagiário" },
   ];
 
+  const modalities = [
+    { code: "PRESENCIAL", es: "Presencial", en: "On-site", pt: "Presencial" },
+    { code: "REMOTO", es: "Remoto", en: "Remote", pt: "Remoto" },
+    { code: "HIBRIDO", es: "Híbrido", en: "Hybrid", pt: "Híbrido" },
+  ];
+
   // Crear áreas de trabajo
   let order = 10;
   for (const area of jobAreas) {
@@ -389,6 +395,29 @@ async function main() {
     order += 10;
   }
 
-  console.log(`✅ Catálogos creados: ${jobAreas.length} áreas, ${jobTypes.length} tipos, ${jobLevels.length} niveles`);
+  // Crear modalidades
+  order = 10;
+  for (const modality of modalities) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "MODALITIES", code: modality.code } },
+      update: {},
+      create: {
+        type: "MODALITIES",
+        code: modality.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: modality.es },
+            { lang: "EN", label: modality.en },
+            { lang: "PT", label: modality.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  console.log(`✅ Catálogos creados: ${jobAreas.length} áreas, ${jobTypes.length} tipos, ${jobLevels.length} niveles, ${modalities.length} modalidades`);
 }
 main().finally(() => prisma.$disconnect());

@@ -195,16 +195,29 @@ export class SubscriptionsService {
   /**
    * Verificar si la empresa puede crear más empleos
    */
-  async canCreateJob(
-    empresaId: string
-  ): Promise<{ canCreate: boolean; reason?: string }> {
+  async canCreateJob(empresaId: string): Promise<{
+    canCreate: boolean;
+    reason?: string;
+    hasActiveSubscription?: boolean;
+  }> {
+    // Primero verificar si tiene una suscripción activa
     const subscription = await this.getActiveSubscription(empresaId);
-    const planType = subscription?.planType || "BASIC";
+
+    if (!subscription) {
+      return {
+        canCreate: false,
+        hasActiveSubscription: false,
+        reason:
+          "No tienes un plan activo. Por favor, selecciona un plan para poder publicar empleos.",
+      };
+    }
+
+    const planType = subscription.planType;
     const limits = this.getPlanLimits(planType);
 
     // Si no hay límite, puede crear
     if (limits.maxJobs === -1) {
-      return { canCreate: true };
+      return { canCreate: true, hasActiveSubscription: true };
     }
 
     // Contar empleos activos
@@ -218,11 +231,12 @@ export class SubscriptionsService {
     if (activeJobsCount >= limits.maxJobs) {
       return {
         canCreate: false,
-        reason: `Has alcanzado el límite de ${limits.maxJobs} empleos para tu plan. Considera actualizar a Premium.`,
+        hasActiveSubscription: true,
+        reason: `Has alcanzado el límite de ${limits.maxJobs} empleos para tu plan. Considera actualizar a Premium para publicar empleos ilimitados.`,
       };
     }
 
-    return { canCreate: true };
+    return { canCreate: true, hasActiveSubscription: true };
   }
 
   /**
