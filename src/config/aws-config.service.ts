@@ -40,11 +40,15 @@ export class AwsConfigService implements OnModuleInit {
     try {
       this.logger.log("Cargando configuración desde AWS...");
 
+      // Cargar parámetros desde SSM Parameter Store primero (puede contener APP_CONFIG_SECRET_ID)
+      await this.loadSSMParameters();
+
       // Cargar secretos de la aplicación desde Secrets Manager
-      // Intentar con APP_SECRETS_ARN primero, luego con APP_CONFIG_SECRET_ID
+      // Intentar con APP_SECRETS_ARN primero, luego con APP_CONFIG_SECRET_ID (que puede venir de SSM)
       const appSecretsArn =
         this.configService.get<string>("APP_SECRETS_ARN") ||
-        this.configService.get<string>("APP_CONFIG_SECRET_ID");
+        this.configService.get<string>("APP_CONFIG_SECRET_ID") ||
+        process.env.APP_CONFIG_SECRET_ID;
 
       if (appSecretsArn) {
         this.logger.log(
@@ -62,9 +66,6 @@ export class AwsConfigService implements OnModuleInit {
       if (dbSecretArn) {
         await this.loadDatabaseSecrets(dbSecretArn);
       }
-
-      // Cargar parámetros desde SSM Parameter Store
-      await this.loadSSMParameters();
 
       this.logger.log("Configuración de AWS cargada correctamente");
     } catch (error) {
@@ -204,6 +205,10 @@ export class AwsConfigService implements OnModuleInit {
       {
         name: `/${stackPrefix}/cloudfront/keypair-id`,
         envVar: "CLOUDFRONT_KEY_PAIR_ID",
+      },
+      {
+        name: `/${stackPrefix}/app/config`,
+        envVar: "APP_CONFIG_SECRET_ID",
       },
     ];
 

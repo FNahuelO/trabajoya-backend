@@ -466,6 +466,7 @@ model MediaAsset {
   mimeType    String
   size        Int              // Tamaño en bytes
   status      MediaAssetStatus @default(PENDING)
+  metadata    Json?            // Metadatos adicionales (ej: datos extraídos de CVs)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   user        User             @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)

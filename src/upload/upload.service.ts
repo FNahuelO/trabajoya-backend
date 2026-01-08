@@ -113,7 +113,7 @@ export class UploadService {
   async completeUpload(
     userId: string,
     dto: CompleteUploadDto
-  ): Promise<{ mediaAssetId: string; key: string }> {
+  ): Promise<CompleteUploadResult> {
     // Buscar el MediaAsset
     const mediaAsset = await this.prisma.mediaAsset.findUnique({
       where: { key: dto.key },
@@ -175,7 +175,7 @@ export class UploadService {
         await this.prisma.mediaAsset.update({
           where: { id: updated.id },
           data: {
-            metadata: extractedData as any, // Guardar como JSON
+            metadata: extractedData as any, // Guardar como JSON en el campo metadata
           },
         });
       } catch (error: any) {
@@ -336,7 +336,7 @@ export class UploadService {
     await this.prisma.mediaAsset.update({
       where: { id: mediaAsset.id },
       data: {
-        metadata: extractedData as any,
+        metadata: extractedData as any, // Guardar como JSON en el campo metadata
       },
     });
 
