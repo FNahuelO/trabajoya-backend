@@ -5,8 +5,6 @@ import axios from "axios";
 @Injectable()
 export class PaymentsService {
   private baseURL: string;
-  private clientId: string;
-  private clientSecret: string;
 
   constructor(private configService: ConfigService) {
     const mode = this.configService.get("PAYPAL_MODE") || "sandbox";
@@ -14,36 +12,38 @@ export class PaymentsService {
       mode === "live"
         ? "https://api-m.paypal.com"
         : "https://api-m.sandbox.paypal.com";
+  }
 
-    this.clientId = this.configService.get("PAYPAL_CLIENT_ID");
-    this.clientSecret = this.configService.get("PAYPAL_CLIENT_SECRET");
+  /**
+   * Obtener credenciales de PayPal de forma lazy (cuando se necesiten)
+   * Esto asegura que las credenciales de AWS Secrets Manager ya estén cargadas
+   */
+  private getCredentials(): { clientId: string; clientSecret: string } {
+    const clientId = this.configService.get("PAYPAL_CLIENT_ID");
+    const clientSecret = this.configService.get("PAYPAL_CLIENT_SECRET");
 
-    // Validar que las credenciales estén configuradas
-    if (!this.clientId || !this.clientSecret) {
-      console.error(
-        "⚠️  PAYPAL_CLIENT_ID o PAYPAL_CLIENT_SECRET no están configuradas en las variables de entorno"
-      );
-      console.error(
-        "Por favor, configura estas variables en tu archivo .env o en AWS Secrets Manager"
-      );
+    if (!clientId || !clientSecret) {
+      const errorMessage =
+        "Las credenciales de PayPal no están configuradas. Por favor, configura PAYPAL_CLIENT_ID y PAYPAL_CLIENT_SECRET en las variables de entorno o en AWS Secrets Manager.";
+      console.error(`❌ ${errorMessage}`);
+      console.error(`PAYPAL_CLIENT_ID: ${clientId ? "✅ Configurado" : "❌ No configurado"}`);
+      console.error(`PAYPAL_CLIENT_SECRET: ${clientSecret ? "✅ Configurado" : "❌ No configurado"}`);
+      throw new Error(errorMessage);
     }
+
+    return { clientId, clientSecret };
   }
 
   /**
    * Obtener token de acceso de PayPal
    */
   private async getAccessToken(): Promise<string> {
-    // Validar que las credenciales estén configuradas antes de intentar autenticarse
-    if (!this.clientId || !this.clientSecret) {
-      const errorMessage =
-        "Las credenciales de PayPal no están configuradas. Por favor, configura PAYPAL_CLIENT_ID y PAYPAL_CLIENT_SECRET en las variables de entorno.";
-      console.error(`❌ ${errorMessage}`);
-      throw new Error(errorMessage);
-    }
+    // Obtener credenciales de forma lazy (cuando se necesiten)
+    const { clientId, clientSecret } = this.getCredentials();
 
     try {
       const auth = Buffer.from(
-        `${this.clientId}:${this.clientSecret}`
+        `${clientId}:${clientSecret}`
       ).toString("base64");
 
       const response = await axios.post(

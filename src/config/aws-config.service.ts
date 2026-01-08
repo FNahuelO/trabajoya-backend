@@ -41,9 +41,18 @@ export class AwsConfigService implements OnModuleInit {
       this.logger.log("Cargando configuración desde AWS...");
 
       // Cargar secretos de la aplicación desde Secrets Manager
-      const appSecretsArn = this.configService.get<string>("APP_SECRETS_ARN");
+      // Intentar con APP_SECRETS_ARN primero, luego con APP_CONFIG_SECRET_ID
+      const appSecretsArn = 
+        this.configService.get<string>("APP_SECRETS_ARN") ||
+        this.configService.get<string>("APP_CONFIG_SECRET_ID");
+      
       if (appSecretsArn) {
+        this.logger.log(`Cargando secretos de aplicación desde: ${appSecretsArn}`);
         await this.loadAppSecrets(appSecretsArn);
+      } else {
+        this.logger.warn(
+          "⚠️  No se encontró APP_SECRETS_ARN ni APP_CONFIG_SECRET_ID. Los secretos de aplicación no se cargarán desde AWS."
+        );
       }
 
       // Cargar credenciales de la base de datos desde Secrets Manager
@@ -114,13 +123,19 @@ export class AwsConfigService implements OnModuleInit {
       }
       if (secrets.PAYPAL_CLIENT_ID) {
         process.env.PAYPAL_CLIENT_ID = secrets.PAYPAL_CLIENT_ID;
+        this.logger.log("✅ PAYPAL_CLIENT_ID cargado desde Secrets Manager");
+      } else {
+        this.logger.warn("⚠️  PAYPAL_CLIENT_ID no encontrado en Secrets Manager");
       }
       if (secrets.PAYPAL_CLIENT_SECRET) {
         process.env.PAYPAL_CLIENT_SECRET = secrets.PAYPAL_CLIENT_SECRET;
+        this.logger.log("✅ PAYPAL_CLIENT_SECRET cargado desde Secrets Manager");
+      } else {
+        this.logger.warn("⚠️  PAYPAL_CLIENT_SECRET no encontrado en Secrets Manager");
       }
 
       this.loadedSecrets = { ...this.loadedSecrets, ...secrets };
-      this.logger.log("Secretos de aplicación cargados correctamente");
+      this.logger.log("✅ Secretos de aplicación cargados correctamente");
     } catch (error) {
       this.logger.error(`Error cargando secretos de aplicación: ${error}`);
       throw error;
