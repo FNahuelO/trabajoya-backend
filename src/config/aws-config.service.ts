@@ -97,9 +97,6 @@ export class AwsConfigService implements OnModuleInit {
       const command = new GetSecretValueCommand({ SecretId: secretArn });
       const response = await this.secretsManagerClient.send(command);
       const secrets = JSON.parse(response.SecretString || "{}");
-
-      this.logger.log(`Secrets cargados: ${JSON.stringify(secrets)}`);
-
       // Establecer variables de entorno desde los secretos
       if (secrets.JWT_ACCESS_SECRET) {
         process.env.JWT_ACCESS_SECRET = secrets.JWT_ACCESS_SECRET;
@@ -157,6 +154,12 @@ export class AwsConfigService implements OnModuleInit {
         this.logger.warn(
           "⚠️  PAYPAL_CLIENT_SECRET no encontrado en Secrets Manager"
         );
+      }
+      if (secrets.FRONTEND_URL) {
+        process.env.FRONTEND_URL = secrets.FRONTEND_URL;
+        this.logger.log("✅ FRONTEND_URL cargado desde Secrets Manager");
+      } else {
+        this.logger.warn("⚠️  FRONTEND_URL no encontrado en Secrets Manager");
       }
 
       this.loadedSecrets = { ...this.loadedSecrets, ...secrets };

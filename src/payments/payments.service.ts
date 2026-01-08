@@ -86,6 +86,14 @@ export class PaymentsService {
     try {
       const accessToken = await this.getAccessToken();
 
+      // Validar que FRONTEND_URL esté configurado
+      const frontendUrl = this.configService.get<string>("FRONTEND_URL");
+      if (!frontendUrl) {
+        throw new Error(
+          "FRONTEND_URL no está configurado. Por favor, configura FRONTEND_URL en las variables de entorno o en AWS Secrets Manager."
+        );
+      }
+
       const request = {
         intent: "CAPTURE",
         purchase_units: [
@@ -98,12 +106,8 @@ export class PaymentsService {
           },
         ],
         application_context: {
-          return_url: `${this.configService.get(
-            "FRONTEND_URL"
-          )}/payment/success`,
-          cancel_url: `${this.configService.get(
-            "FRONTEND_URL"
-          )}/payment/cancel`,
+          return_url: `${frontendUrl}/payment/success`,
+          cancel_url: `${frontendUrl}/payment/cancel`,
           brand_name: "TrabajoYa",
           user_action: "PAY_NOW",
         },

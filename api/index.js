@@ -26,12 +26,13 @@ async function createApp() {
 
   // Configurar CORS
   const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",")
-    : [
-        "http://localhost:3000",
-        "http://localhost:19006",
-        "http://localhost:5173",
-      ];
+    ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+    : ["*"];
+
+  // Función para normalizar el origin (remover barras finales)
+  const normalizeOrigin = (origin) => {
+    return origin.replace(/\/+$/, ""); // Remover barras finales
+  };
 
   const isDevelopment = process.env.NODE_ENV !== "production";
 
@@ -42,17 +43,50 @@ async function createApp() {
         return callback(null, true);
       }
 
+      const normalizedOrigin = normalizeOrigin(origin);
+
+      // Si está configurado "*", permitir todo
+      if (allowedOrigins.includes("*")) {
+        return callback(null, true);
+      }
+
       // En desarrollo, permitir todos los orígenes
       if (isDevelopment) {
         return callback(null, true);
       }
 
-      // En producción, verificar lista de orígenes permitidos
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      // Verificar si el origin está en la lista permitida (normalizado y original)
+      if (
+        allowedOrigins.indexOf(origin) !== -1 ||
+        allowedOrigins.indexOf(normalizedOrigin) !== -1
+      ) {
+        return callback(null, true);
       }
+
+      // Permitir dominios relacionados con trabajo-ya.com
+      const allowedDomains = [
+        "trabajo-ya.com",
+        "trabajoya.com",
+        "trabajoya",
+        "web.trabajo-ya.com",
+        "api.trabajoya.com",
+      ];
+
+      const isAllowedDomain = allowedDomains.some((domain) =>
+        normalizedOrigin.includes(domain)
+      );
+
+      if (isAllowedDomain) {
+        return callback(null, true);
+      }
+
+      // Permitir localhost en desarrollo
+      if (isDevelopment && normalizedOrigin.includes("localhost")) {
+        return callback(null, true);
+      }
+
+      console.warn(`🚫 CORS bloqueado para origin: ${origin}`);
+      callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -61,6 +95,8 @@ async function createApp() {
       "Authorization",
       "Accept",
       "Accept-Language",
+      "X-Requested-With",
+      "Origin",
     ],
   });
 

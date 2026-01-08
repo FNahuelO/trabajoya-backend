@@ -6,6 +6,7 @@ import {
   UseGuards,
   Req,
   Query,
+  Param,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
@@ -52,6 +53,41 @@ export class TermsController {
       success: true,
       message: "Términos obtenidos correctamente",
       data: terms,
+    });
+  }
+
+  @Get("public/:type")
+  @Public()
+  async getPublicTerms(@Param("type") type: string) {
+    if (!type) {
+      throw new BadRequestException("El parámetro 'type' es requerido");
+    }
+
+    // Validar que el tipo sea válido
+    const validTypes = Object.values(TermsType);
+    if (!validTypes.includes(type as TermsType)) {
+      throw new BadRequestException(
+        `Tipo inválido. Tipos válidos: ${validTypes.join(", ")}`
+      );
+    }
+
+    const terms = await this.termsService.getActiveTerms(
+      undefined,
+      type as TermsType
+    );
+
+    return createResponse({
+      success: true,
+      message: "Términos obtenidos correctamente",
+      data: {
+        id: terms.id,
+        type: terms.type,
+        version: terms.version,
+        fileUrl: terms.fileUrl,
+        description: terms.description,
+        createdAt: terms.createdAt,
+        updatedAt: terms.updatedAt,
+      },
     });
   }
 

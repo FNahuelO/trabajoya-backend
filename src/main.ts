@@ -24,6 +24,11 @@ async function bootstrap() {
     ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
     : ["*"];
 
+  // Función para normalizar el origin (remover barras finales y protocolos)
+  const normalizeOrigin = (origin: string): string => {
+    return origin.replace(/\/+$/, ""); // Remover barras finales
+  };
+
   // Si no hay ALLOWED_ORIGINS configurado, permitir orígenes comunes
   const corsOptions = {
     origin: (
@@ -35,34 +40,58 @@ async function bootstrap() {
         return callback(null, true);
       }
 
+      const normalizedOrigin = normalizeOrigin(origin);
+
       // Si está configurado "*", permitir todo
       if (allowedOrigins.includes("*")) {
         return callback(null, true);
       }
 
-      // Verificar si el origin está en la lista permitida
-      if (allowedOrigins.includes(origin)) {
+      // Verificar si el origin está en la lista permitida (normalizado y original)
+      if (
+        allowedOrigins.includes(origin) ||
+        allowedOrigins.includes(normalizedOrigin)
+      ) {
         return callback(null, true);
       }
 
-      // Permitir dominios relacionados con trabajo-ya.com
-      if (origin.includes("trabajo-ya.com") || origin.includes("trabajoya")) {
+      // Permitir dominios relacionados con trabajo-ya.com (verificar en origin normalizado)
+      const allowedDomains = [
+        "trabajo-ya.com",
+        "trabajoya.com",
+        "trabajoya",
+        "web.trabajo-ya.com",
+        "api.trabajoya.com",
+      ];
+
+      const isAllowedDomain = allowedDomains.some((domain) =>
+        normalizedOrigin.includes(domain)
+      );
+
+      if (isAllowedDomain) {
         return callback(null, true);
       }
 
       // Permitir localhost en desarrollo
       if (
         process.env.NODE_ENV !== "production" &&
-        origin.includes("localhost")
+        normalizedOrigin.includes("localhost")
       ) {
         return callback(null, true);
       }
 
+      console.warn(`🚫 CORS bloqueado para origin: ${origin}`);
       callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Accept"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Accept",
+      "X-Requested-With",
+      "Origin",
+    ],
   };
 
   app.enableCors(corsOptions);
