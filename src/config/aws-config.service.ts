@@ -44,17 +44,31 @@ export class AwsConfigService implements OnModuleInit {
       await this.loadSSMParameters();
 
       // Cargar secretos de la aplicación desde Secrets Manager
-      // Intentar con APP_SECRETS_ARN primero, luego con APP_CONFIG_SECRET_ID (que puede venir de SSM)
+      // Intentar con APP_SECRETS_ARN primero, luego con APP_CONFIG_SECRET_ID (que puede venir de SSM o env)
+      // Si no se encuentra, usar el nombre del secreto por defecto
+      const stackPrefix =
+        this.configService.get<string>("STACK_PREFIX") || "trabajoya-prod";
+      const defaultSecretName = `/${stackPrefix}/app/config`;
+
       const appSecretsArn =
         this.configService.get<string>("APP_SECRETS_ARN") ||
         this.configService.get<string>("APP_CONFIG_SECRET_ID") ||
-        process.env.APP_CONFIG_SECRET_ID;
+        process.env.APP_CONFIG_SECRET_ID ||
+        defaultSecretName; // Fallback al nombre del secreto por defecto
 
       if (appSecretsArn) {
         this.logger.log(
           `Cargando secretos de aplicación desde: ${appSecretsArn}`
         );
-        await this.loadAppSecrets(appSecretsArn);
+        try {
+          await this.loadAppSecrets(appSecretsArn);
+        } catch (error: any) {
+          this.logger.warn(
+            `⚠️  No se pudo cargar el secreto ${appSecretsArn}: ${
+              error.message || error
+            }. Los secretos de aplicación no se cargarán desde AWS.`
+          );
+        }
       } else {
         this.logger.warn(
           "⚠️  No se encontró APP_SECRETS_ARN ni APP_CONFIG_SECRET_ID. Los secretos de aplicación no se cargarán desde AWS."
@@ -206,10 +220,8 @@ export class AwsConfigService implements OnModuleInit {
         name: `/${stackPrefix}/cloudfront/keypair-id`,
         envVar: "CLOUDFRONT_KEY_PAIR_ID",
       },
-      {
-        name: `/${stackPrefix}/app/config`,
-        envVar: "APP_CONFIG_SECRET_ID",
-      },
+      // Nota: APP_CONFIG_SECRET_ID se carga directamente desde el nombre del secreto por defecto
+      // No necesita estar en SSM Parameter Store
     ];
 
     for (const param of parameters) {
