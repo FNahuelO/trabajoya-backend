@@ -5,11 +5,18 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AtsService } from "./ats.service";
+import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { S3UploadService } from "../upload/s3-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
 export class PostulantesService {
-  constructor(private prisma: PrismaService, private atsService: AtsService) {}
+  constructor(
+    private prisma: PrismaService,
+    private atsService: AtsService,
+    private cloudFrontSigner: CloudFrontSignerService,
+    private s3UploadService: S3UploadService
+  ) {}
 
   async createByUser(userId: string, dto: any) {
     const createData: any = {
@@ -95,6 +102,51 @@ export class PostulantesService {
     const firstName = fullNameParts[0] || "";
     const lastName = fullNameParts.slice(1).join(" ") || "";
 
+    // Transformar el avatar key en una URL válida (CloudFront o S3 directo)
+    let avatarUrl = profile.profilePicture;
+    if (avatarUrl && !avatarUrl.startsWith("http")) {
+      try {
+        // Verificar si CloudFront está configurado
+        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+          const avatarPath = avatarUrl.startsWith("/")
+            ? avatarUrl
+            : `/${avatarUrl}`;
+          const cloudFrontUrl =
+            this.cloudFrontSigner.getCloudFrontUrl(avatarPath);
+          // Solo actualizar si se generó una URL válida (verificar que no sea malformada)
+          if (
+            cloudFrontUrl &&
+            cloudFrontUrl.startsWith("https://") &&
+            !cloudFrontUrl.includes("https:///")
+          ) {
+            avatarUrl = cloudFrontUrl;
+          } else {
+            // Si CloudFront falla o retorna URL malformada, usar S3 directo
+            console.warn(
+              `[PostulantesService] CloudFront configurado pero URL malformada: ${cloudFrontUrl}. ` +
+                `Usando S3 directo para avatar: ${profile.profilePicture}`
+            );
+            avatarUrl = await this.s3UploadService.getObjectUrl(
+              profile.profilePicture,
+              3600
+            );
+          }
+        } else {
+          // Si CloudFront no está configurado, usar S3 directo
+          console.log(
+            `[PostulantesService] CloudFront no configurado. Usando S3 directo para avatar: ${profile.profilePicture}`
+          );
+          avatarUrl = await this.s3UploadService.getObjectUrl(
+            profile.profilePicture,
+            3600
+          );
+        }
+      } catch (error) {
+        console.error("Error generando URL para avatar:", error);
+        // Si falla, mantener el key original para que el frontend pueda intentar construirla
+      }
+    }
+
     return {
       id: profile.id,
       userId: profile.userId,
@@ -104,7 +156,7 @@ export class PostulantesService {
       city: profile.city,
       country: profile.country,
       skills: profile.skills,
-      avatar: profile.profilePicture,
+      avatar: avatarUrl,
       cv: profile.cvUrl,
       videoUrl: profile.videoUrl,
       experiences: (profile as any).experiences || [],
