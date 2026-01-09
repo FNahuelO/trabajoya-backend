@@ -418,6 +418,296 @@ async function main() {
     order += 10;
   }
 
-  console.log(`✅ Catálogos creados: ${jobAreas.length} áreas, ${jobTypes.length} tipos, ${jobLevels.length} niveles, ${modalities.length} modalidades`);
+  // Crear JOB_TYPES (duplicado de JOB_TYPE para compatibilidad)
+  order = 10;
+  for (const type of jobTypes) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "JOB_TYPES", code: type.code } },
+      update: {},
+      create: {
+        type: "JOB_TYPES",
+        code: type.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: type.es },
+            { lang: "EN", label: type.en },
+            { lang: "PT", label: type.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear EXPERIENCE_LEVELS
+  const experienceLevels = [
+    { code: "JUNIOR", es: "Junior", en: "Junior", pt: "Júnior" },
+    { code: "SEMISENIOR", es: "Semi Senior", en: "Mid-level", pt: "Pleno" },
+    { code: "SENIOR", es: "Senior", en: "Senior", pt: "Sênior" },
+    { code: "SIN_EXPERIENCIA", es: "Sin Experiencia", en: "No experience", pt: "Sem experiência" },
+    { code: "TRAINEE", es: "Trainee", en: "Trainee", pt: "Trainee" },
+  ];
+
+  order = 10;
+  for (const level of experienceLevels) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "EXPERIENCE_LEVELS", code: level.code } },
+      update: {},
+      create: {
+        type: "EXPERIENCE_LEVELS",
+        code: level.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: level.es },
+            { lang: "EN", label: level.en },
+            { lang: "PT", label: level.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear APPLICATION_STATUSES
+  const applicationStatuses = [
+    { code: "PENDING", es: "Pendiente", en: "Pending", pt: "Pendente" },
+    { code: "REVIEWED", es: "Revisado", en: "Reviewed", pt: "Revisado" },
+    { code: "ACCEPTED", es: "Aceptado", en: "Accepted", pt: "Aceito" },
+    { code: "REJECTED", es: "Rechazado", en: "Rejected", pt: "Rejeitado" },
+    { code: "INTERVIEW", es: "Entrevista", en: "Interview", pt: "Entrevista" },
+  ];
+
+  order = 10;
+  for (const status of applicationStatuses) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "APPLICATION_STATUSES", code: status.code } },
+      update: {},
+      create: {
+        type: "APPLICATION_STATUSES",
+        code: status.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: status.es },
+            { lang: "EN", label: status.en },
+            { lang: "PT", label: status.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear LANGUAGE_LEVELS
+  const languageLevels = [
+    { code: "BASIC", es: "Básico", en: "Basic", pt: "Básico" },
+    { code: "INTERMEDIATE", es: "Intermedio", en: "Intermediate", pt: "Intermediário" },
+    { code: "ADVANCED", es: "Avanzado", en: "Advanced", pt: "Avançado" },
+    { code: "NATIVE", es: "Nativo", en: "Native", pt: "Nativo" },
+  ];
+
+  order = 10;
+  for (const level of languageLevels) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "LANGUAGE_LEVELS", code: level.code } },
+      update: {},
+      create: {
+        type: "LANGUAGE_LEVELS",
+        code: level.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: level.es },
+            { lang: "EN", label: level.en },
+            { lang: "PT", label: level.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear COMPANY_SIZES
+  const companySizes = [
+    { code: "MICRO", es: "Micro (1-5 empleados)", en: "Micro (1-5 employees)", pt: "Micro (1-5 funcionários)" },
+    { code: "PEQUENA", es: "Pequeña (6-50 empleados)", en: "Small (6-50 employees)", pt: "Pequena (6-50 funcionários)" },
+    { code: "MEDIANA", es: "Mediana (51-200 empleados)", en: "Medium (51-200 employees)", pt: "Média (51-200 funcionários)" },
+    { code: "GRANDE", es: "Grande (201-1000 empleados)", en: "Large (201-1000 employees)", pt: "Grande (201-1000 funcionários)" },
+    { code: "MULTINACIONAL", es: "Multinacional (+1000 empleados)", en: "Multinational (+1000 employees)", pt: "Multinacional (+1000 funcionários)" },
+  ];
+
+  order = 10;
+  for (const size of companySizes) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "COMPANY_SIZES", code: size.code } },
+      update: {},
+      create: {
+        type: "COMPANY_SIZES",
+        code: size.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: size.es },
+            { lang: "EN", label: size.en },
+            { lang: "PT", label: size.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear SECTORS
+  const sectors = [
+    { code: "TECNOLOGIA", es: "Tecnología", en: "Technology", pt: "Tecnologia" },
+    { code: "FINANZAS", es: "Finanzas", en: "Finance", pt: "Finanças" },
+    { code: "SALUD", es: "Salud", en: "Health", pt: "Saúde" },
+    { code: "EDUCACION", es: "Educación", en: "Education", pt: "Educação" },
+    { code: "RETAIL", es: "Retail", en: "Retail", pt: "Varejo" },
+    { code: "MANUFACTURA", es: "Manufactura", en: "Manufacturing", pt: "Manufatura" },
+    { code: "CONSTRUCCION", es: "Construcción", en: "Construction", pt: "Construção" },
+    { code: "TRANSPORTE", es: "Transporte", en: "Transportation", pt: "Transporte" },
+    { code: "ENERGIA", es: "Energía", en: "Energy", pt: "Energia" },
+    { code: "TELECOMUNICACIONES", es: "Telecomunicaciones", en: "Telecommunications", pt: "Telecomunicações" },
+    { code: "MEDIOS", es: "Medios de Comunicación", en: "Media", pt: "Mídia" },
+    { code: "TURISMO", es: "Turismo", en: "Tourism", pt: "Turismo" },
+    { code: "GASTRONOMIA", es: "Gastronomía", en: "Gastronomy", pt: "Gastronomia" },
+    { code: "LEGAL", es: "Legal", en: "Legal", pt: "Jurídico" },
+    { code: "MARKETING", es: "Marketing", en: "Marketing", pt: "Marketing" },
+    { code: "RRHH", es: "Recursos Humanos", en: "Human Resources", pt: "Recursos Humanos" },
+    { code: "VENTAS", es: "Ventas", en: "Sales", pt: "Vendas" },
+    { code: "OTRO", es: "Otro", en: "Other", pt: "Outro" },
+  ];
+
+  order = 10;
+  for (const sector of sectors) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "SECTORS", code: sector.code } },
+      update: {},
+      create: {
+        type: "SECTORS",
+        code: sector.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: sector.es },
+            { lang: "EN", label: sector.en },
+            { lang: "PT", label: sector.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear STUDY_TYPES
+  const studyTypes = [
+    { code: "PRIMARIO", es: "Primario", en: "Primary", pt: "Primário" },
+    { code: "SECUNDARIO", es: "Secundario", en: "Secondary", pt: "Secundário" },
+    { code: "TERCIARIO", es: "Terciario", en: "Tertiary", pt: "Terciário" },
+    { code: "UNIVERSITARIO", es: "Universitario", en: "University", pt: "Universitário" },
+    { code: "POSGRADO", es: "Posgrado", en: "Graduate", pt: "Pós-graduação" },
+    { code: "MAESTRIA", es: "Maestría", en: "Master's", pt: "Mestrado" },
+    { code: "DOCTORADO", es: "Doctorado", en: "Doctorate", pt: "Doutorado" },
+    { code: "TECNICO", es: "Técnico", en: "Technical", pt: "Técnico" },
+    { code: "CURSO", es: "Curso", en: "Course", pt: "Curso" },
+    { code: "CERTIFICACION", es: "Certificación", en: "Certification", pt: "Certificação" },
+  ];
+
+  order = 10;
+  for (const studyType of studyTypes) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "STUDY_TYPES", code: studyType.code } },
+      update: {},
+      create: {
+        type: "STUDY_TYPES",
+        code: studyType.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: studyType.es },
+            { lang: "EN", label: studyType.en },
+            { lang: "PT", label: studyType.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear STUDY_STATUSES
+  const studyStatuses = [
+    { code: "EN_CURSO", es: "En curso", en: "In progress", pt: "Em andamento" },
+    { code: "COMPLETADO", es: "Completado", en: "Completed", pt: "Completo" },
+    { code: "ABANDONADO", es: "Abandonado", en: "Abandoned", pt: "Abandonado" },
+    { code: "SUSPENDIDO", es: "Suspendido", en: "Suspended", pt: "Suspenso" },
+  ];
+
+  order = 10;
+  for (const status of studyStatuses) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "STUDY_STATUSES", code: status.code } },
+      update: {},
+      create: {
+        type: "STUDY_STATUSES",
+        code: status.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: status.es },
+            { lang: "EN", label: status.en },
+            { lang: "PT", label: status.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  // Crear MARITAL_STATUSES
+  const maritalStatuses = [
+    { code: "SOLTERO", es: "Soltero/a", en: "Single", pt: "Solteiro/a" },
+    { code: "CASADO", es: "Casado/a", en: "Married", pt: "Casado/a" },
+    { code: "DIVORCIADO", es: "Divorciado/a", en: "Divorced", pt: "Divorciado/a" },
+    { code: "VIUDO", es: "Viudo/a", en: "Widowed", pt: "Viúvo/a" },
+    { code: "UNION_LIBRE", es: "Unión libre", en: "Common-law", pt: "União estável" },
+    { code: "SEPARADO", es: "Separado/a", en: "Separated", pt: "Separado/a" },
+  ];
+
+  order = 10;
+  for (const status of maritalStatuses) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "MARITAL_STATUSES", code: status.code } },
+      update: {},
+      create: {
+        type: "MARITAL_STATUSES",
+        code: status.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: status.es },
+            { lang: "EN", label: status.en },
+            { lang: "PT", label: status.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
+  console.log(
+    `✅ Catálogos creados: ${jobAreas.length} áreas, ${jobTypes.length} tipos, ${jobLevels.length} niveles, ${modalities.length} modalidades, ${experienceLevels.length} niveles de experiencia, ${applicationStatuses.length} estados de aplicación, ${languageLevels.length} niveles de idioma, ${companySizes.length} tamaños de empresa, ${sectors.length} sectores, ${studyTypes.length} tipos de estudio, ${studyStatuses.length} estados de estudio, ${maritalStatuses.length} estados civiles`
+  );
 }
 main().finally(() => prisma.$disconnect());
