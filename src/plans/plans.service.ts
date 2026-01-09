@@ -145,8 +145,10 @@ export class PlansService {
 
   async remove(id: string) {
     const plan = await this.findOne(id);
-    // Soft delete: marcar como inactivo
-    return this.update(id, { isActive: false });
+    // Hard delete: eliminación permanente
+    return this.prisma.plan.delete({
+      where: { id },
+    });
   }
 
   async reorder(items: { id: string; order: number }[]) {

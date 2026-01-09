@@ -190,6 +190,7 @@ model EmpresaProfile {
   jobs                        Job[]
   favorites                   CompanyFavorite[]
   subscriptions               Subscription[]
+  paymentTransactions         PaymentTransaction[]
 }
 
 model Job {
@@ -550,4 +551,38 @@ model Plan {
   @@index([code])
   @@index([isActive])
   @@index([order])
+}
+
+model PaymentTransaction {
+  id              String                @id @default(uuid())
+  userId          String                 // Usuario que realizó el pago
+  empresaId      String?                // Empresa relacionada (si es pago de plan)
+  orderId        String                 @unique // PayPal Order ID
+  amount          Float                  // Monto del pago
+  currency        String                 @default("USD") // Moneda
+  status          PaymentStatus          @default(PENDING) // Estado del pago
+  paymentMethod   String                 @default("PAYPAL") // Método de pago
+  description     String?                // Descripción del pago
+  planType        SubscriptionPlan?     // Tipo de plan (si aplica)
+  planId          String?                // ID del plan comprado
+  paypalData      Json?                 // Datos adicionales de PayPal (capture response)
+  failureReason   String?                // Razón del fallo (si aplica)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  empresa         EmpresaProfile?       @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([empresaId])
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
 }

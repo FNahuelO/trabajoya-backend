@@ -57,7 +57,8 @@ export class SubscriptionsService {
     empresaId: string,
     planType: "BASIC" | "PREMIUM" | "ENTERPRISE",
     paypalOrderId?: string,
-    paypalSubscriptionId?: string
+    paypalSubscriptionId?: string,
+    durationDays: number = 30
   ) {
     // Verificar que la empresa existe
     const empresa = await this.prisma.empresaProfile.findUnique({
@@ -81,9 +82,9 @@ export class SubscriptionsService {
       },
     });
 
-    // Calcular fecha de expiración (30 días desde ahora para suscripciones mensuales)
+    // Calcular fecha de expiración usando la duración del plan
     const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30);
+    endDate.setDate(endDate.getDate() + durationDays);
 
     // Crear nueva suscripción
     const subscription = await this.prisma.subscription.create({
@@ -97,6 +98,10 @@ export class SubscriptionsService {
         endDate,
       },
     });
+
+    console.log(
+      `Subscription created: ${subscription.id} for empresa ${empresaId}, planType: ${planType}, duration: ${durationDays} days, endDate: ${endDate}`
+    );
 
     return subscription;
   }

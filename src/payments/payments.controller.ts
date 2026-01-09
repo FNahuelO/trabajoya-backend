@@ -32,12 +32,52 @@ export class PaymentsController {
   @Post("create-order")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async createOrder(@Body() body: CreateOrderDto) {
+  async createOrder(@Body() body: CreateOrderDto, @Req() req: any) {
     const order = await this.paymentsService.createOrder(
       body.amount,
       body.currency || "USD",
       body.description || `Pago de plan ${body.planType || "premium"}`
     );
+
+    // Guardar la transacción con estado PENDING
+    try {
+      const empresa = await this.prisma.empresaProfile.findUnique({
+        where: { userId: req.user?.sub },
+      });
+
+      // Mapear planType a enum si existe
+      let planTypeEnum: "BASIC" | "PREMIUM" | "ENTERPRISE" | null = null;
+      if (body.planType) {
+        const planTypeMap: Record<
+          string,
+          "BASIC" | "PREMIUM" | "ENTERPRISE"
+        > = {
+          basic: "BASIC",
+          premium: "PREMIUM",
+          enterprise: "ENTERPRISE",
+        };
+        planTypeEnum =
+          planTypeMap[body.planType.toLowerCase()] ||
+          (body.planType.toUpperCase() as "BASIC" | "PREMIUM" | "ENTERPRISE");
+      }
+
+      await this.prisma.paymentTransaction.create({
+        data: {
+          userId: req.user?.sub,
+          empresaId: empresa?.id || null,
+          orderId: order.orderId,
+          amount: body.amount,
+          currency: body.currency || "USD",
+          status: "PENDING",
+          paymentMethod: "PAYPAL",
+          description: body.description || `Pago de plan ${body.planType || "premium"}`,
+          planType: planTypeEnum,
+        },
+      });
+    } catch (error) {
+      console.error("Error saving payment transaction on create:", error);
+      // No fallar la creación de la orden si falla el guardado de la transacción
+    }
 
     return createResponse({
       success: true,
@@ -54,44 +94,166 @@ export class PaymentsController {
   @ApiBearerAuth()
   async captureOrder(
     @Param("orderId") orderId: string,
-    @Body() body: { planType?: string },
+    @Body() body: { planType?: string; planId?: string; amount?: number; currency?: string; description?: string },
     @Req() req: any
   ) {
     const capture = await this.paymentsService.captureOrder(orderId);
 
-    // Si se capturó exitosamente y hay planType, crear suscripción
-    if (capture.status === "COMPLETED" && body.planType) {
-      try {
-        // Obtener empresa del usuario
-        const empresa = await this.prisma.empresaProfile.findUnique({
-          where: { userId: req.user?.sub },
-        });
+    // Obtener detalles del pago desde la respuesta de PayPal
+    const purchaseUnit = capture.purchase_units?.[0];
+    const amount = purchaseUnit?.amount?.value 
+      ? parseFloat(purchaseUnit.amount.value) 
+      : body.amount || 0;
+    const currency = purchaseUnit?.amount?.currency_code || body.currency || "USD";
+    const description = purchaseUnit?.description || body.description || "Pago en TrabajoYa";
 
-        if (empresa) {
-          // Mapear planType a enum
-          const planTypeMap: Record<
-            string,
-            "BASIC" | "PREMIUM" | "ENTERPRISE"
-          > = {
-            basic: "BASIC",
-            premium: "PREMIUM",
-            enterprise: "ENTERPRISE",
-          };
+    // Determinar el estado del pago
+    const paymentStatus = capture.status === "COMPLETED" ? "COMPLETED" : 
+                         capture.status === "FAILED" ? "FAILED" : "PENDING";
 
-          const planType =
-            planTypeMap[body.planType.toLowerCase()] ||
-            (body.planType.toUpperCase() as "BASIC" | "PREMIUM" | "ENTERPRISE");
+    // Guardar la transacción de pago
+    try {
+      // Obtener empresa del usuario si existe
+      const empresa = await this.prisma.empresaProfile.findUnique({
+        where: { userId: req.user?.sub },
+      });
 
-          await this.subscriptionsService.createOrUpdateSubscription(
+      // Mapear planType a enum si existe
+      let planTypeEnum: "BASIC" | "PREMIUM" | "ENTERPRISE" | null = null;
+      if (body.planType) {
+        const planTypeMap: Record<
+          string,
+          "BASIC" | "PREMIUM" | "ENTERPRISE"
+        > = {
+          basic: "BASIC",
+          premium: "PREMIUM",
+          enterprise: "ENTERPRISE",
+        };
+        planTypeEnum =
+          planTypeMap[body.planType.toLowerCase()] ||
+          (body.planType.toUpperCase() as "BASIC" | "PREMIUM" | "ENTERPRISE");
+      }
+
+      // Crear o actualizar la transacción de pago
+      await this.prisma.paymentTransaction.upsert({
+        where: { orderId },
+        update: {
+          status: paymentStatus,
+          paypalData: capture as any,
+          updatedAt: new Date(),
+        },
+        create: {
+          userId: req.user?.sub,
+          empresaId: empresa?.id || null,
+          orderId,
+          amount,
+          currency,
+          status: paymentStatus,
+          paymentMethod: "PAYPAL",
+          description,
+          planType: planTypeEnum,
+          planId: body.planId || null,
+          paypalData: capture as any,
+        },
+      });
+
+      // Si se capturó exitosamente, SIEMPRE crear suscripción
+      if (capture.status === "COMPLETED" && empresa) {
+        try {
+          let finalPlanType: "BASIC" | "PREMIUM" | "ENTERPRISE" = "PREMIUM"; // Default
+          let planDurationDays = 30; // Default
+
+          // Prioridad 1: Obtener información del plan desde planId
+          if (body.planId) {
+            try {
+              const plan = await this.prisma.plan.findUnique({
+                where: { id: body.planId },
+              });
+              if (plan) {
+                planDurationDays = plan.durationDays;
+                console.log(`Plan found: ${plan.name} (${plan.code}), duration: ${plan.durationDays} days`);
+                
+                // Mapeo flexible del código del plan al tipo de suscripción
+                const planCodeLower = plan.code.toLowerCase();
+                if (planCodeLower.includes('basic')) {
+                  finalPlanType = "BASIC";
+                } else if (planCodeLower.includes('enterprise')) {
+                  finalPlanType = "ENTERPRISE";
+                } else {
+                  // Por defecto, cualquier otro plan es PREMIUM (incluye urgent, standard, premium, etc.)
+                  finalPlanType = "PREMIUM";
+                }
+                console.log(`Mapped plan code ${plan.code} to planType: ${finalPlanType}`);
+              }
+            } catch (error) {
+              console.error("Error fetching plan by planId:", error);
+            }
+          }
+
+          // Prioridad 2: Si no tenemos planId, usar planType del body
+          if (finalPlanType === "PREMIUM" && body.planType) {
+            const planTypeLower = body.planType.toLowerCase();
+            if (planTypeLower.includes('basic')) {
+              finalPlanType = "BASIC";
+            } else if (planTypeLower.includes('enterprise')) {
+              finalPlanType = "ENTERPRISE";
+            } else if (planTypeLower.includes('premium') || planTypeLower.includes('urgent') || planTypeLower.includes('standard')) {
+              finalPlanType = "PREMIUM";
+            }
+          }
+
+          // Prioridad 3: Si aún no tenemos, buscar en la transacción
+          if (finalPlanType === "PREMIUM") {
+            try {
+              const transaction = await this.prisma.paymentTransaction.findUnique({
+                where: { orderId },
+              });
+              if (transaction?.planType) {
+                finalPlanType = transaction.planType;
+                console.log(`Using planType from transaction: ${finalPlanType}`);
+              }
+            } catch (error) {
+              console.error("Error fetching transaction:", error);
+            }
+          }
+
+          console.log(
+            `Creating subscription for empresa ${empresa.id}, planType: ${finalPlanType}, duration: ${planDurationDays} days, orderId: ${orderId}`
+          );
+
+          const subscription = await this.subscriptionsService.createOrUpdateSubscription(
             empresa.id,
-            planType,
-            orderId
+            finalPlanType,
+            orderId,
+            undefined, // paypalSubscriptionId
+            planDurationDays
+          );
+
+          console.log(
+            `✅ Subscription created successfully: ${subscription.id} for empresa ${empresa.id}, planType: ${subscription.planType}, status: ${subscription.status}`
+          );
+        } catch (error) {
+          console.error("❌ Error creating subscription after payment:", error);
+          // No fallar el pago si falla la creación de suscripción, pero loguear el error detallado
+          if (error instanceof Error) {
+            console.error("Error details:", error.message, error.stack);
+          }
+        }
+      } else {
+        if (!empresa) {
+          console.error(
+            `❌ No se encontró empresa para userId ${req.user?.sub} al capturar pago ${orderId}`
           );
         }
-      } catch (error) {
-        console.error("Error creating subscription after payment:", error);
-        // No fallar el pago si falla la creación de suscripción
+        if (capture.status !== "COMPLETED") {
+          console.warn(
+            `⚠️ Payment status is ${capture.status}, not creating subscription for orderId ${orderId}`
+          );
+        }
       }
+    } catch (error) {
+      console.error("Error saving payment transaction:", error);
+      // No fallar el pago si falla el guardado de la transacción
     }
 
     return createResponse({
@@ -114,6 +276,92 @@ export class PaymentsController {
       success: true,
       message: "Detalles de orden obtenidos",
       data: details,
+    });
+  }
+
+  /**
+   * Obtener historial de pagos del usuario
+   */
+  @Get("history")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getPaymentHistory(@Req() req: any) {
+    const transactions = await this.prisma.paymentTransaction.findMany({
+      where: { userId: req.user?.sub },
+      orderBy: { createdAt: "desc" },
+      include: {
+        empresa: {
+          select: {
+            id: true,
+            companyName: true,
+          },
+        },
+      },
+    });
+
+    return createResponse({
+      success: true,
+      message: "Historial de pagos obtenido",
+      data: transactions,
+    });
+  }
+
+  /**
+   * Obtener historial de pagos de una empresa (admin)
+   */
+  @Get("history/empresa/:empresaId")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getEmpresaPaymentHistory(@Param("empresaId") empresaId: string) {
+    const transactions = await this.prisma.paymentTransaction.findMany({
+      where: { empresaId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return createResponse({
+      success: true,
+      message: "Historial de pagos de la empresa obtenido",
+      data: transactions,
+    });
+  }
+
+  /**
+   * Obtener todas las transacciones (admin)
+   */
+  @Get("transactions")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getAllTransactions() {
+    const transactions = await this.prisma.paymentTransaction.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+          },
+        },
+        empresa: {
+          select: {
+            id: true,
+            companyName: true,
+          },
+        },
+      },
+    });
+
+    return createResponse({
+      success: true,
+      message: "Todas las transacciones obtenidas",
+      data: transactions,
     });
   }
 
