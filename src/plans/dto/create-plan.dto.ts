@@ -26,6 +26,11 @@ export class CreatePlanDto {
   @Min(0, { message: i18nValidationMessage("validation.min") })
   price: number;
 
+  @ApiProperty({ example: "USD", required: false, default: "USD", description: "Moneda del plan (USD para PayPal, ARS para otras pasarelas)" })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  currency?: string;
+
   @ApiProperty({ example: 7 })
   @IsInt({ message: i18nValidationMessage("validation.isNumber") })
   @Min(1, { message: i18nValidationMessage("validation.min") })

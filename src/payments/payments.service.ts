@@ -26,8 +26,14 @@ export class PaymentsService {
       const errorMessage =
         "Las credenciales de PayPal no están configuradas. Por favor, configura PAYPAL_CLIENT_ID y PAYPAL_CLIENT_SECRET en las variables de entorno o en AWS Secrets Manager.";
       console.error(`❌ ${errorMessage}`);
-      console.error(`PAYPAL_CLIENT_ID: ${clientId ? "✅ Configurado" : "❌ No configurado"}`);
-      console.error(`PAYPAL_CLIENT_SECRET: ${clientSecret ? "✅ Configurado" : "❌ No configurado"}`);
+      console.error(
+        `PAYPAL_CLIENT_ID: ${clientId ? "✅ Configurado" : "❌ No configurado"}`
+      );
+      console.error(
+        `PAYPAL_CLIENT_SECRET: ${
+          clientSecret ? "✅ Configurado" : "❌ No configurado"
+        }`
+      );
       throw new Error(errorMessage);
     }
 
@@ -42,9 +48,9 @@ export class PaymentsService {
     const { clientId, clientSecret } = this.getCredentials();
 
     try {
-      const auth = Buffer.from(
-        `${clientId}:${clientSecret}`
-      ).toString("base64");
+      const auth = Buffer.from(`${clientId}:${clientSecret}`).toString(
+        "base64"
+      );
 
       const response = await axios.post(
         `${this.baseURL}/v1/oauth2/token`,
@@ -60,7 +66,7 @@ export class PaymentsService {
       return response.data.access_token;
     } catch (error: any) {
       console.error("Error getting PayPal access token:", error);
-      
+
       // Mensaje de error más descriptivo
       if (error.response?.status === 401) {
         const errorMessage =
@@ -68,9 +74,11 @@ export class PaymentsService {
         console.error(`❌ ${errorMessage}`);
         throw new Error(errorMessage);
       }
-      
+
       throw new Error(
-        `No se pudo autenticar con PayPal: ${error.response?.data?.error_description || error.message}`
+        `No se pudo autenticar con PayPal: ${
+          error.response?.data?.error_description || error.message
+        }`
       );
     }
   }
@@ -83,6 +91,29 @@ export class PaymentsService {
     currency = "USD",
     description = "Pago en TrabajoYa"
   ) {
+    // Validar que la moneda sea soportada por PayPal
+    // PayPal soporta: USD, EUR, GBP, CAD, AUD, JPY, y otras monedas principales
+    // ARS (Pesos Argentinos) no está soportado en todos los entornos
+    const supportedCurrencies = [
+      "USD",
+      "EUR",
+      "GBP",
+      "CAD",
+      "AUD",
+      "JPY",
+      "MXN",
+      "BRL",
+    ];
+    const normalizedCurrency = currency?.toUpperCase() || "USD";
+
+    let validCurrency = normalizedCurrency;
+    if (!supportedCurrencies.includes(normalizedCurrency)) {
+      console.warn(
+        `Moneda ${normalizedCurrency} no está en la lista de soportadas, usando USD por defecto`
+      );
+      validCurrency = "USD";
+    }
+
     try {
       const accessToken = await this.getAccessToken();
 
@@ -99,7 +130,7 @@ export class PaymentsService {
         purchase_units: [
           {
             amount: {
-              currency_code: currency,
+              currency_code: validCurrency,
               value: amount.toFixed(2),
             },
             description,

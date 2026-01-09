@@ -530,7 +530,8 @@ model Plan {
   id                      String   @id @default(uuid())
   name                    String   @unique
   code                    String   @unique // Código único para identificar el plan (URGENT, STANDARD, PREMIUM)
-  price                   Float    // Precio en pesos argentinos
+  price                   Float    // Precio del plan
+  currency                String   @default("USD") // Moneda del plan (USD para PayPal, ARS para otras pasarelas)
   durationDays            Int      // Duración en días desde la publicación
   unlimitedCvs            Boolean  @default(true) // Siempre true según los requisitos
   allowedModifications    Int      @default(0) // Número de modificaciones permitidas del anuncio

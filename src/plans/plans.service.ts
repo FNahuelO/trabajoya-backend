@@ -99,6 +99,7 @@ export class PlansService {
         name: dto.name,
         code: dto.code,
         price: dto.price,
+        currency: dto.currency || "USD",
         durationDays: dto.durationDays,
         unlimitedCvs: dto.unlimitedCvs ?? true,
         allowedModifications: dto.allowedModifications ?? 0,
