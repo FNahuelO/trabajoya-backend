@@ -322,4 +322,16 @@ export class PostulantesController {
       message: "Certificación eliminada correctamente",
     });
   }
+
+  /**
+   * Eliminar video de presentación
+   */
+  @Delete("profile/video")
+  async deleteVideo(@Req() req: any) {
+    await this.service.deleteVideo(req.user?.sub);
+    return createResponse({
+      success: true,
+      message: "Video eliminado correctamente",
+    });
+  }
 }

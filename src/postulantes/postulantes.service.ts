@@ -237,6 +237,66 @@ export class PostulantesService {
     };
   }
 
+  /**
+   * Eliminar video de presentación del perfil y de S3
+   */
+  async deleteVideo(userId: string): Promise<void> {
+    const profile = await this.prisma.postulanteProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException("Perfil no encontrado");
+    }
+
+    if (!profile.videoUrl) {
+      throw new BadRequestException("No hay video para eliminar");
+    }
+
+    try {
+      // Extraer la key de S3 del videoUrl
+      // El videoUrl puede ser:
+      // 1. Una URL completa de CloudFront (https://d1234.cloudfront.net/videos/userId/uuid.mp4)
+      // 2. Solo la key (videos/userId/uuid.mp4)
+      let s3Key = profile.videoUrl;
+
+      // Si es una URL completa, extraer la key
+      if (s3Key.startsWith("http")) {
+        try {
+          const url = new URL(s3Key);
+          // La key es la parte después del dominio
+          s3Key = url.pathname.startsWith("/") ? url.pathname.substring(1) : url.pathname;
+        } catch (error) {
+          console.error("Error al parsear URL del video:", error);
+          // Si falla, intentar usar el videoUrl directamente
+        }
+      }
+
+      // Eliminar el archivo de S3
+      try {
+        await this.s3UploadService.deleteObject(s3Key);
+        console.log(`Video eliminado de S3: ${s3Key}`);
+      } catch (s3Error: any) {
+        // Si el archivo no existe en S3, continuar de todas formas
+        if (s3Error.name !== "NotFound" && s3Error.$metadata?.httpStatusCode !== 404) {
+          console.error("Error al eliminar video de S3:", s3Error);
+          // Continuar para actualizar el perfil de todas formas
+        }
+      }
+
+      // Actualizar el perfil poniendo videoUrl en null
+      await this.prisma.postulanteProfile.update({
+        where: { userId },
+        data: { videoUrl: null },
+      });
+    } catch (error: any) {
+      console.error("Error al eliminar video:", error);
+      throw new BadRequestException(
+        error.message || "Error al eliminar el video"
+      );
+    }
+  }
+
   async updateByUser(userId: string, dto: any) {
     const profile = await this.prisma.postulanteProfile.findUnique({
       where: { userId },
