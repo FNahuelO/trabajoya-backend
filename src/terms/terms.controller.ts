@@ -84,6 +84,7 @@ export class TermsController {
         type: terms.type,
         version: terms.version,
         fileUrl: terms.fileUrl,
+        markdownContent: terms.markdownContent,
         description: terms.description,
         createdAt: terms.createdAt,
         updatedAt: terms.updatedAt,

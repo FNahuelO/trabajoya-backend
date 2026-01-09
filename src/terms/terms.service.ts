@@ -132,6 +132,95 @@ export class TermsService {
   }
 
   /**
+   * Extrae texto de un PDF y lo convierte a markdown
+   */
+  private async extractTextFromPdfToMarkdown(buffer: Buffer): Promise<string> {
+    try {
+      // Importar pdfjs-dist dinámicamente
+      const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      
+      // Cargar el documento PDF desde el buffer
+      const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(buffer),
+        useSystemFonts: true,
+        verbosity: 0, // Reducir logs
+      });
+      
+      const pdfDocument = await loadingTask.promise;
+      const numPages = pdfDocument.numPages;
+      
+      let markdownContent = "";
+      
+      // Extraer texto de cada página
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdfDocument.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        
+        // Convertir el contenido de texto a markdown
+        let pageMarkdown = "";
+        let lastY: number | null = null;
+        let lastFontSize = 12;
+        
+        for (const item of textContent.items as any[]) {
+          const text = item.str || "";
+          if (!text.trim()) continue;
+          
+          // Obtener información del item
+          const transform = item.transform || [];
+          const currentY = transform.length > 5 ? transform[5] : null;
+          const fontSize = item.height || item.transform?.[0] || 12;
+          const fontName = item.fontName || "";
+          const isBold = fontName.toLowerCase().includes("bold");
+          
+          // Detectar títulos (texto más grande o en negrita)
+          const isTitle = fontSize > 14 || (isBold && fontSize > 12);
+          
+          // Detectar saltos de línea o párrafos
+          if (lastY !== null && currentY !== null) {
+            const yDiff = Math.abs(currentY - lastY);
+            // Si hay un cambio significativo en Y, es probablemente una nueva línea
+            if (yDiff > 15) {
+              pageMarkdown += "\n";
+            }
+          }
+          
+          // Si es un título, formatearlo como markdown
+          if (isTitle && (lastY === null || (currentY !== null && Math.abs((currentY || 0) - (lastY || 0)) > 20))) {
+            // Nuevo título
+            if (pageMarkdown.trim() && !pageMarkdown.trim().endsWith("\n\n")) {
+              pageMarkdown += "\n\n";
+            }
+            pageMarkdown += `## ${text}\n\n`;
+          } else {
+            // Texto normal
+            pageMarkdown += text + " ";
+          }
+          
+          lastY = currentY;
+          lastFontSize = fontSize;
+        }
+        
+        // Limpiar espacios múltiples y agregar separador de página
+        pageMarkdown = pageMarkdown.replace(/\s+/g, " ").trim();
+        if (pageMarkdown) {
+          markdownContent += pageMarkdown + "\n\n";
+        }
+      }
+      
+      // Limpiar el markdown final
+      markdownContent = markdownContent
+        .replace(/\n{3,}/g, "\n\n") // Máximo 2 saltos de línea seguidos
+        .replace(/\s+$/gm, "") // Eliminar espacios al final de líneas
+        .trim();
+      
+      return markdownContent;
+    } catch (error: any) {
+      console.error("Error al extraer texto del PDF:", error);
+      throw new Error(`No se pudo extraer texto del PDF: ${error.message}`);
+    }
+  }
+
+  /**
    * Sube un nuevo PDF de términos y condiciones a S3 (solo admin)
    */
   async uploadTerms(
@@ -186,12 +275,24 @@ export class TermsService {
     // Generar URL de CloudFront
     const fileUrl = this.cloudFrontSigner.getCloudFrontUrl(key);
 
+    // Extraer texto del PDF y convertirlo a markdown
+    let markdownContent: string | null = null;
+    try {
+      markdownContent = await this.extractTextFromPdfToMarkdown(file.buffer);
+      console.log(`✅ Texto extraído del PDF de términos (${type} v${version}): ${markdownContent.length} caracteres`);
+    } catch (error: any) {
+      // Log del error pero no fallar el upload
+      console.error("⚠️ Error al extraer texto del PDF de términos:", error);
+      // Continuar sin el markdown
+    }
+
     // Crear registro en la base de datos
     const terms = await this.prisma.termsAndConditions.create({
       data: {
         type,
         version,
         fileUrl,
+        markdownContent,
         isActive: true,
         description,
       },

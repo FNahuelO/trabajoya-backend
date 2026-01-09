@@ -417,15 +417,16 @@ enum TermsType {
 }
 
 model TermsAndConditions {
-  id          String                @id @default(uuid())
-  type        TermsType
-  version     String // Versión en formato semántico (ej: "1.0.0", "1.1.0")
-  fileUrl     String // URL del PDF almacenado
-  isActive    Boolean               @default(true) // Solo una versión activa por tipo
-  description String? // Descripción de cambios en esta versión
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
-  acceptances UserTermsAcceptance[]
+  id              String                @id @default(uuid())
+  type            TermsType
+  version         String // Versión en formato semántico (ej: "1.0.0", "1.1.0")
+  fileUrl         String // URL del PDF almacenado
+  markdownContent String? // Contenido del PDF parseado a markdown
+  isActive        Boolean               @default(true) // Solo una versión activa por tipo
+  description     String? // Descripción de cambios en esta versión
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  acceptances     UserTermsAcceptance[]
 
   @@unique([type, version])
   @@index([type, isActive])
