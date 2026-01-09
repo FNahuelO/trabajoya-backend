@@ -46,20 +46,41 @@ export class PaymentsController {
         where: { userId: req.user?.sub },
       });
 
-      // Mapear planType a enum si existe
+      // Buscar el plan por código si se proporciona planType (que es el código del plan)
       let planTypeEnum: "BASIC" | "PREMIUM" | "ENTERPRISE" | null = null;
+      let foundPlanId: string | null = null;
+
       if (body.planType) {
-        const planTypeMap: Record<
-          string,
-          "BASIC" | "PREMIUM" | "ENTERPRISE"
-        > = {
-          basic: "BASIC",
-          premium: "PREMIUM",
-          enterprise: "ENTERPRISE",
-        };
-        planTypeEnum =
-          planTypeMap[body.planType.toLowerCase()] ||
-          (body.planType.toUpperCase() as "BASIC" | "PREMIUM" | "ENTERPRISE");
+        try {
+          // Buscar plan por código
+          const plan = await this.prisma.plan.findUnique({
+            where: { code: body.planType.toUpperCase() },
+          });
+
+          if (plan) {
+            foundPlanId = plan.id;
+            // Mapear código del plan al tipo de suscripción
+            const planCodeLower = plan.code.toLowerCase();
+            if (
+              planCodeLower.includes("basic") ||
+              planCodeLower.includes("base")
+            ) {
+              planTypeEnum = "BASIC";
+            } else if (planCodeLower.includes("enterprise")) {
+              planTypeEnum = "ENTERPRISE";
+            } else {
+              // Por defecto, cualquier otro plan es PREMIUM (incluye urgent, standard, premium, etc.)
+              planTypeEnum = "PREMIUM";
+            }
+            console.log(
+              `Plan found by code: ${plan.code} (${plan.name}), mapped to subscription type: ${planTypeEnum}`
+            );
+          } else {
+            console.warn(`Plan not found with code: ${body.planType}`);
+          }
+        } catch (error) {
+          console.error("Error searching plan by code:", error);
+        }
       }
 
       await this.prisma.paymentTransaction.create({
@@ -71,8 +92,10 @@ export class PaymentsController {
           currency: body.currency || "USD",
           status: PaymentStatus.PENDING,
           paymentMethod: PaymentMethod.PAYPAL,
-          description: body.description || `Pago de plan ${body.planType || "premium"}`,
+          description:
+            body.description || `Pago de plan ${body.planType || "premium"}`,
           planType: planTypeEnum,
+          planId: foundPlanId,
         },
       });
     } catch (error) {
@@ -95,22 +118,35 @@ export class PaymentsController {
   @ApiBearerAuth()
   async captureOrder(
     @Param("orderId") orderId: string,
-    @Body() body: { planType?: string; planId?: string; amount?: number; currency?: string; description?: string },
+    @Body()
+    body: {
+      planType?: string;
+      planId?: string;
+      amount?: number;
+      currency?: string;
+      description?: string;
+    },
     @Req() req: any
   ) {
     const capture = await this.paymentsService.captureOrder(orderId);
 
     // Obtener detalles del pago desde la respuesta de PayPal
     const purchaseUnit = capture.purchase_units?.[0];
-    const amount = purchaseUnit?.amount?.value 
-      ? parseFloat(purchaseUnit.amount.value) 
+    const amount = purchaseUnit?.amount?.value
+      ? parseFloat(purchaseUnit.amount.value)
       : body.amount || 0;
-    const currency = purchaseUnit?.amount?.currency_code || body.currency || "USD";
-    const description = purchaseUnit?.description || body.description || "Pago en TrabajoYa";
+    const currency =
+      purchaseUnit?.amount?.currency_code || body.currency || "USD";
+    const description =
+      purchaseUnit?.description || body.description || "Pago en TrabajoYa";
 
     // Determinar el estado del pago
-    const paymentStatus = capture.status === "COMPLETED" ? PaymentStatus.COMPLETED : 
-                         capture.status === "FAILED" ? PaymentStatus.FAILED : PaymentStatus.PENDING;
+    const paymentStatus =
+      capture.status === "COMPLETED"
+        ? PaymentStatus.COMPLETED
+        : capture.status === "FAILED"
+        ? PaymentStatus.FAILED
+        : PaymentStatus.PENDING;
 
     // Guardar la transacción de pago
     try {
@@ -119,20 +155,48 @@ export class PaymentsController {
         where: { userId: req.user?.sub },
       });
 
-      // Mapear planType a enum si existe
+      // Buscar el plan por código si se proporciona planType (que es el código del plan)
       let planTypeEnum: "BASIC" | "PREMIUM" | "ENTERPRISE" | null = null;
+      let foundPlanId: string | null = body.planId || null;
+
       if (body.planType) {
-        const planTypeMap: Record<
-          string,
-          "BASIC" | "PREMIUM" | "ENTERPRISE"
-        > = {
-          basic: "BASIC",
-          premium: "PREMIUM",
-          enterprise: "ENTERPRISE",
-        };
-        planTypeEnum =
-          planTypeMap[body.planType.toLowerCase()] ||
-          (body.planType.toUpperCase() as "BASIC" | "PREMIUM" | "ENTERPRISE");
+        try {
+          // Buscar plan por código
+          const plan = await this.prisma.plan.findUnique({
+            where: { code: body.planType.toUpperCase() },
+          });
+
+          if (plan) {
+            foundPlanId = plan.id;
+            // Usar el subscriptionPlan del plan (configurado por admin)
+            planTypeEnum = plan.subscriptionPlan;
+            console.log(
+              `Plan found by code: ${plan.code} (${plan.name}), subscription type: ${planTypeEnum}`
+            );
+          } else {
+            console.warn(`Plan not found with code: ${body.planType}`);
+          }
+        } catch (error) {
+          console.error("Error searching plan by code:", error);
+        }
+      }
+
+      // Si no tenemos planType del body, intentar obtenerlo de la transacción existente
+      if (!planTypeEnum) {
+        try {
+          const existingTransaction =
+            await this.prisma.paymentTransaction.findUnique({
+              where: { orderId },
+            });
+          if (existingTransaction?.planType) {
+            planTypeEnum = existingTransaction.planType;
+            if (existingTransaction.planId) {
+              foundPlanId = existingTransaction.planId;
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching existing transaction:", error);
+        }
       }
 
       // Crear o actualizar la transacción de pago
@@ -142,6 +206,9 @@ export class PaymentsController {
           status: paymentStatus,
           paypalData: capture as any,
           updatedAt: new Date(),
+          // Actualizar planType y planId si se encontraron
+          ...(planTypeEnum && { planType: planTypeEnum }),
+          ...(foundPlanId && { planId: foundPlanId }),
         },
         create: {
           userId: req.user?.sub,
@@ -153,7 +220,7 @@ export class PaymentsController {
           paymentMethod: PaymentMethod.PAYPAL,
           description,
           planType: planTypeEnum,
-          planId: body.planId || null,
+          planId: foundPlanId,
           paypalData: capture as any,
         },
       });
@@ -164,54 +231,57 @@ export class PaymentsController {
           let finalPlanType: "BASIC" | "PREMIUM" | "ENTERPRISE" = "PREMIUM"; // Default
           let planDurationDays = 30; // Default
 
-          // Prioridad 1: Obtener información del plan desde planId
-          if (body.planId) {
+          // Prioridad 1: Obtener información del plan desde planId (body.planId o foundPlanId)
+          const planIdToUse = body.planId || foundPlanId;
+          if (planIdToUse) {
             try {
               const plan = await this.prisma.plan.findUnique({
-                where: { id: body.planId },
+                where: { id: planIdToUse },
               });
               if (plan) {
                 planDurationDays = plan.durationDays;
-                console.log(`Plan found: ${plan.name} (${plan.code}), duration: ${plan.durationDays} days`);
-                
-                // Mapeo flexible del código del plan al tipo de suscripción
-                const planCodeLower = plan.code.toLowerCase();
-                if (planCodeLower.includes('basic')) {
-                  finalPlanType = "BASIC";
-                } else if (planCodeLower.includes('enterprise')) {
-                  finalPlanType = "ENTERPRISE";
-                } else {
-                  // Por defecto, cualquier otro plan es PREMIUM (incluye urgent, standard, premium, etc.)
-                  finalPlanType = "PREMIUM";
-                }
-                console.log(`Mapped plan code ${plan.code} to planType: ${finalPlanType}`);
+                // Usar el subscriptionPlan del plan (configurado por admin)
+                finalPlanType = plan.subscriptionPlan;
+                console.log(
+                  `Plan found: ${plan.name} (${plan.code}), subscription type: ${finalPlanType}, duration: ${plan.durationDays} days`
+                );
               }
             } catch (error) {
               console.error("Error fetching plan by planId:", error);
             }
           }
 
-          // Prioridad 2: Si no tenemos planId, usar planType del body
-          if (finalPlanType === "PREMIUM" && body.planType) {
-            const planTypeLower = body.planType.toLowerCase();
-            if (planTypeLower.includes('basic')) {
-              finalPlanType = "BASIC";
-            } else if (planTypeLower.includes('enterprise')) {
-              finalPlanType = "ENTERPRISE";
-            } else if (planTypeLower.includes('premium') || planTypeLower.includes('urgent') || planTypeLower.includes('standard')) {
-              finalPlanType = "PREMIUM";
+          // Prioridad 2: Si no tenemos planId, buscar plan por código (planType es el código del plan)
+          if (finalPlanType === "PREMIUM" && body.planType && !planIdToUse) {
+            try {
+              const plan = await this.prisma.plan.findUnique({
+                where: { code: body.planType.toUpperCase() },
+              });
+              if (plan) {
+                planDurationDays = plan.durationDays;
+                // Usar el subscriptionPlan del plan (configurado por admin)
+                finalPlanType = plan.subscriptionPlan;
+                console.log(
+                  `Plan found by code: ${plan.code} (${plan.name}), subscription type: ${finalPlanType}, duration: ${plan.durationDays} days`
+                );
+              }
+            } catch (error) {
+              console.error("Error fetching plan by code:", error);
             }
           }
 
           // Prioridad 3: Si aún no tenemos, buscar en la transacción
           if (finalPlanType === "PREMIUM") {
             try {
-              const transaction = await this.prisma.paymentTransaction.findUnique({
-                where: { orderId },
-              });
+              const transaction =
+                await this.prisma.paymentTransaction.findUnique({
+                  where: { orderId },
+                });
               if (transaction?.planType) {
                 finalPlanType = transaction.planType;
-                console.log(`Using planType from transaction: ${finalPlanType}`);
+                console.log(
+                  `Using planType from transaction: ${finalPlanType}`
+                );
               }
             } catch (error) {
               console.error("Error fetching transaction:", error);
@@ -222,13 +292,14 @@ export class PaymentsController {
             `Creating subscription for empresa ${empresa.id}, planType: ${finalPlanType}, duration: ${planDurationDays} days, orderId: ${orderId}`
           );
 
-          const subscription = await this.subscriptionsService.createOrUpdateSubscription(
-            empresa.id,
-            finalPlanType,
-            orderId,
-            undefined, // paypalSubscriptionId
-            planDurationDays
-          );
+          const subscription =
+            await this.subscriptionsService.createOrUpdateSubscription(
+              empresa.id,
+              finalPlanType,
+              orderId,
+              undefined, // paypalSubscriptionId
+              planDurationDays
+            );
 
           console.log(
             `✅ Subscription created successfully: ${subscription.id} for empresa ${empresa.id}, planType: ${subscription.planType}, status: ${subscription.status}`

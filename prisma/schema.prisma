@@ -529,30 +529,32 @@ model CatalogTranslation {
 }
 
 model Plan {
-  id                      String   @id @default(uuid())
-  name                    String   @unique
-  code                    String   @unique // Código único para identificar el plan (URGENT, STANDARD, PREMIUM)
-  price                   Float    // Precio del plan
-  currency                String   @default("USD") // Moneda del plan (USD para PayPal, ARS para otras pasarelas)
-  durationDays            Int      // Duración en días desde la publicación
-  unlimitedCvs            Boolean  @default(true) // Siempre true según los requisitos
-  allowedModifications    Int      @default(0) // Número de modificaciones permitidas del anuncio
-  canModifyCategory       Boolean  @default(false) // Si puede modificar el rubro
-  categoryModifications   Int      @default(0) // Número de veces que puede modificar el rubro (0 o 1)
-  hasFeaturedOption       Boolean  @default(false) // Si tiene opción gráfica destacada
-  hasAIFeature            Boolean  @default(false) // Si tiene acceso a funcionalidades de IA (generación de descripciones)
-  launchBenefitAvailable  Boolean  @default(false) // Si tiene beneficio de lanzamiento disponible
-  launchBenefitDuration   Int?     // Duración del beneficio de lanzamiento en días (4 días)
-  isActive                Boolean  @default(true)
-  order                   Int      @default(0)
-  description             String?  // Descripción del plan
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  id                      String             @id @default(uuid())
+  name                    String             @unique
+  code                    String             @unique // Código único para identificar el plan (URGENT, STANDARD, PREMIUM)
+  subscriptionPlan        SubscriptionPlan   @default(PREMIUM) // Tipo de suscripción al que pertenece este plan
+  price                   Float               // Precio del plan
+  currency                String              @default("USD") // Moneda del plan (USD para PayPal, ARS para otras pasarelas)
+  durationDays            Int                 // Duración en días desde la publicación
+  unlimitedCvs            Boolean             @default(true) // Siempre true según los requisitos
+  allowedModifications    Int                 @default(0) // Número de modificaciones permitidas del anuncio
+  canModifyCategory       Boolean             @default(false) // Si puede modificar el rubro
+  categoryModifications   Int                 @default(0) // Número de veces que puede modificar el rubro (0 o 1)
+  hasFeaturedOption       Boolean             @default(false) // Si tiene opción gráfica destacada
+  hasAIFeature            Boolean             @default(false) // Si tiene acceso a funcionalidades de IA (generación de descripciones)
+  launchBenefitAvailable  Boolean            @default(false) // Si tiene beneficio de lanzamiento disponible
+  launchBenefitDuration   Int?                // Duración del beneficio de lanzamiento en días (4 días)
+  isActive                Boolean             @default(true)
+  order                   Int                 @default(0)
+  description             String?             // Descripción del plan
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
   paymentTransactions     PaymentTransaction[]
 
   @@index([code])
   @@index([isActive])
   @@index([order])
+  @@index([subscriptionPlan])
 }
 
 model PaymentTransaction {
