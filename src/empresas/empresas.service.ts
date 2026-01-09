@@ -89,6 +89,96 @@ export class EmpresasService {
     return profile;
   }
 
+  /**
+   * Buscar empresas (endpoint público)
+   */
+  async search(query: any) {
+    const where: any = {};
+
+    // Búsqueda por nombre de empresa
+    if (query.q) {
+      where.companyName = {
+        contains: query.q,
+        mode: "insensitive" as any,
+      };
+    }
+
+    // Búsqueda por ubicación
+    if (query.location) {
+      where.OR = [
+        { ciudad: { contains: query.location, mode: "insensitive" as any } },
+        { provincia: { contains: query.location, mode: "insensitive" as any } },
+        { pais: { contains: query.location, mode: "insensitive" as any } },
+      ];
+    }
+
+    const page = Number(query.page || 1);
+    const pageSize = Number(query.pageSize || 20);
+    const skip = (page - 1) * pageSize;
+
+    const [empresas, total] = await Promise.all([
+      this.prisma.empresaProfile.findMany({
+        where,
+        skip,
+        take: pageSize,
+        select: {
+          id: true,
+          companyName: true,
+          ciudad: true,
+          provincia: true,
+          pais: true,
+          logo: true,
+          descripcion: true,
+          sector: true,
+          industria: true,
+          sitioWeb: true,
+          email: true,
+          phone: true,
+        },
+        orderBy: { companyName: "asc" },
+      }),
+      this.prisma.empresaProfile.count({ where }),
+    ]);
+
+    // Transformar logos a URLs
+    const empresasWithUrls = await Promise.all(
+      empresas.map(async (empresa) => {
+        if (empresa.logo && !empresa.logo.startsWith("http")) {
+          try {
+            if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+              const logoPath = empresa.logo.startsWith("/")
+                ? empresa.logo
+                : `/${empresa.logo}`;
+              const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+              if (
+                cloudFrontUrl &&
+                cloudFrontUrl.startsWith("https://") &&
+                !cloudFrontUrl.includes("https:///")
+              ) {
+                empresa.logo = cloudFrontUrl;
+              } else {
+                empresa.logo = await this.s3UploadService.getObjectUrl(empresa.logo, 3600);
+              }
+            } else {
+              empresa.logo = await this.s3UploadService.getObjectUrl(empresa.logo, 3600);
+            }
+          } catch (error) {
+            console.error("Error generando URL para logo:", error);
+          }
+        }
+        return empresa;
+      })
+    );
+
+    return {
+      data: empresasWithUrls,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
   async updateByUser(userId: string, dto: any) {
     const profile = await this.prisma.empresaProfile.findUnique({
       where: { userId },
