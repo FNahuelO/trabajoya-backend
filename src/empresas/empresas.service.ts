@@ -434,7 +434,7 @@ export class EmpresasService {
       throw new NotFoundException("Mensaje de error");
     }
 
-    return this.prisma.application.findMany({
+    const applications = await this.prisma.application.findMany({
       where: { jobId },
       orderBy: { appliedAt: "desc" },
       include: {
@@ -457,6 +457,47 @@ export class EmpresasService {
         },
       },
     });
+
+    // Transformar avatares de postulantes a URLs completas
+    const applicationsWithUrls = await Promise.all(
+      applications.map(async (application) => {
+        if (application.postulante?.profilePicture) {
+          const profilePicture = application.postulante.profilePicture;
+          let avatarUrl = profilePicture;
+          
+          if (!profilePicture.startsWith("http")) {
+            try {
+              if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+                const avatarPath = profilePicture.startsWith("/")
+                  ? profilePicture
+                  : `/${profilePicture}`;
+                const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(avatarPath);
+                if (
+                  cloudFrontUrl &&
+                  cloudFrontUrl.startsWith("https://") &&
+                  !cloudFrontUrl.includes("https:///")
+                ) {
+                  avatarUrl = cloudFrontUrl;
+                } else {
+                  avatarUrl = await this.s3UploadService.getObjectUrl(profilePicture, 3600);
+                }
+              } else {
+                avatarUrl = await this.s3UploadService.getObjectUrl(profilePicture, 3600);
+              }
+            } catch (error) {
+              console.error("Error generando URL para avatar de postulante:", error);
+            }
+          }
+          
+          // Actualizar tanto profilePicture como avatar para compatibilidad
+          application.postulante.profilePicture = avatarUrl;
+          (application.postulante as any).avatar = avatarUrl;
+        }
+        return application;
+      })
+    );
+
+    return applicationsWithUrls;
   }
 
   async updateApplicationStatus(
