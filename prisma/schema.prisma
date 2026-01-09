@@ -32,6 +32,7 @@ model User {
   videoMeetingsInvited VideoMeeting[]     @relation("VideoMeetingsInvited")
   termsAcceptances  UserTermsAcceptance[]
   mediaAssets       MediaAsset[]
+  paymentTransactions PaymentTransaction[]
 }
 
 model RefreshToken {
@@ -547,6 +548,7 @@ model Plan {
   description             String?  // Descripción del plan
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
+  paymentTransactions     PaymentTransaction[]
 
   @@index([code])
   @@index([isActive])
@@ -561,10 +563,11 @@ model PaymentTransaction {
   amount          Float                  // Monto del pago
   currency        String                 @default("USD") // Moneda
   status          PaymentStatus          @default(PENDING) // Estado del pago
-  paymentMethod   String                 @default("PAYPAL") // Método de pago
+  paymentMethod   PaymentMethod          @default(PAYPAL) // Método de pago
   description     String?                // Descripción del pago
   planType        SubscriptionPlan?     // Tipo de plan (si aplica)
   planId          String?                // ID del plan comprado
+  plan            Plan?                 @relation(fields: [planId], references: [id], onDelete: SetNull)
   paypalData      Json?                 // Datos adicionales de PayPal (capture response)
   failureReason   String?                // Razón del fallo (si aplica)
   createdAt       DateTime               @default(now())
@@ -585,4 +588,10 @@ enum PaymentStatus {
   FAILED
   CANCELLED
   REFUNDED
+}
+
+enum PaymentMethod {
+  PAYPAL
+  MERCADOPAGO
+  STRIPE
 }

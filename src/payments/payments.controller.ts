@@ -16,6 +16,7 @@ import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { PaymentMethod, PaymentStatus } from "@prisma/client";
 
 @ApiTags("payments")
 @Controller("api/payments")
@@ -68,8 +69,8 @@ export class PaymentsController {
           orderId: order.orderId,
           amount: body.amount,
           currency: body.currency || "USD",
-          status: "PENDING",
-          paymentMethod: "PAYPAL",
+          status: PaymentStatus.PENDING,
+          paymentMethod: PaymentMethod.PAYPAL,
           description: body.description || `Pago de plan ${body.planType || "premium"}`,
           planType: planTypeEnum,
         },
@@ -108,8 +109,8 @@ export class PaymentsController {
     const description = purchaseUnit?.description || body.description || "Pago en TrabajoYa";
 
     // Determinar el estado del pago
-    const paymentStatus = capture.status === "COMPLETED" ? "COMPLETED" : 
-                         capture.status === "FAILED" ? "FAILED" : "PENDING";
+    const paymentStatus = capture.status === "COMPLETED" ? PaymentStatus.COMPLETED : 
+                         capture.status === "FAILED" ? PaymentStatus.FAILED : PaymentStatus.PENDING;
 
     // Guardar la transacción de pago
     try {
@@ -149,7 +150,7 @@ export class PaymentsController {
           amount,
           currency,
           status: paymentStatus,
-          paymentMethod: "PAYPAL",
+          paymentMethod: PaymentMethod.PAYPAL,
           description,
           planType: planTypeEnum,
           planId: body.planId || null,
