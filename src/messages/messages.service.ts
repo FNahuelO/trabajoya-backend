@@ -10,11 +10,17 @@ import {
   MessageResponseDto,
   ConversationResponseDto,
 } from "./dto";
+import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { S3UploadService } from "../upload/s3-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
 export class MessagesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cloudFrontSigner: CloudFrontSignerService,
+    private s3UploadService: S3UploadService
+  ) {}
 
   async sendMessage(
     fromUserId: string,
@@ -98,7 +104,7 @@ export class MessagesService {
       },
     });
 
-    return this.mapMessageToResponse(newMessage);
+    return await this.mapMessageToResponse(newMessage);
   }
 
   async getConversations(userId: string): Promise<ConversationResponseDto[]> {
@@ -176,6 +182,50 @@ export class MessagesService {
             ],
           },
           orderBy: { createdAt: "desc" },
+          include: {
+            fromUser: {
+              select: {
+                id: true,
+                email: true,
+                userType: true,
+                postulante: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    profilePicture: true,
+                  },
+                },
+                empresa: {
+                  select: {
+                    id: true,
+                    companyName: true,
+                    logo: true,
+                  },
+                },
+              },
+            },
+            toUser: {
+              select: {
+                id: true,
+                email: true,
+                userType: true,
+                postulante: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    profilePicture: true,
+                  },
+                },
+                empresa: {
+                  select: {
+                    id: true,
+                    companyName: true,
+                    logo: true,
+                  },
+                },
+              },
+            },
+          },
         });
 
         const unreadCount = await this.prisma.message.count({
@@ -210,8 +260,8 @@ export class MessagesService {
         });
 
         return {
-          user: this.mapUserToResponse(otherUser),
-          lastMessage: this.mapMessageToResponse(lastMessage),
+          user: await this.mapUserToResponse(otherUser),
+          lastMessage: await this.mapMessageToResponse(lastMessage),
           unreadCount,
         };
       })
@@ -292,7 +342,9 @@ export class MessagesService {
       data: { isRead: true },
     });
 
-    return messages.map((message) => this.mapMessageToResponse(message));
+    return Promise.all(
+      messages.map((message) => this.mapMessageToResponse(message))
+    );
   }
 
   async markAsRead(
@@ -362,7 +414,7 @@ export class MessagesService {
       },
     });
 
-    return this.mapMessageToResponse(updatedMessage);
+    return await this.mapMessageToResponse(updatedMessage);
   }
 
   async getUnreadCount(userId: string): Promise<number> {
@@ -408,11 +460,11 @@ export class MessagesService {
       throw new NotFoundException("Usuario no encontrado");
     }
 
-    return this.mapUserToResponse(user);
+    return await this.mapUserToResponse(user);
   }
 
   // Métodos de mapeo para transformar los datos de Prisma a DTOs
-  private mapMessageToResponse(message: any): MessageResponseDto {
+  private async mapMessageToResponse(message: any): Promise<MessageResponseDto> {
     return {
       id: message.id,
       fromUserId: message.fromUserId,
@@ -421,15 +473,73 @@ export class MessagesService {
       isRead: message.isRead,
       createdAt: message.createdAt.toISOString(),
       fromUser: message.fromUser
-        ? this.mapUserToResponse(message.fromUser)
+        ? await this.mapUserToResponse(message.fromUser)
         : undefined,
       toUser: message.toUser
-        ? this.mapUserToResponse(message.toUser)
+        ? await this.mapUserToResponse(message.toUser)
         : undefined,
     };
   }
 
-  private mapUserToResponse(user: any): any {
+  private async mapUserToResponse(user: any): Promise<any> {
+    // Transformar profilePicture si existe
+    let profilePicture = user.postulante?.profilePicture;
+    if (profilePicture && !profilePicture.startsWith("http")) {
+      try {
+        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+          const picturePath = profilePicture.startsWith("/")
+            ? profilePicture
+            : `/${profilePicture}`;
+          const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(picturePath);
+          if (
+            cloudFrontUrl &&
+            cloudFrontUrl.startsWith("https://") &&
+            !cloudFrontUrl.includes("https:///")
+          ) {
+            profilePicture = cloudFrontUrl;
+          } else {
+            profilePicture = await this.s3UploadService.getObjectUrl(
+              user.postulante.profilePicture,
+              3600
+            );
+          }
+        } else {
+          profilePicture = await this.s3UploadService.getObjectUrl(
+            user.postulante.profilePicture,
+            3600
+          );
+        }
+      } catch (error) {
+        console.error("Error generando URL para profilePicture:", error);
+        // Mantener el key original si falla
+      }
+    }
+
+    // Transformar logo si existe
+    let logo = user.empresa?.logo;
+    if (logo && !logo.startsWith("http")) {
+      try {
+        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+          const logoPath = logo.startsWith("/") ? logo : `/${logo}`;
+          const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+          if (
+            cloudFrontUrl &&
+            cloudFrontUrl.startsWith("https://") &&
+            !cloudFrontUrl.includes("https:///")
+          ) {
+            logo = cloudFrontUrl;
+          } else {
+            logo = await this.s3UploadService.getObjectUrl(user.empresa.logo, 3600);
+          }
+        } else {
+          logo = await this.s3UploadService.getObjectUrl(user.empresa.logo, 3600);
+        }
+      } catch (error) {
+        console.error("Error generando URL para logo:", error);
+        // Mantener el key original si falla
+      }
+    }
+
     return {
       id: user.id,
       email: user.email,
@@ -438,14 +548,14 @@ export class MessagesService {
         ? {
             id: user.postulante.id,
             fullName: user.postulante.fullName,
-            profilePicture: user.postulante.profilePicture,
+            profilePicture: profilePicture,
           }
         : undefined,
       empresa: user.empresa
         ? {
             id: user.empresa.id,
             companyName: user.empresa.companyName,
-            logo: user.empresa.logo,
+            logo: logo,
           }
         : undefined,
     };
@@ -548,7 +658,9 @@ export class MessagesService {
       },
     });
 
-    return messages.map((message) => this.mapMessageToResponse(message));
+    return Promise.all(
+      messages.map((message) => this.mapMessageToResponse(message))
+    );
   }
 
   // Método para obtener un mensaje por ID
