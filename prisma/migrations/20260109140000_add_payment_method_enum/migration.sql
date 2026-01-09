@@ -11,7 +11,11 @@ UPDATE "PaymentTransaction"
 SET "paymentMethod" = 'PAYPAL' 
 WHERE "paymentMethod" NOT IN ('PAYPAL', 'MERCADOPAGO', 'STRIPE');
 
--- Ahora cambiar el tipo de la columna
+-- Eliminar el valor por defecto temporalmente
+ALTER TABLE "PaymentTransaction" 
+  ALTER COLUMN "paymentMethod" DROP DEFAULT;
+
+-- Cambiar el tipo de la columna
 ALTER TABLE "PaymentTransaction" 
   ALTER COLUMN "paymentMethod" TYPE "PaymentMethod" 
   USING CASE 
@@ -20,4 +24,8 @@ ALTER TABLE "PaymentTransaction"
     WHEN "paymentMethod"::text = 'STRIPE' THEN 'STRIPE'::"PaymentMethod"
     ELSE 'PAYPAL'::"PaymentMethod"
   END;
+
+-- Restaurar el valor por defecto con el tipo correcto
+ALTER TABLE "PaymentTransaction" 
+  ALTER COLUMN "paymentMethod" SET DEFAULT 'PAYPAL'::"PaymentMethod";
 
