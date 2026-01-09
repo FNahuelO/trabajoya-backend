@@ -147,6 +147,51 @@ export class PostulantesService {
       }
     }
 
+    // Transformar el videoUrl key en una URL válida (CloudFront o S3 directo)
+    let videoUrl = profile.videoUrl;
+    if (videoUrl && !videoUrl.startsWith("http")) {
+      try {
+        // Verificar si CloudFront está configurado
+        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+          const videoPath = videoUrl.startsWith("/")
+            ? videoUrl
+            : `/${videoUrl}`;
+          const cloudFrontUrl =
+            this.cloudFrontSigner.getCloudFrontUrl(videoPath);
+          // Solo actualizar si se generó una URL válida (verificar que no sea malformada)
+          if (
+            cloudFrontUrl &&
+            cloudFrontUrl.startsWith("https://") &&
+            !cloudFrontUrl.includes("https:///")
+          ) {
+            videoUrl = cloudFrontUrl;
+          } else {
+            // Si CloudFront falla o retorna URL malformada, usar S3 directo
+            console.warn(
+              `[PostulantesService] CloudFront configurado pero URL malformada: ${cloudFrontUrl}. ` +
+                `Usando S3 directo para video: ${profile.videoUrl}`
+            );
+            videoUrl = await this.s3UploadService.getObjectUrl(
+              profile.videoUrl,
+              3600
+            );
+          }
+        } else {
+          // Si CloudFront no está configurado, usar S3 directo
+          console.log(
+            `[PostulantesService] CloudFront no configurado. Usando S3 directo para video: ${profile.videoUrl}`
+          );
+          videoUrl = await this.s3UploadService.getObjectUrl(
+            profile.videoUrl,
+            3600
+          );
+        }
+      } catch (error) {
+        console.error("Error generando URL para video:", error);
+        // Si falla, mantener el key original para que el frontend pueda intentar construirla
+      }
+    }
+
     return {
       id: profile.id,
       userId: profile.userId,
@@ -158,7 +203,7 @@ export class PostulantesService {
       skills: profile.skills,
       avatar: avatarUrl,
       cv: profile.cvUrl,
-      videoUrl: profile.videoUrl,
+      videoUrl: videoUrl,
       experiences: (profile as any).experiences || [],
       education: (profile as any).education || [],
       // Personal data
