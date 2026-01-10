@@ -90,28 +90,30 @@ export class JobsService {
     // Transformar logos a URLs (CloudFront o S3 presigned)
     const jobsWithProcessedLogos = await Promise.all(
       jobs.map(async (job) => {
-        if (job.empresa?.logo && !job.empresa.logo.startsWith("http")) {
+        const logoValue = job.empresa?.logo as unknown as string | null | undefined;
+        if (logoValue && typeof logoValue === "string" && !logoValue.startsWith("http")) {
+          const logo: string = logoValue;
           try {
             if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-              const logoPath = job.empresa.logo.startsWith("/")
-                ? job.empresa.logo
-                : `/${job.empresa.logo}`;
+              const logoPath = logo.startsWith("/")
+                ? logo
+                : `/${logo}`;
               const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
               if (
                 cloudFrontUrl &&
                 cloudFrontUrl.startsWith("https://") &&
                 !cloudFrontUrl.includes("https:///")
               ) {
-                job.empresa.logo = cloudFrontUrl;
+                (job.empresa as any).logo = cloudFrontUrl;
               } else {
-                job.empresa.logo = await this.s3UploadService.getObjectUrl(
-                  job.empresa.logo,
+                (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
+                  logo,
                   3600
                 );
               }
             } else {
-              job.empresa.logo = await this.s3UploadService.getObjectUrl(
-                job.empresa.logo,
+              (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
+                logo,
                 3600
               );
             }
@@ -158,28 +160,30 @@ export class JobsService {
     }
 
     // Transformar logo a URL (CloudFront o S3 presigned)
-    if (job.empresa?.logo && !job.empresa.logo.startsWith("http")) {
+    const logoValue = job.empresa?.logo as unknown as string | null | undefined;
+    if (logoValue && typeof logoValue === "string" && !logoValue.startsWith("http")) {
+      const logo: string = logoValue;
       try {
         if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-          const logoPath = job.empresa.logo.startsWith("/")
-            ? job.empresa.logo
-            : `/${job.empresa.logo}`;
+          const logoPath = logo.startsWith("/")
+            ? logo
+            : `/${logo}`;
           const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
           if (
             cloudFrontUrl &&
             cloudFrontUrl.startsWith("https://") &&
             !cloudFrontUrl.includes("https:///")
           ) {
-            job.empresa.logo = cloudFrontUrl;
+            (job.empresa as any).logo = cloudFrontUrl;
           } else {
-            job.empresa.logo = await this.s3UploadService.getObjectUrl(
-              job.empresa.logo,
+            (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
+              logo,
               3600
             );
           }
         } else {
-          job.empresa.logo = await this.s3UploadService.getObjectUrl(
-            job.empresa.logo,
+          (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
+            logo,
             3600
           );
         }
