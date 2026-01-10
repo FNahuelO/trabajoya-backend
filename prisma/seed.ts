@@ -14,21 +14,8 @@ async function main() {
       isVerified: true,
     },
   });
-  const empresa = await prisma.empresaProfile.upsert({
-    where: { userId: admin.id },
-    update: {},
-    create: {
-      userId: admin.id,
-      companyName: "TrabajoYa SA",
-      cuit: "30700000001",
-      email: "contacto@trabajoya.dev",
-      ciudad: "Buenos Aires",
-      provincia: "Buenos Aires",
-      pais: "Argentina",
-    },
-  });
 
-  // Crear múltiples trabajos de prueba
+  /*  // Crear múltiples trabajos de prueba
   const jobs = [
     {
       title: "Desarrollador Frontend React Native",
@@ -267,44 +254,164 @@ async function main() {
     });
   }
 
-  console.log(`✅ Seed completo: ${jobs.length} trabajos creados`);
+  console.log(`✅ Seed completo: ${jobs.length} trabajos creados`); */
 
   // Crear catálogos
   const jobAreas = [
-    { code: "COMERCIAL_VENTAS_NEGOCIOS", es: "Comercial, Ventas y Negocios", en: "Commercial, Sales & Business", pt: "Comercial, Vendas e Negócios" },
-    { code: "ADMIN_CONTABILIDAD_FINANZAS", es: "Administración, Contabilidad y Finanzas", en: "Administration, Accounting & Finance", pt: "Administração, Contabilidade e Finanças" },
-    { code: "PRODUCCION_MANUFACTURA", es: "Producción y Manufactura", en: "Production & Manufacturing", pt: "Produção e Manufatura" },
-    { code: "OFICIOS_Y_OTROS", es: "Oficios y Otros", en: "Trades & Other", pt: "Ofícios e Outros" },
-    { code: "ABASTECIMIENTO_LOGISTICA", es: "Abastecimiento y Logística", en: "Supply & Logistics", pt: "Suprimentos e Logística" },
-    { code: "GASTRONOMIA_TURISMO", es: "Gastronomía y Turismo", en: "Gastronomy & Tourism", pt: "Gastronomia e Turismo" },
-    { code: "TECNOLOGIA_SISTEMAS_TELECOM", es: "Tecnología, Sistemas y Telecomunicaciones", en: "Technology, Systems & Telecommunications", pt: "Tecnologia, Sistemas e Telecomunicações" },
-    { code: "ATENCION_CLIENTE_CALLCENTER_TELEMARKETING", es: "Atención al Cliente, Call Center y Telemarketing", en: "Customer Service, Call Center & Telemarketing", pt: "Atendimento ao Cliente, Call Center e Telemarketing" },
-    { code: "SALUD_MEDICINA_FARMACIA", es: "Salud, Medicina y Farmacia", en: "Health, Medicine & Pharmacy", pt: "Saúde, Medicina e Farmácia" },
-    { code: "INGENIERIAS", es: "Ingenierías", en: "Engineering", pt: "Engenharias" },
-    { code: "RRHH_CAPACITACION", es: "Recursos Humanos y Capacitación", en: "Human Resources & Training", pt: "Recursos Humanos e Capacitação" },
-    { code: "MARKETING_PUBLICIDAD", es: "Marketing y Publicidad", en: "Marketing & Advertising", pt: "Marketing e Publicidade" },
-    { code: "ING_CIVIL_CONSTRUCCION", es: "Ingeniería Civil y Construcción", en: "Civil Engineering & Construction", pt: "Engenharia Civil e Construção" },
+    {
+      code: "COMERCIAL_VENTAS_NEGOCIOS",
+      es: "Comercial, Ventas y Negocios",
+      en: "Commercial, Sales & Business",
+      pt: "Comercial, Vendas e Negócios",
+    },
+    {
+      code: "ADMIN_CONTABILIDAD_FINANZAS",
+      es: "Administración, Contabilidad y Finanzas",
+      en: "Administration, Accounting & Finance",
+      pt: "Administração, Contabilidade e Finanças",
+    },
+    {
+      code: "PRODUCCION_MANUFACTURA",
+      es: "Producción y Manufactura",
+      en: "Production & Manufacturing",
+      pt: "Produção e Manufatura",
+    },
+    {
+      code: "OFICIOS_Y_OTROS",
+      es: "Oficios y Otros",
+      en: "Trades & Other",
+      pt: "Ofícios e Outros",
+    },
+    {
+      code: "ABASTECIMIENTO_LOGISTICA",
+      es: "Abastecimiento y Logística",
+      en: "Supply & Logistics",
+      pt: "Suprimentos e Logística",
+    },
+    {
+      code: "GASTRONOMIA_TURISMO",
+      es: "Gastronomía y Turismo",
+      en: "Gastronomy & Tourism",
+      pt: "Gastronomia e Turismo",
+    },
+    {
+      code: "TECNOLOGIA_SISTEMAS_TELECOM",
+      es: "Tecnología, Sistemas y Telecomunicaciones",
+      en: "Technology, Systems & Telecommunications",
+      pt: "Tecnologia, Sistemas e Telecomunicações",
+    },
+    {
+      code: "ATENCION_CLIENTE_CALLCENTER_TELEMARKETING",
+      es: "Atención al Cliente, Call Center y Telemarketing",
+      en: "Customer Service, Call Center & Telemarketing",
+      pt: "Atendimento ao Cliente, Call Center e Telemarketing",
+    },
+    {
+      code: "SALUD_MEDICINA_FARMACIA",
+      es: "Salud, Medicina y Farmacia",
+      en: "Health, Medicine & Pharmacy",
+      pt: "Saúde, Medicina e Farmácia",
+    },
+    {
+      code: "INGENIERIAS",
+      es: "Ingenierías",
+      en: "Engineering",
+      pt: "Engenharias",
+    },
+    {
+      code: "RRHH_CAPACITACION",
+      es: "Recursos Humanos y Capacitación",
+      en: "Human Resources & Training",
+      pt: "Recursos Humanos e Capacitação",
+    },
+    {
+      code: "MARKETING_PUBLICIDAD",
+      es: "Marketing y Publicidad",
+      en: "Marketing & Advertising",
+      pt: "Marketing e Publicidade",
+    },
+    {
+      code: "ING_CIVIL_CONSTRUCCION",
+      es: "Ingeniería Civil y Construcción",
+      en: "Civil Engineering & Construction",
+      pt: "Engenharia Civil e Construção",
+    },
     { code: "LEGALES", es: "Legales", en: "Legal", pt: "Jurídico" },
-    { code: "SECRETARIAS_RECEPCION", es: "Secretarias y Recepción", en: "Secretarial & Reception", pt: "Secretaria e Recepção" },
+    {
+      code: "SECRETARIAS_RECEPCION",
+      es: "Secretarias y Recepción",
+      en: "Secretarial & Reception",
+      pt: "Secretaria e Recepção",
+    },
     { code: "DISENO", es: "Diseño", en: "Design", pt: "Design" },
-    { code: "ADUANA_COMERCIO_EXTERIOR", es: "Aduana y Comercio Exterior", en: "Customs & Foreign Trade", pt: "Aduana e Comércio Exterior" },
+    {
+      code: "ADUANA_COMERCIO_EXTERIOR",
+      es: "Aduana y Comercio Exterior",
+      en: "Customs & Foreign Trade",
+      pt: "Aduana e Comércio Exterior",
+    },
     { code: "SEGUROS", es: "Seguros", en: "Insurance", pt: "Seguros" },
-    { code: "GERENCIA_DIRECCION_GENERAL", es: "Gerencia y Dirección General", en: "Management & General Direction", pt: "Gerência e Diretoria Geral" },
-    { code: "MINERIA_PETROLEO_GAS", es: "Minería, Petróleo y Gas", en: "Mining, Oil & Gas", pt: "Mineração, Petróleo e Gás" },
-    { code: "DEPARTAMENTO_TECNICO", es: "Departamento Tecnico", en: "Technical Department", pt: "Departamento Técnico" },
-    { code: "EDUCACION_DOCENCIA_INVESTIGACION", es: "Educación, Docencia e Investigación", en: "Education, Teaching & Research", pt: "Educação, Docência e Pesquisa" },
-    { code: "COMUNICACION_RELACIONES_PUBLICAS", es: "Comunicación, Relaciones Institucionales y Públicas", en: "Communication, Institutional & Public Relations", pt: "Comunicação, Relações Institucionais e Públicas" },
+    {
+      code: "GERENCIA_DIRECCION_GENERAL",
+      es: "Gerencia y Dirección General",
+      en: "Management & General Direction",
+      pt: "Gerência e Diretoria Geral",
+    },
+    {
+      code: "MINERIA_PETROLEO_GAS",
+      es: "Minería, Petróleo y Gas",
+      en: "Mining, Oil & Gas",
+      pt: "Mineração, Petróleo e Gás",
+    },
+    {
+      code: "DEPARTAMENTO_TECNICO",
+      es: "Departamento Tecnico",
+      en: "Technical Department",
+      pt: "Departamento Técnico",
+    },
+    {
+      code: "EDUCACION_DOCENCIA_INVESTIGACION",
+      es: "Educación, Docencia e Investigación",
+      en: "Education, Teaching & Research",
+      pt: "Educação, Docência e Pesquisa",
+    },
+    {
+      code: "COMUNICACION_RELACIONES_PUBLICAS",
+      es: "Comunicación, Relaciones Institucionales y Públicas",
+      en: "Communication, Institutional & Public Relations",
+      pt: "Comunicação, Relações Institucionais e Públicas",
+    },
     { code: "ENFERMERIA", es: "Enfermería", en: "Nursing", pt: "Enfermagem" },
-    { code: "NAVIERA_MARITIMA_PORTUARIA", es: "Naviero, Maritimo, Portuario", en: "Shipping, Maritime & Port", pt: "Naval, Marítimo e Portuário" },
+    {
+      code: "NAVIERA_MARITIMA_PORTUARIA",
+      es: "Naviero, Maritimo, Portuario",
+      en: "Shipping, Maritime & Port",
+      pt: "Naval, Marítimo e Portuário",
+    },
   ];
 
   const jobTypes = [
-    { code: "FULL_TIME", es: "Tiempo completo", en: "Full-time", pt: "Tempo integral" },
-    { code: "PART_TIME", es: "Medio tiempo", en: "Part-time", pt: "Meio período" },
+    {
+      code: "FULL_TIME",
+      es: "Tiempo completo",
+      en: "Full-time",
+      pt: "Tempo integral",
+    },
+    {
+      code: "PART_TIME",
+      es: "Medio tiempo",
+      en: "Part-time",
+      pt: "Meio período",
+    },
     { code: "POR_HORAS", es: "Por horas", en: "Hourly", pt: "Por hora" },
     { code: "TEMPORARIO", es: "Temporario", en: "Temporary", pt: "Temporário" },
     { code: "PASANTIA", es: "Pasantía", en: "Internship", pt: "Estágio" },
-    { code: "POR_CONTRATO", es: "Por contrato", en: "Contract", pt: "Contrato" },
+    {
+      code: "POR_CONTRATO",
+      es: "Por contrato",
+      en: "Contract",
+      pt: "Contrato",
+    },
     { code: "NOCTURNO", es: "Nocturno", en: "Night shift", pt: "Noturno" },
   ];
 
@@ -312,12 +419,37 @@ async function main() {
     { code: "SEMI_SR", es: "Semi Sr", en: "Mid-level", pt: "Pleno" },
     { code: "JUNIOR", es: "Junior", en: "Junior", pt: "Júnior" },
     { code: "SENIOR", es: "Senior", en: "Senior", pt: "Sênior" },
-    { code: "SENIOR_O_SEMI_SENIOR", es: "Senior / Semi-Senior", en: "Senior / Mid-level", pt: "Sênior / Pleno" },
-    { code: "JEFE_SUPERVISOR_RESPONSABLE", es: "Jefe / Supervisor / Responsable", en: "Lead / Supervisor / Manager", pt: "Chefe / Supervisor / Responsável" },
+    {
+      code: "SENIOR_O_SEMI_SENIOR",
+      es: "Senior / Semi-Senior",
+      en: "Senior / Mid-level",
+      pt: "Sênior / Pleno",
+    },
+    {
+      code: "JEFE_SUPERVISOR_RESPONSABLE",
+      es: "Jefe / Supervisor / Responsable",
+      en: "Lead / Supervisor / Manager",
+      pt: "Chefe / Supervisor / Responsável",
+    },
     { code: "OTRO", es: "Otro", en: "Other", pt: "Outro" },
-    { code: "GERENCIA_ALTA_GERENCIA_DIRECCION", es: "Gerencia / Alta Gerencia / Dirección", en: "Management / Senior Management / Director", pt: "Gerência / Alta Gerência / Diretoria" },
-    { code: "SIN_EXPERIENCIA", es: "Sin Experiencia", en: "No experience", pt: "Sem experiência" },
-    { code: "TRAINEE_PASANTE", es: "Trainee / Pasante", en: "Trainee / Intern", pt: "Trainee / Estagiário" },
+    {
+      code: "GERENCIA_ALTA_GERENCIA_DIRECCION",
+      es: "Gerencia / Alta Gerencia / Dirección",
+      en: "Management / Senior Management / Director",
+      pt: "Gerência / Alta Gerência / Diretoria",
+    },
+    {
+      code: "SIN_EXPERIENCIA",
+      es: "Sin Experiencia",
+      en: "No experience",
+      pt: "Sem experiência",
+    },
+    {
+      code: "TRAINEE_PASANTE",
+      es: "Trainee / Pasante",
+      en: "Trainee / Intern",
+      pt: "Trainee / Estagiário",
+    },
   ];
 
   const modalities = [
@@ -446,7 +578,12 @@ async function main() {
     { code: "JUNIOR", es: "Junior", en: "Junior", pt: "Júnior" },
     { code: "SEMISENIOR", es: "Semi Senior", en: "Mid-level", pt: "Pleno" },
     { code: "SENIOR", es: "Senior", en: "Senior", pt: "Sênior" },
-    { code: "SIN_EXPERIENCIA", es: "Sin Experiencia", en: "No experience", pt: "Sem experiência" },
+    {
+      code: "SIN_EXPERIENCIA",
+      es: "Sin Experiencia",
+      en: "No experience",
+      pt: "Sem experiência",
+    },
     { code: "TRAINEE", es: "Trainee", en: "Trainee", pt: "Trainee" },
   ];
 
@@ -506,7 +643,12 @@ async function main() {
   // Crear LANGUAGE_LEVELS
   const languageLevels = [
     { code: "BASIC", es: "Básico", en: "Basic", pt: "Básico" },
-    { code: "INTERMEDIATE", es: "Intermedio", en: "Intermediate", pt: "Intermediário" },
+    {
+      code: "INTERMEDIATE",
+      es: "Intermedio",
+      en: "Intermediate",
+      pt: "Intermediário",
+    },
     { code: "ADVANCED", es: "Avanzado", en: "Advanced", pt: "Avançado" },
     { code: "NATIVE", es: "Nativo", en: "Native", pt: "Nativo" },
   ];
@@ -535,11 +677,36 @@ async function main() {
 
   // Crear COMPANY_SIZES
   const companySizes = [
-    { code: "MICRO", es: "Micro (1-5 empleados)", en: "Micro (1-5 employees)", pt: "Micro (1-5 funcionários)" },
-    { code: "PEQUENA", es: "Pequeña (6-50 empleados)", en: "Small (6-50 employees)", pt: "Pequena (6-50 funcionários)" },
-    { code: "MEDIANA", es: "Mediana (51-200 empleados)", en: "Medium (51-200 employees)", pt: "Média (51-200 funcionários)" },
-    { code: "GRANDE", es: "Grande (201-1000 empleados)", en: "Large (201-1000 employees)", pt: "Grande (201-1000 funcionários)" },
-    { code: "MULTINACIONAL", es: "Multinacional (+1000 empleados)", en: "Multinational (+1000 employees)", pt: "Multinacional (+1000 funcionários)" },
+    {
+      code: "MICRO",
+      es: "Micro (1-5 empleados)",
+      en: "Micro (1-5 employees)",
+      pt: "Micro (1-5 funcionários)",
+    },
+    {
+      code: "PEQUENA",
+      es: "Pequeña (6-50 empleados)",
+      en: "Small (6-50 employees)",
+      pt: "Pequena (6-50 funcionários)",
+    },
+    {
+      code: "MEDIANA",
+      es: "Mediana (51-200 empleados)",
+      en: "Medium (51-200 employees)",
+      pt: "Média (51-200 funcionários)",
+    },
+    {
+      code: "GRANDE",
+      es: "Grande (201-1000 empleados)",
+      en: "Large (201-1000 employees)",
+      pt: "Grande (201-1000 funcionários)",
+    },
+    {
+      code: "MULTINACIONAL",
+      es: "Multinacional (+1000 empleados)",
+      en: "Multinational (+1000 employees)",
+      pt: "Multinacional (+1000 funcionários)",
+    },
   ];
 
   order = 10;
@@ -565,25 +732,450 @@ async function main() {
   }
 
   // Crear SECTORS
+  // Función para generar código normalizado desde el nombre
+  const generateCode = (nombre: string): string => {
+    return nombre
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Remover acentos
+      .replace(/[^A-Z0-9]/g, "_") // Reemplazar caracteres especiales con _
+      .replace(/_+/g, "_") // Reemplazar múltiples _ con uno solo
+      .replace(/^_|_$/g, ""); // Remover _ del inicio y final
+  };
+
   const sectors = [
-    { code: "TECNOLOGIA", es: "Tecnología", en: "Technology", pt: "Tecnologia" },
-    { code: "FINANZAS", es: "Finanzas", en: "Finance", pt: "Finanças" },
-    { code: "SALUD", es: "Salud", en: "Health", pt: "Saúde" },
-    { code: "EDUCACION", es: "Educación", en: "Education", pt: "Educação" },
-    { code: "RETAIL", es: "Retail", en: "Retail", pt: "Varejo" },
-    { code: "MANUFACTURA", es: "Manufactura", en: "Manufacturing", pt: "Manufatura" },
-    { code: "CONSTRUCCION", es: "Construcción", en: "Construction", pt: "Construção" },
-    { code: "TRANSPORTE", es: "Transporte", en: "Transportation", pt: "Transporte" },
-    { code: "ENERGIA", es: "Energía", en: "Energy", pt: "Energia" },
-    { code: "TELECOMUNICACIONES", es: "Telecomunicaciones", en: "Telecommunications", pt: "Telecomunicações" },
-    { code: "MEDIOS", es: "Medios de Comunicación", en: "Media", pt: "Mídia" },
-    { code: "TURISMO", es: "Turismo", en: "Tourism", pt: "Turismo" },
-    { code: "GASTRONOMIA", es: "Gastronomía", en: "Gastronomy", pt: "Gastronomia" },
-    { code: "LEGAL", es: "Legal", en: "Legal", pt: "Jurídico" },
-    { code: "MARKETING", es: "Marketing", en: "Marketing", pt: "Marketing" },
-    { code: "RRHH", es: "Recursos Humanos", en: "Human Resources", pt: "Recursos Humanos" },
-    { code: "VENTAS", es: "Ventas", en: "Sales", pt: "Vendas" },
-    { code: "OTRO", es: "Otro", en: "Other", pt: "Outro" },
+    {
+      code: generateCode("Administración"),
+      es: "Administración",
+      en: "Administration",
+      pt: "Administração",
+    },
+    {
+      code: generateCode("Aérea"),
+      es: "Aérea",
+      en: "Aviation",
+      pt: "Aérea",
+    },
+    {
+      code: generateCode("AFJP"),
+      es: "AFJP",
+      en: "AFJP",
+      pt: "AFJP",
+    },
+    {
+      code: generateCode("Agro-Industrial"),
+      es: "Agro-Industrial",
+      en: "Agro-Industrial",
+      pt: "Agro-Industrial",
+    },
+    {
+      code: generateCode("Agropecuaria"),
+      es: "Agropecuaria",
+      en: "Agriculture & Livestock",
+      pt: "Agropecuária",
+    },
+    {
+      code: generateCode("Alimenticia"),
+      es: "Alimenticia",
+      en: "Food Industry",
+      pt: "Alimentícia",
+    },
+    {
+      code: generateCode("Arquitectura"),
+      es: "Arquitectura",
+      en: "Architecture",
+      pt: "Arquitetura",
+    },
+    {
+      code: generateCode("Artesanal"),
+      es: "Artesanal",
+      en: "Handicrafts",
+      pt: "Artesanal",
+    },
+    {
+      code: generateCode("Automotriz"),
+      es: "Automotriz",
+      en: "Automotive",
+      pt: "Automotiva",
+    },
+    {
+      code: generateCode("Banca / Financiera"),
+      es: "Banca / Financiera",
+      en: "Banking / Financial",
+      pt: "Banca / Financeira",
+    },
+    {
+      code: generateCode("Biotecnología"),
+      es: "Biotecnología",
+      en: "Biotechnology",
+      pt: "Biotecnologia",
+    },
+    {
+      code: generateCode("Call Center"),
+      es: "Call Center",
+      en: "Call Center",
+      pt: "Call Center",
+    },
+    {
+      code: generateCode("Comercio"),
+      es: "Comercio",
+      en: "Commerce",
+      pt: "Comércio",
+    },
+    {
+      code: generateCode("Comercio Exterior"),
+      es: "Comercio Exterior",
+      en: "Foreign Trade",
+      pt: "Comércio Exterior",
+    },
+    {
+      code: generateCode("Comunicaciones"),
+      es: "Comunicaciones",
+      en: "Communications",
+      pt: "Comunicações",
+    },
+    {
+      code: generateCode("Construcción"),
+      es: "Construcción",
+      en: "Construction",
+      pt: "Construção",
+    },
+    {
+      code: generateCode("Consultora de Recursos Humanos"),
+      es: "Consultora de Recursos Humanos",
+      en: "Human Resources Consulting",
+      pt: "Consultoria de Recursos Humanos",
+    },
+    {
+      code: generateCode("Consultoría"),
+      es: "Consultoría",
+      en: "Consulting",
+      pt: "Consultoria",
+    },
+    {
+      code: generateCode("Consumo masivo"),
+      es: "Consumo masivo",
+      en: "Mass Consumption",
+      pt: "Consumo massivo",
+    },
+    {
+      code: generateCode("Correo"),
+      es: "Correo",
+      en: "Postal",
+      pt: "Correios",
+    },
+    {
+      code: generateCode("Defensa"),
+      es: "Defensa",
+      en: "Defense",
+      pt: "Defesa",
+    },
+    {
+      code: generateCode("Diseño"),
+      es: "Diseño",
+      en: "Design",
+      pt: "Design",
+    },
+    {
+      code: generateCode("Editorial"),
+      es: "Editorial",
+      en: "Publishing",
+      pt: "Editorial",
+    },
+    {
+      code: generateCode("Educación"),
+      es: "Educación",
+      en: "Education",
+      pt: "Educação",
+    },
+    {
+      code: generateCode("Energía"),
+      es: "Energía",
+      en: "Energy",
+      pt: "Energia",
+    },
+    {
+      code: generateCode("Entretenimiento"),
+      es: "Entretenimiento",
+      en: "Entertainment",
+      pt: "Entretenimento",
+    },
+    {
+      code: generateCode("Farmacéutica"),
+      es: "Farmacéutica",
+      en: "Pharmaceutical",
+      pt: "Farmacêutica",
+    },
+    {
+      code: generateCode("Ferroviaria"),
+      es: "Ferroviaria",
+      en: "Railway",
+      pt: "Ferroviária",
+    },
+    {
+      code: generateCode("Financiera"),
+      es: "Financiera",
+      en: "Financial",
+      pt: "Financeira",
+    },
+    {
+      code: generateCode("Forestal"),
+      es: "Forestal",
+      en: "Forestry",
+      pt: "Florestal",
+    },
+    {
+      code: generateCode("Ganadería"),
+      es: "Ganadería",
+      en: "Livestock",
+      pt: "Pecuária",
+    },
+    {
+      code: generateCode("Gastronomía"),
+      es: "Gastronomía",
+      en: "Gastronomy",
+      pt: "Gastronomia",
+    },
+    {
+      code: generateCode("Gobierno"),
+      es: "Gobierno",
+      en: "Government",
+      pt: "Governo",
+    },
+    {
+      code: generateCode("Higiene y Perfumería"),
+      es: "Higiene y Perfumería",
+      en: "Hygiene & Perfumery",
+      pt: "Higiene e Perfumaria",
+    },
+    {
+      code: generateCode("Holding"),
+      es: "Holding",
+      en: "Holding",
+      pt: "Holding",
+    },
+    {
+      code: generateCode("Hotelería"),
+      es: "Hotelería",
+      en: "Hospitality",
+      pt: "Hotelaria",
+    },
+    {
+      code: generateCode("Imprenta"),
+      es: "Imprenta",
+      en: "Printing",
+      pt: "Impressão",
+    },
+    {
+      code: generateCode("Industrial"),
+      es: "Industrial",
+      en: "Industrial",
+      pt: "Industrial",
+    },
+    {
+      code: generateCode("Información e Investigación"),
+      es: "Información e Investigación",
+      en: "Information & Research",
+      pt: "Informação e Pesquisa",
+    },
+    {
+      code: generateCode("Informática / Tecnología"),
+      es: "Informática / Tecnología",
+      en: "IT / Technology",
+      pt: "Informática / Tecnologia",
+    },
+    {
+      code: generateCode("Inmobiliaria"),
+      es: "Inmobiliaria",
+      en: "Real Estate",
+      pt: "Imobiliária",
+    },
+    {
+      code: generateCode("Internet"),
+      es: "Internet",
+      en: "Internet",
+      pt: "Internet",
+    },
+    {
+      code: generateCode("Jurídica"),
+      es: "Jurídica",
+      en: "Legal",
+      pt: "Jurídica",
+    },
+    {
+      code: generateCode("Laboratorio"),
+      es: "Laboratorio",
+      en: "Laboratory",
+      pt: "Laboratório",
+    },
+    {
+      code: generateCode("Manufactura"),
+      es: "Manufactura",
+      en: "Manufacturing",
+      pt: "Manufatura",
+    },
+    {
+      code: generateCode("Medio Ambiente"),
+      es: "Medio Ambiente",
+      en: "Environment",
+      pt: "Meio Ambiente",
+    },
+    {
+      code: generateCode("Medios"),
+      es: "Medios",
+      en: "Media",
+      pt: "Mídia",
+    },
+    {
+      code: generateCode("Metalmecánica"),
+      es: "Metalmecánica",
+      en: "Metalworking",
+      pt: "Metalomecânica",
+    },
+    {
+      code: generateCode("Minería / Petróleo / Gas"),
+      es: "Minería / Petróleo / Gas",
+      en: "Mining / Oil / Gas",
+      pt: "Mineração / Petróleo / Gás",
+    },
+    {
+      code: generateCode("ONGs"),
+      es: "ONGs",
+      en: "NGOs",
+      pt: "ONGs",
+    },
+    {
+      code: generateCode("Optica"),
+      es: "Optica",
+      en: "Optics",
+      pt: "Óptica",
+    },
+    {
+      code: generateCode("Otra"),
+      es: "Otra",
+      en: "Other",
+      pt: "Outra",
+    },
+    {
+      code: generateCode("Papelera"),
+      es: "Papelera",
+      en: "Paper Industry",
+      pt: "Papelaria",
+    },
+    {
+      code: generateCode("Pesca"),
+      es: "Pesca",
+      en: "Fishing",
+      pt: "Pesca",
+    },
+    {
+      code: generateCode("Petroquímica"),
+      es: "Petroquímica",
+      en: "Petrochemical",
+      pt: "Petroquímica",
+    },
+    {
+      code: generateCode("Plásticos"),
+      es: "Plásticos",
+      en: "Plastics",
+      pt: "Plásticos",
+    },
+    {
+      code: generateCode("Publicidad / Marketing / RRPP"),
+      es: "Publicidad / Marketing / RRPP",
+      en: "Advertising / Marketing / PR",
+      pt: "Publicidade / Marketing / RP",
+    },
+    {
+      code: generateCode("Química"),
+      es: "Química",
+      en: "Chemical",
+      pt: "Química",
+    },
+    {
+      code: generateCode("Retail"),
+      es: "Retail",
+      en: "Retail",
+      pt: "Varejo",
+    },
+    {
+      code: generateCode("Salud"),
+      es: "Salud",
+      en: "Health",
+      pt: "Saúde",
+    },
+    {
+      code: generateCode("Sector público"),
+      es: "Sector público",
+      en: "Public Sector",
+      pt: "Setor público",
+    },
+    {
+      code: generateCode("Seguridad"),
+      es: "Seguridad",
+      en: "Security",
+      pt: "Segurança",
+    },
+    {
+      code: generateCode("Seguros"),
+      es: "Seguros",
+      en: "Insurance",
+      pt: "Seguros",
+    },
+    {
+      code: generateCode("Servicios"),
+      es: "Servicios",
+      en: "Services",
+      pt: "Serviços",
+    },
+    {
+      code: generateCode("Siderurgia"),
+      es: "Siderurgia",
+      en: "Steel Industry",
+      pt: "Siderurgia",
+    },
+    {
+      code: generateCode("Supermercado / Hipermercado"),
+      es: "Supermercado / Hipermercado",
+      en: "Supermarket / Hypermarket",
+      pt: "Supermercado / Hipermercado",
+    },
+    {
+      code: generateCode("Tabacalera"),
+      es: "Tabacalera",
+      en: "Tobacco",
+      pt: "Tabacaria",
+    },
+    {
+      code: generateCode("Telecomunicaciones"),
+      es: "Telecomunicaciones",
+      en: "Telecommunications",
+      pt: "Telecomunicações",
+    },
+    {
+      code: generateCode("Textil"),
+      es: "Textil",
+      en: "Textile",
+      pt: "Têxtil",
+    },
+    {
+      code: generateCode("Transportadora"),
+      es: "Transportadora",
+      en: "Transportation Company",
+      pt: "Transportadora",
+    },
+    {
+      code: generateCode("Transporte"),
+      es: "Transporte",
+      en: "Transportation",
+      pt: "Transporte",
+    },
+    {
+      code: generateCode("Turismo"),
+      es: "Turismo",
+      en: "Tourism",
+      pt: "Turismo",
+    },
   ];
 
   order = 10;
@@ -613,13 +1205,23 @@ async function main() {
     { code: "PRIMARIO", es: "Primario", en: "Primary", pt: "Primário" },
     { code: "SECUNDARIO", es: "Secundario", en: "Secondary", pt: "Secundário" },
     { code: "TERCIARIO", es: "Terciario", en: "Tertiary", pt: "Terciário" },
-    { code: "UNIVERSITARIO", es: "Universitario", en: "University", pt: "Universitário" },
+    {
+      code: "UNIVERSITARIO",
+      es: "Universitario",
+      en: "University",
+      pt: "Universitário",
+    },
     { code: "POSGRADO", es: "Posgrado", en: "Graduate", pt: "Pós-graduação" },
     { code: "MAESTRIA", es: "Maestría", en: "Master's", pt: "Mestrado" },
     { code: "DOCTORADO", es: "Doctorado", en: "Doctorate", pt: "Doutorado" },
     { code: "TECNICO", es: "Técnico", en: "Technical", pt: "Técnico" },
     { code: "CURSO", es: "Curso", en: "Course", pt: "Curso" },
-    { code: "CERTIFICACION", es: "Certificación", en: "Certification", pt: "Certificação" },
+    {
+      code: "CERTIFICACION",
+      es: "Certificación",
+      en: "Certification",
+      pt: "Certificação",
+    },
   ];
 
   order = 10;
@@ -678,9 +1280,19 @@ async function main() {
   const maritalStatuses = [
     { code: "SOLTERO", es: "Soltero/a", en: "Single", pt: "Solteiro/a" },
     { code: "CASADO", es: "Casado/a", en: "Married", pt: "Casado/a" },
-    { code: "DIVORCIADO", es: "Divorciado/a", en: "Divorced", pt: "Divorciado/a" },
+    {
+      code: "DIVORCIADO",
+      es: "Divorciado/a",
+      en: "Divorced",
+      pt: "Divorciado/a",
+    },
     { code: "VIUDO", es: "Viudo/a", en: "Widowed", pt: "Viúvo/a" },
-    { code: "UNION_LIBRE", es: "Unión libre", en: "Common-law", pt: "União estável" },
+    {
+      code: "UNION_LIBRE",
+      es: "Unión libre",
+      en: "Common-law",
+      pt: "União estável",
+    },
     { code: "SEPARADO", es: "Separado/a", en: "Separated", pt: "Separado/a" },
   ];
 
