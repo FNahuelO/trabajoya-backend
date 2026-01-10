@@ -4,11 +4,17 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { S3UploadService } from "../upload/s3-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
 export class JobsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cloudFrontSigner: CloudFrontSignerService,
+    private s3UploadService: S3UploadService
+  ) {}
 
   async search(q: any) {
     const where: any = {
@@ -81,8 +87,44 @@ export class JobsService {
       this.prisma.job.count({ where }),
     ]);
 
+    // Transformar logos a URLs (CloudFront o S3 presigned)
+    const jobsWithProcessedLogos = await Promise.all(
+      jobs.map(async (job) => {
+        if (job.empresa?.logo && !job.empresa.logo.startsWith("http")) {
+          try {
+            if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+              const logoPath = job.empresa.logo.startsWith("/")
+                ? job.empresa.logo
+                : `/${job.empresa.logo}`;
+              const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+              if (
+                cloudFrontUrl &&
+                cloudFrontUrl.startsWith("https://") &&
+                !cloudFrontUrl.includes("https:///")
+              ) {
+                job.empresa.logo = cloudFrontUrl;
+              } else {
+                job.empresa.logo = await this.s3UploadService.getObjectUrl(
+                  job.empresa.logo,
+                  3600
+                );
+              }
+            } else {
+              job.empresa.logo = await this.s3UploadService.getObjectUrl(
+                job.empresa.logo,
+                3600
+              );
+            }
+          } catch (error) {
+            console.error("Error generando URL para logo en jobs:", error);
+          }
+        }
+        return job;
+      })
+    );
+
     return {
-      data: jobs,
+      data: jobsWithProcessedLogos,
       total,
       page,
       pageSize,
@@ -113,6 +155,37 @@ export class JobsService {
 
     if (!job) {
       throw new NotFoundException("Mensaje de error");
+    }
+
+    // Transformar logo a URL (CloudFront o S3 presigned)
+    if (job.empresa?.logo && !job.empresa.logo.startsWith("http")) {
+      try {
+        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+          const logoPath = job.empresa.logo.startsWith("/")
+            ? job.empresa.logo
+            : `/${job.empresa.logo}`;
+          const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+          if (
+            cloudFrontUrl &&
+            cloudFrontUrl.startsWith("https://") &&
+            !cloudFrontUrl.includes("https:///")
+          ) {
+            job.empresa.logo = cloudFrontUrl;
+          } else {
+            job.empresa.logo = await this.s3UploadService.getObjectUrl(
+              job.empresa.logo,
+              3600
+            );
+          }
+        } else {
+          job.empresa.logo = await this.s3UploadService.getObjectUrl(
+            job.empresa.logo,
+            3600
+          );
+        }
+      } catch (error) {
+        console.error("Error generando URL para logo en job detail:", error);
+      }
     }
 
     return job;

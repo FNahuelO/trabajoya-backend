@@ -1,9 +1,15 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { S3UploadService } from "../upload/s3-upload.service";
 
 @Injectable()
 export class FavoritesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cloudFrontSigner: CloudFrontSignerService,
+    private s3UploadService: S3UploadService
+  ) {}
 
   async listJobFavorites(userId: string) {
     const postulante = await this.findPostulanteId(userId);
@@ -16,11 +22,49 @@ export class FavoritesService {
 
   async listCompanyFavorites(userId: string) {
     const postulante = await this.findPostulanteId(userId);
-    return this.prisma.companyFavorite.findMany({
+    const favorites = await this.prisma.companyFavorite.findMany({
       where: { postulanteId: postulante.id },
       include: { empresa: true },
       orderBy: { createdAt: "desc" },
     });
+
+    // Transformar logos a URLs (CloudFront o S3 presigned)
+    const favoritesWithProcessedLogos = await Promise.all(
+      favorites.map(async (favorite) => {
+        if (favorite.empresa?.logo && !favorite.empresa.logo.startsWith("http")) {
+          try {
+            if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+              const logoPath = favorite.empresa.logo.startsWith("/")
+                ? favorite.empresa.logo
+                : `/${favorite.empresa.logo}`;
+              const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+              if (
+                cloudFrontUrl &&
+                cloudFrontUrl.startsWith("https://") &&
+                !cloudFrontUrl.includes("https:///")
+              ) {
+                favorite.empresa.logo = cloudFrontUrl;
+              } else {
+                favorite.empresa.logo = await this.s3UploadService.getObjectUrl(
+                  favorite.empresa.logo,
+                  3600
+                );
+              }
+            } else {
+              favorite.empresa.logo = await this.s3UploadService.getObjectUrl(
+                favorite.empresa.logo,
+                3600
+              );
+            }
+          } catch (error) {
+            console.error("Error generando URL para logo en favoritos:", error);
+          }
+        }
+        return favorite;
+      })
+    );
+
+    return favoritesWithProcessedLogos;
   }
 
   async addJobFavorite(userId: string, jobId: string) {
