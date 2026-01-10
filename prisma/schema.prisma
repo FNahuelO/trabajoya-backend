@@ -160,11 +160,12 @@ model EmpresaProfile {
   cuit                        String            @unique
   documento                   String? // Alias para cuit
   email                       String
-  phone                       String?
+  phone                       String? // Número de teléfono sin código de país (ej: "2616162278")
+  phoneCountryCode            String? // Código de país del teléfono (ej: "+54")
   sitioWeb                    String?
   descripcion                 String?
-  sector                      String?
-  industria                   String? // Alias para sector
+  sector                      String? // Sector de la empresa (ej: ADMIN_CONTABILIDAD_FINANZAS)
+  industria                   String? // Industria de la empresa (ej: CALL_CENTER)
   tamano                      String?
   cantidadEmpleados           String? // Alias para tamano
   condicionFiscal             String?

@@ -972,8 +972,8 @@ export class AuthService {
     });
 
     // Construir dirección completa
-    const address = `${dto.calle} ${dto.numero}, ${dto.provincia}, ${dto.codigoPostal}`;
-    const phone = `${dto.phoneCountryCode}${dto.telefono}`;
+    const address = `${dto.calle} ${dto.numero}, ${dto.localidad || dto.provincia}, ${dto.provincia}, ${dto.codigoPostal}`;
+    const phone = dto.telefono ? dto.telefono.trim() : undefined;
 
     // Crear perfil de empresa con todos los datos
     await this.prisma.empresaProfile.create({
@@ -985,6 +985,7 @@ export class AuthService {
         documento: dto.documento,
         email: dto.email,
         ...(phone && { phone }),
+        ...(dto.phoneCountryCode && { phoneCountryCode: dto.phoneCountryCode.trim() }),
         industria: dto.industria,
         sector: dto.industria,
         cantidadEmpleados: dto.cantidadEmpleados,
@@ -996,7 +997,8 @@ export class AuthService {
         numero: dto.numero,
         codigoPostal: dto.codigoPostal,
         provincia: dto.provincia,
-        ciudad: dto.provincia, // Por defecto, puede actualizarse después
+        localidad: dto.localidad || undefined,
+        ciudad: dto.ciudad || dto.localidad || undefined,
         // Contacto
         nombreContacto: dto.nombre,
         apellidoContacto: dto.apellido,

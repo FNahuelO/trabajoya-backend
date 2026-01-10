@@ -36,6 +36,16 @@ export class RegisterEmpresaDto {
   @IsNotEmpty({ message: i18nValidationMessage("validation.isNotEmpty") })
   provincia: string;
 
+  @ApiProperty({ example: "Ciudad Autónoma de Buenos Aires", required: false })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  localidad?: string;
+
+  @ApiProperty({ example: "Ciudad Autónoma de Buenos Aires", required: false })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  ciudad?: string;
+
   @ApiProperty({ example: "Av. Corrientes" })
   @IsString({ message: i18nValidationMessage("validation.isString") })
   @IsNotEmpty({ message: i18nValidationMessage("validation.isNotEmpty") })

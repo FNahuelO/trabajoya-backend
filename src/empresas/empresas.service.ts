@@ -134,6 +134,7 @@ export class EmpresasService {
           sitioWeb: true,
           email: true,
           phone: true,
+          phoneCountryCode: true,
         },
         orderBy: { companyName: "asc" },
       }),
@@ -199,14 +200,7 @@ export class EmpresasService {
       updateData.documento = updateData.cuit;
     }
 
-    // Si se actualiza industria, también actualizar sector
-    if (updateData.industria && !updateData.sector) {
-      updateData.sector = updateData.industria;
-    }
-    if (updateData.sector && !updateData.industria) {
-      updateData.industria = updateData.sector;
-    }
-
+    // industria y sector son campos independientes, no se sincronizan
     // Si se actualiza cantidadEmpleados, también actualizar tamano
     if (updateData.cantidadEmpleados && !updateData.tamano) {
       updateData.tamano = updateData.cantidadEmpleados;
@@ -215,18 +209,16 @@ export class EmpresasService {
       updateData.cantidadEmpleados = updateData.tamano;
     }
 
-    // Mapear telefono a phone si viene telefono
-    if (updateData.telefono) {
-      // Si el teléfono no tiene código de país, mantener el existente
-      const existingPhone = (profile as any).phone || "";
-      if (!updateData.telefono.startsWith("+") && existingPhone) {
-        const phoneMatch = existingPhone.match(/^(\+\d+)(.*)$/);
-        if (phoneMatch) {
-          updateData.telefono = `${phoneMatch[1]}${updateData.telefono}`;
-        }
-      }
-      updateData.phone = updateData.telefono;
+    // Mapear telefono y phoneCountryCode por separado
+    if (updateData.telefono !== undefined) {
+      // Guardar solo el número de teléfono sin código de país
+      updateData.phone = updateData.telefono.trim() || undefined;
       delete updateData.telefono; // Eliminar telefono ya que usamos phone
+    }
+    
+    // Mapear phoneCountryCode si viene
+    if (updateData.phoneCountryCode !== undefined) {
+      updateData.phoneCountryCode = updateData.phoneCountryCode.trim() || undefined;
     }
 
     return this.prisma.empresaProfile.update({
