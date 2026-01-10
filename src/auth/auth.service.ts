@@ -224,10 +224,55 @@ export class AuthService {
 
       // Opción 1: Verificar el identityToken (JWT)
       if (dto.identityToken) {
-        appleData = await appleSignin.verifyIdToken(dto.identityToken, {
-          audience: process.env.APPLE_CLIENT_ID, // Tu bundle ID o service ID
-          ignoreExpiration: false,
+        // Primero decodificar el token sin verificar para obtener el audience
+        const decodedToken = jwt.decode(dto.identityToken) as any;
+        console.log("[registerApple] Token decodificado:", {
+          iss: decodedToken?.iss,
+          aud: decodedToken?.aud,
+          sub: decodedToken?.sub,
+          email: decodedToken?.email,
+          email_verified: decodedToken?.email_verified,
+          exp: decodedToken?.exp,
+          APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID,
         });
+
+        // Lista de audiences válidos (iOS Bundle ID, Service ID, Web Client ID)
+        // Esto permite que funcione tanto para apps móviles como web
+        const validAudiences = [
+          process.env.APPLE_CLIENT_ID, // Configurado en AWS (puede ser web o service ID)
+          decodedToken?.aud, // El audience del token (Bundle ID de iOS o Service ID)
+          "com.trabajoya.app", // Bundle ID de iOS según app.json
+          "com.trabajoya.app.service", // Service ID según app.json
+          "com.trabajoya.web", // Web Client ID según AWS Secrets Manager
+        ].filter(Boolean); // Eliminar valores undefined/null
+
+        // Remover duplicados
+        const uniqueAudiences = [...new Set(validAudiences)];
+        console.log("[registerApple] Audiences válidos a intentar:", uniqueAudiences);
+
+        // Intentar verificar con cada audience hasta que uno funcione
+        let lastError: any = null;
+        for (const audience of uniqueAudiences) {
+          try {
+            console.log(`[registerApple] Intentando verificar con audience: ${audience}`);
+            appleData = await appleSignin.verifyIdToken(dto.identityToken, {
+              audience: audience as string,
+              ignoreExpiration: false,
+            });
+            console.log(`[registerApple] ✅ Token verificado exitosamente con audience: ${audience}`);
+            break; // Si funciona, salir del loop
+          } catch (verifyError: any) {
+            console.log(`[registerApple] ❌ Error verificando con ${audience}:`, verifyError.message);
+            lastError = verifyError;
+            // Continuar con el siguiente audience
+          }
+        }
+
+        // Si ningún audience funcionó, lanzar error
+        if (!appleData) {
+          console.error("[registerApple] ❌ No se pudo verificar el token con ningún audience válido");
+          throw lastError || new Error("Token de Apple inválido: no coincide con ningún audience configurado");
+        }
       }
       // Opción 2: Usar el authorization code para obtener tokens
       else if (dto.authorizationCode) {
@@ -252,6 +297,15 @@ export class AuthService {
         );
       }
 
+      console.log("[registerApple] Datos de Apple obtenidos:", {
+        sub: appleData?.sub,
+        email: appleData?.email,
+        emailFromDto: dto.email,
+        appleUserIdFromDto: dto.appleUserId,
+      });
+
+      // El email puede venir en el token o en dto.email
+      // Si viene en el token, usar ese porque es más confiable
       const email = appleData.email || dto.email;
       const appleUserId = appleData.sub || dto.appleUserId;
 
@@ -327,13 +381,37 @@ export class AuthService {
 
       return this.issueTokens(user.id, user.userType);
     } catch (error) {
-      console.error("Error verificando token de Apple:", error);
-      throw new UnauthorizedException(
-        await this.getTranslation(
-          "auth.invalidAppleToken",
-          "Token de Apple inválido"
-        )
+      // Si es un error de validación conocido, lanzarlo directamente
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      // Log detallado del error
+      console.error("[registerApple] Error verificando token de Apple:", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        identityToken: dto.identityToken ? "presente" : "ausente",
+        authorizationCode: dto.authorizationCode ? "presente" : "ausente",
+        appleUserId: dto.appleUserId,
+        email: dto.email,
+        APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID ? "configurado" : "NO CONFIGURADO",
+      });
+
+      // Proporcionar un mensaje de error más específico
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      let translatedMessage = await this.getTranslation(
+        "auth.invalidAppleToken",
+        "Token de Apple inválido"
       );
+
+      // Si el error menciona audience o client ID, agregar información útil
+      if (errorMessage.includes("audience") || errorMessage.includes("aud")) {
+        translatedMessage += `. Verifica que APPLE_CLIENT_ID coincida con el Bundle ID de tu app iOS.`;
+      } else if (errorMessage.includes("expired") || errorMessage.includes("exp")) {
+        translatedMessage += ". El token ha expirado. Intenta nuevamente.";
+      }
+
+      throw new UnauthorizedException(translatedMessage);
     }
   }
 
@@ -426,10 +504,55 @@ export class AuthService {
 
       // Opción 1: Verificar el identityToken (JWT)
       if (dto.identityToken) {
-        appleData = await appleSignin.verifyIdToken(dto.identityToken, {
-          audience: process.env.APPLE_CLIENT_ID,
-          ignoreExpiration: false,
+        // Primero decodificar el token sin verificar para obtener el audience
+        const decodedToken = jwt.decode(dto.identityToken) as any;
+        console.log("[loginApple] Token decodificado:", {
+          iss: decodedToken?.iss,
+          aud: decodedToken?.aud,
+          sub: decodedToken?.sub,
+          email: decodedToken?.email,
+          email_verified: decodedToken?.email_verified,
+          exp: decodedToken?.exp,
+          APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID,
         });
+
+        // Lista de audiences válidos (iOS Bundle ID, Service ID, Web Client ID)
+        // Esto permite que funcione tanto para apps móviles como web
+        const validAudiences = [
+          process.env.APPLE_CLIENT_ID, // Configurado en AWS (puede ser web o service ID)
+          decodedToken?.aud, // El audience del token (Bundle ID de iOS o Service ID)
+          "com.trabajoya.app", // Bundle ID de iOS según app.json
+          "com.trabajoya.app.service", // Service ID según app.json
+          "com.trabajoya.web", // Web Client ID según AWS Secrets Manager
+        ].filter(Boolean); // Eliminar valores undefined/null
+
+        // Remover duplicados
+        const uniqueAudiences = [...new Set(validAudiences)];
+        console.log("[loginApple] Audiences válidos a intentar:", uniqueAudiences);
+
+        // Intentar verificar con cada audience hasta que uno funcione
+        let lastError: any = null;
+        for (const audience of uniqueAudiences) {
+          try {
+            console.log(`[loginApple] Intentando verificar con audience: ${audience}`);
+            appleData = await appleSignin.verifyIdToken(dto.identityToken, {
+              audience: audience as string,
+              ignoreExpiration: false,
+            });
+            console.log(`[loginApple] ✅ Token verificado exitosamente con audience: ${audience}`);
+            break; // Si funciona, salir del loop
+          } catch (verifyError: any) {
+            console.log(`[loginApple] ❌ Error verificando con ${audience}:`, verifyError.message);
+            lastError = verifyError;
+            // Continuar con el siguiente audience
+          }
+        }
+
+        // Si ningún audience funcionó, lanzar error
+        if (!appleData) {
+          console.error("[loginApple] ❌ No se pudo verificar el token con ningún audience válido");
+          throw lastError || new Error("Token de Apple inválido: no coincide con ningún audience configurado");
+        }
       }
       // Opción 2: Usar el authorization code para obtener tokens
       else if (dto.authorizationCode) {
@@ -454,6 +577,15 @@ export class AuthService {
         );
       }
 
+      console.log("[loginApple] Datos de Apple obtenidos:", {
+        sub: appleData?.sub,
+        email: appleData?.email,
+        emailFromDto: dto.email,
+        appleUserIdFromDto: dto.appleUserId,
+      });
+
+      // El email puede venir en el token o en dto.email
+      // Si viene en el token, usar ese porque es más confiable
       const email = appleData.email || dto.email;
       const appleUserId = appleData.sub || dto.appleUserId;
 
@@ -503,19 +635,40 @@ export class AuthService {
         },
       };
     } catch (error) {
+      // Si es un error de validación conocido, lanzarlo directamente
       if (
         error instanceof UnauthorizedException ||
         error instanceof BadRequestException
       ) {
         throw error;
       }
-      console.error("Error verificando token de Apple:", error);
-      throw new UnauthorizedException(
-        await this.getTranslation(
-          "auth.invalidAppleToken",
-          "Token de Apple inválido"
-        )
+      
+      // Log detallado del error
+      console.error("[loginApple] Error verificando token de Apple:", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        identityToken: dto.identityToken ? "presente" : "ausente",
+        authorizationCode: dto.authorizationCode ? "presente" : "ausente",
+        appleUserId: dto.appleUserId,
+        email: dto.email,
+        APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID ? "configurado" : "NO CONFIGURADO",
+      });
+
+      // Proporcionar un mensaje de error más específico
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      let translatedMessage = await this.getTranslation(
+        "auth.invalidAppleToken",
+        "Token de Apple inválido"
       );
+
+      // Si el error menciona audience o client ID, agregar información útil
+      if (errorMessage.includes("audience") || errorMessage.includes("aud")) {
+        translatedMessage += `. Verifica que APPLE_CLIENT_ID coincida con el Bundle ID de tu app iOS.`;
+      } else if (errorMessage.includes("expired") || errorMessage.includes("exp")) {
+        translatedMessage += ". El token ha expirado. Intenta nuevamente.";
+      }
+
+      throw new UnauthorizedException(translatedMessage);
     }
   }
 
