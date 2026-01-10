@@ -200,7 +200,17 @@ export class AuthService {
         }
       }
 
-      return this.issueTokens(user.id, user.userType);
+      const tokens = await this.issueTokens(user.id, user.userType);
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          email: user.email,
+          tipo: user.userType.toLowerCase() as "postulante" | "empresa",
+          verificado: user.isVerified,
+        },
+      };
     } catch (error) {
       console.error("Error verificando token de Google:", error);
       throw new UnauthorizedException(
@@ -379,7 +389,17 @@ export class AuthService {
         }
       }
 
-      return this.issueTokens(user.id, user.userType);
+      const tokens = await this.issueTokens(user.id, user.userType);
+
+      return {
+        ...tokens,
+        user: {
+          id: user.id,
+          email: user.email,
+          tipo: user.userType.toLowerCase() as "postulante" | "empresa",
+          verificado: user.isVerified,
+        },
+      };
     } catch (error) {
       // Si es un error de validación conocido, lanzarlo directamente
       if (error instanceof BadRequestException) {
