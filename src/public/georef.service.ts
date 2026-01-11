@@ -148,22 +148,72 @@ export class GeorefService {
         throw new Error(`Province not found: ${provinceId}`);
       }
 
-      const response = await this.axiosInstance.get("/localidades", {
-        params: {
-          provincia: province.nombre,
-          formato: "json",
-          max: 5000, // Límite más seguro para evitar errores 400
-        },
-      });
+      // Intentar primero sin el parámetro max (usar el default de la API)
+      let response;
+      let attempt = 0;
+      const maxLimits = [undefined, 100, 500, 1000]; // undefined = sin límite, luego probar con límites
+      
+      for (const maxLimit of maxLimits) {
+        attempt++;
+        try {
+          const params: any = {
+            provincia: province.nombre,
+            formato: "json",
+          };
+          
+          // Solo agregar max si está definido
+          if (maxLimit !== undefined) {
+            params.max = maxLimit;
+          }
+          
+          this.logger.debug(
+            `Intento ${attempt}: Obteniendo localidades para provincia "${province.nombre}" con max=${maxLimit || 'default'}`
+          );
+          
+          response = await this.axiosInstance.get("/localidades", { params });
+          
+          // Si llegamos aquí, la petición fue exitosa
+          this.logger.debug(
+            `✅ Éxito obteniendo localidades para "${province.nombre}" con max=${maxLimit || 'default'}`
+          );
+          break;
+        } catch (error: any) {
+          const statusCode = error?.response?.status;
+          const errorData = error?.response?.data;
+          
+          // Si es el último intento, lanzar el error
+          if (attempt === maxLimits.length) {
+            this.logger.error(
+              `❌ Todos los intentos fallaron para provincia "${province.nombre}"`
+            );
+            this.logger.error(`Error details: ${JSON.stringify(errorData)}`);
+            throw error;
+          }
+          
+          // Si es error 400, intentar con el siguiente límite
+          if (statusCode === 400) {
+            this.logger.warn(
+              `⚠️ Error 400 con max=${maxLimit || 'default'}, intentando siguiente opción...`
+            );
+            continue;
+          }
+          
+          // Si es otro tipo de error, lanzarlo inmediatamente
+          throw error;
+        }
+      }
 
       return response.data.localidades || [];
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
       const statusCode = error?.response?.status || error?.statusCode;
+      const errorData = error?.response?.data;
+      
       this.logger.error(
         `Error fetching localities by province: ${errorMessage} (status: ${statusCode})`
       );
-      this.logger.debug(`Province ID: ${provinceId}, Province name: ${province?.nombre}`);
+      this.logger.error(`Error details: ${JSON.stringify(errorData)}`);
+      this.logger.error(`Province ID: ${provinceId}, Province name: ${province?.nombre}`);
       throw error;
     }
   }
