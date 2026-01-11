@@ -119,6 +119,12 @@ export class AwsConfigService implements OnModuleInit {
       if (secrets.GOOGLE_CLIENT_SECRET) {
         process.env.GOOGLE_CLIENT_SECRET = secrets.GOOGLE_CLIENT_SECRET;
       }
+      if (secrets.GOOGLE_IOS_CLIENT_ID) {
+        process.env.GOOGLE_IOS_CLIENT_ID = secrets.GOOGLE_IOS_CLIENT_ID;
+      }
+      if (secrets.GOOGLE_ANDROID_CLIENT_ID) {
+        process.env.GOOGLE_ANDROID_CLIENT_ID = secrets.GOOGLE_ANDROID_CLIENT_ID;
+      }
       if (secrets.APPLE_CLIENT_ID) {
         process.env.APPLE_CLIENT_ID = secrets.APPLE_CLIENT_ID;
       }

@@ -19,7 +19,7 @@ import { TermsType } from "@prisma/client";
 
 @Injectable()
 export class AuthService {
-  private googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+  private googleClient: OAuth2Client;
 
   constructor(
     private prisma: PrismaService,
@@ -27,7 +27,63 @@ export class AuthService {
     private i18n: I18nService,
     private mailService: MailService,
     private termsService: TermsService
-  ) {}
+  ) {
+    // Inicializar el cliente de Google con el Client ID principal
+    // Se actualizará dinámicamente cuando AWS cargue los secretos
+    this.initializeGoogleClient();
+  }
+
+  /**
+   * Inicializa o actualiza el cliente de Google OAuth
+   * Se llama en el constructor y se actualiza dinámicamente cuando se necesita
+   */
+  private initializeGoogleClient(): void {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (clientId) {
+      this.googleClient = new OAuth2Client(clientId);
+    } else {
+      // Crear un cliente temporal, se actualizará cuando AWS cargue los secretos
+      this.googleClient = new OAuth2Client();
+    }
+  }
+
+  /**
+   * Obtiene el cliente de Google OAuth, inicializándolo si es necesario
+   * Esto asegura que funcione correctamente después de que AWS cargue los secretos
+   */
+  private getGoogleClient(): OAuth2Client {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (clientId) {
+      // Recrear el cliente si el Client ID está disponible
+      // Esto asegura que funcione después de que AWS cargue los secretos
+      this.googleClient = new OAuth2Client(clientId);
+    }
+    return this.googleClient;
+  }
+
+  /**
+   * Obtiene los Google Client IDs dinámicamente desde process.env
+   * Esto permite que funcione tanto con variables de entorno locales como con AWS Secrets Manager
+   */
+  private getGoogleClientIds(): string[] {
+    const clientIds = [
+      process.env.GOOGLE_CLIENT_ID, // Web Client ID
+      process.env.GOOGLE_IOS_CLIENT_ID, // iOS Client ID
+      process.env.GOOGLE_ANDROID_CLIENT_ID, // Android Client ID
+    ].filter(Boolean) as string[]; // Filtrar undefined/null y hacer type assertion
+
+    // Log para debugging (solo en desarrollo o si hay cambios)
+    if (process.env.NODE_ENV !== "production" || clientIds.length > 0) {
+      console.log("[AuthService] Google Client IDs disponibles:", {
+        web: !!process.env.GOOGLE_CLIENT_ID,
+        ios: !!process.env.GOOGLE_IOS_CLIENT_ID,
+        android: !!process.env.GOOGLE_ANDROID_CLIENT_ID,
+        total: clientIds.length,
+      });
+    }
+
+    return clientIds;
+  }
 
   private async getTranslation(key: string, fallback: string): Promise<string> {
     try {
@@ -144,9 +200,21 @@ export class AuthService {
     }
 
     try {
-      const ticket = await this.googleClient.verifyIdToken({
+      // Validar con múltiples Client IDs (Web, iOS, Android)
+      // Obtener Client IDs dinámicamente (desde AWS Secrets Manager o variables de entorno)
+      const clientIds = this.getGoogleClientIds();
+      if (clientIds.length === 0) {
+        throw new UnauthorizedException(
+          await this.getTranslation(
+            "auth.googleNotConfigured",
+            "Google OAuth no está configurado correctamente"
+          )
+        );
+      }
+
+      const ticket = await this.getGoogleClient().verifyIdToken({
         idToken: dto.idToken,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: clientIds, // Acepta cualquier Client ID configurado
       });
 
       const payload = ticket.getPayload();
@@ -258,21 +326,31 @@ export class AuthService {
 
         // Remover duplicados
         const uniqueAudiences = [...new Set(validAudiences)];
-        console.log("[registerApple] Audiences válidos a intentar:", uniqueAudiences);
+        console.log(
+          "[registerApple] Audiences válidos a intentar:",
+          uniqueAudiences
+        );
 
         // Intentar verificar con cada audience hasta que uno funcione
         let lastError: any = null;
         for (const audience of uniqueAudiences) {
           try {
-            console.log(`[registerApple] Intentando verificar con audience: ${audience}`);
+            console.log(
+              `[registerApple] Intentando verificar con audience: ${audience}`
+            );
             appleData = await appleSignin.verifyIdToken(dto.identityToken, {
               audience: audience as string,
               ignoreExpiration: false,
             });
-            console.log(`[registerApple] ✅ Token verificado exitosamente con audience: ${audience}`);
+            console.log(
+              `[registerApple] ✅ Token verificado exitosamente con audience: ${audience}`
+            );
             break; // Si funciona, salir del loop
           } catch (verifyError: any) {
-            console.log(`[registerApple] ❌ Error verificando con ${audience}:`, verifyError.message);
+            console.log(
+              `[registerApple] ❌ Error verificando con ${audience}:`,
+              verifyError.message
+            );
             lastError = verifyError;
             // Continuar con el siguiente audience
           }
@@ -280,8 +358,15 @@ export class AuthService {
 
         // Si ningún audience funcionó, lanzar error
         if (!appleData) {
-          console.error("[registerApple] ❌ No se pudo verificar el token con ningún audience válido");
-          throw lastError || new Error("Token de Apple inválido: no coincide con ningún audience configurado");
+          console.error(
+            "[registerApple] ❌ No se pudo verificar el token con ningún audience válido"
+          );
+          throw (
+            lastError ||
+            new Error(
+              "Token de Apple inválido: no coincide con ningún audience configurado"
+            )
+          );
         }
       }
       // Opción 2: Usar el authorization code para obtener tokens
@@ -368,7 +453,7 @@ export class AuthService {
         await this.prisma.postulanteProfile.create({
           data: {
             userId: user.id,
-            fullName: dto.fullName || "Sin nombre",
+            fullName: dto.fullName || "",
           },
         });
 
@@ -405,7 +490,7 @@ export class AuthService {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      
+
       // Log detallado del error
       console.error("[registerApple] Error verificando token de Apple:", {
         message: error instanceof Error ? error.message : String(error),
@@ -414,11 +499,14 @@ export class AuthService {
         authorizationCode: dto.authorizationCode ? "presente" : "ausente",
         appleUserId: dto.appleUserId,
         email: dto.email,
-        APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID ? "configurado" : "NO CONFIGURADO",
+        APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID
+          ? "configurado"
+          : "NO CONFIGURADO",
       });
 
       // Proporcionar un mensaje de error más específico
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       let translatedMessage = await this.getTranslation(
         "auth.invalidAppleToken",
         "Token de Apple inválido"
@@ -427,7 +515,10 @@ export class AuthService {
       // Si el error menciona audience o client ID, agregar información útil
       if (errorMessage.includes("audience") || errorMessage.includes("aud")) {
         translatedMessage += `. Verifica que APPLE_CLIENT_ID coincida con el Bundle ID de tu app iOS.`;
-      } else if (errorMessage.includes("expired") || errorMessage.includes("exp")) {
+      } else if (
+        errorMessage.includes("expired") ||
+        errorMessage.includes("exp")
+      ) {
         translatedMessage += ". El token ha expirado. Intenta nuevamente.";
       }
 
@@ -446,9 +537,21 @@ export class AuthService {
     }
 
     try {
-      const ticket = await this.googleClient.verifyIdToken({
+      // Validar con múltiples Client IDs (Web, iOS, Android)
+      // Obtener Client IDs dinámicamente (desde AWS Secrets Manager o variables de entorno)
+      const clientIds = this.getGoogleClientIds();
+      if (clientIds.length === 0) {
+        throw new UnauthorizedException(
+          await this.getTranslation(
+            "auth.googleNotConfigured",
+            "Google OAuth no está configurado correctamente"
+          )
+        );
+      }
+
+      const ticket = await this.getGoogleClient().verifyIdToken({
         idToken: dto.idToken,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: clientIds, // Acepta cualquier Client ID configurado
       });
 
       const payload = ticket.getPayload();
@@ -548,21 +651,31 @@ export class AuthService {
 
         // Remover duplicados
         const uniqueAudiences = [...new Set(validAudiences)];
-        console.log("[loginApple] Audiences válidos a intentar:", uniqueAudiences);
+        console.log(
+          "[loginApple] Audiences válidos a intentar:",
+          uniqueAudiences
+        );
 
         // Intentar verificar con cada audience hasta que uno funcione
         let lastError: any = null;
         for (const audience of uniqueAudiences) {
           try {
-            console.log(`[loginApple] Intentando verificar con audience: ${audience}`);
+            console.log(
+              `[loginApple] Intentando verificar con audience: ${audience}`
+            );
             appleData = await appleSignin.verifyIdToken(dto.identityToken, {
               audience: audience as string,
               ignoreExpiration: false,
             });
-            console.log(`[loginApple] ✅ Token verificado exitosamente con audience: ${audience}`);
+            console.log(
+              `[loginApple] ✅ Token verificado exitosamente con audience: ${audience}`
+            );
             break; // Si funciona, salir del loop
           } catch (verifyError: any) {
-            console.log(`[loginApple] ❌ Error verificando con ${audience}:`, verifyError.message);
+            console.log(
+              `[loginApple] ❌ Error verificando con ${audience}:`,
+              verifyError.message
+            );
             lastError = verifyError;
             // Continuar con el siguiente audience
           }
@@ -570,8 +683,15 @@ export class AuthService {
 
         // Si ningún audience funcionó, lanzar error
         if (!appleData) {
-          console.error("[loginApple] ❌ No se pudo verificar el token con ningún audience válido");
-          throw lastError || new Error("Token de Apple inválido: no coincide con ningún audience configurado");
+          console.error(
+            "[loginApple] ❌ No se pudo verificar el token con ningún audience válido"
+          );
+          throw (
+            lastError ||
+            new Error(
+              "Token de Apple inválido: no coincide con ningún audience configurado"
+            )
+          );
         }
       }
       // Opción 2: Usar el authorization code para obtener tokens
@@ -662,7 +782,7 @@ export class AuthService {
       ) {
         throw error;
       }
-      
+
       // Log detallado del error
       console.error("[loginApple] Error verificando token de Apple:", {
         message: error instanceof Error ? error.message : String(error),
@@ -671,11 +791,14 @@ export class AuthService {
         authorizationCode: dto.authorizationCode ? "presente" : "ausente",
         appleUserId: dto.appleUserId,
         email: dto.email,
-        APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID ? "configurado" : "NO CONFIGURADO",
+        APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID
+          ? "configurado"
+          : "NO CONFIGURADO",
       });
 
       // Proporcionar un mensaje de error más específico
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       let translatedMessage = await this.getTranslation(
         "auth.invalidAppleToken",
         "Token de Apple inválido"
@@ -684,7 +807,10 @@ export class AuthService {
       // Si el error menciona audience o client ID, agregar información útil
       if (errorMessage.includes("audience") || errorMessage.includes("aud")) {
         translatedMessage += `. Verifica que APPLE_CLIENT_ID coincida con el Bundle ID de tu app iOS.`;
-      } else if (errorMessage.includes("expired") || errorMessage.includes("exp")) {
+      } else if (
+        errorMessage.includes("expired") ||
+        errorMessage.includes("exp")
+      ) {
         translatedMessage += ". El token ha expirado. Intenta nuevamente.";
       }
 
@@ -1145,7 +1271,9 @@ export class AuthService {
     });
 
     // Construir dirección completa
-    const address = `${dto.calle} ${dto.numero}, ${dto.localidad || dto.provincia}, ${dto.provincia}, ${dto.codigoPostal}`;
+    const address = `${dto.calle} ${dto.numero}, ${
+      dto.localidad || dto.provincia
+    }, ${dto.provincia}, ${dto.codigoPostal}`;
     const phone = dto.telefono ? dto.telefono.trim() : undefined;
 
     // Crear perfil de empresa con todos los datos
@@ -1158,7 +1286,9 @@ export class AuthService {
         documento: dto.documento,
         email: dto.email,
         ...(phone && { phone }),
-        ...(dto.phoneCountryCode && { phoneCountryCode: dto.phoneCountryCode.trim() }),
+        ...(dto.phoneCountryCode && {
+          phoneCountryCode: dto.phoneCountryCode.trim(),
+        }),
         industria: dto.industria,
         sector: dto.industria,
         cantidadEmpleados: dto.cantidadEmpleados,
