@@ -56,6 +56,11 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { userId } = data;
     connectedUsers.set(userId, client.id);
     this.logger.log(`User ${userId} registered with socket ${client.id}`);
+    this.logger.log(`Total connected users: ${connectedUsers.size}`);
+    this.logger.log(
+      `Connected users map:`,
+      Array.from(connectedUsers.entries())
+    );
     return { success: true };
   }
 
@@ -69,20 +74,33 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket
   ) {
     const { fromUserId, toUserId, callId } = data;
-    this.logger.log(`Call initiated from ${fromUserId} to ${toUserId}`);
+    this.logger.log(
+      `Call initiated from ${fromUserId} to ${toUserId} with callId ${callId}`
+    );
+    this.logger.log(`Total connected users: ${connectedUsers.size}`);
+    this.logger.log(
+      `Connected users map:`,
+      Array.from(connectedUsers.entries())
+    );
 
     // Obtener el socket del destinatario
     const toSocketId = connectedUsers.get(toUserId);
 
     if (toSocketId) {
+      this.logger.log(
+        `Sending call:incoming to socket ${toSocketId} (user ${toUserId})`
+      );
       // Notificar al destinatario de la llamada entrante
       this.server.to(toSocketId).emit("call:incoming", {
         callId,
         fromUserId,
         fromSocketId: client.id,
       });
+      this.logger.log(`Call:incoming event emitted successfully`);
       return { success: true, message: "Llamada iniciada" };
     } else {
+      this.logger.warn(`User ${toUserId} not found in connected users map`);
+      this.logger.warn(`Available users:`, Array.from(connectedUsers.keys()));
       return { success: false, message: "Usuario no disponible" };
     }
   }
@@ -167,11 +185,23 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const fromSocketId = connectedUsers.get(fromUserId);
     const toSocketId = connectedUsers.get(toUserId);
 
+    const endCallData = {
+      callId,
+      fromUserId,
+      toUserId,
+    };
+
     if (fromSocketId) {
-      this.server.to(fromSocketId).emit("call:ended", { callId });
+      this.logger.log(
+        `Sending call:ended to fromUserId ${fromUserId} (socket ${fromSocketId})`
+      );
+      this.server.to(fromSocketId).emit("call:ended", endCallData);
     }
     if (toSocketId) {
-      this.server.to(toSocketId).emit("call:ended", { callId });
+      this.logger.log(
+        `Sending call:ended to toUserId ${toUserId} (socket ${toSocketId})`
+      );
+      this.server.to(toSocketId).emit("call:ended", endCallData);
     }
 
     return { success: true };
