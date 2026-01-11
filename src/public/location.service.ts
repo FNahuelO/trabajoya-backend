@@ -77,18 +77,38 @@ export class LocationService {
         const localities = await this.georefService.getLocalitiesByProvince(
           provinceCode
         );
-        return localities.map((locality) => ({
-          id: locality.id,
-          name: locality.nombre,
-        }));
-      } catch (error) {
-        // Fallback a country-state-city si falla Georef
-        const cities = City.getCitiesOfState(countryCode, provinceCode);
-        return cities.map((city, index) => ({
-          id: `${countryCode}-${provinceCode}-${index}`,
-          name: city.name,
-        }));
+        if (localities && localities.length > 0) {
+          return localities.map((locality) => ({
+            id: locality.id,
+            name: locality.nombre,
+          }));
+        }
+      } catch (error: any) {
+        // Log del error pero continuar con fallback
+        console.warn(
+          `[LocationService] GeoRef falló para provincia ${provinceCode}, usando fallback:`,
+          error?.message || error
+        );
       }
+      
+      // Fallback a country-state-city si falla Georef o devuelve vacío
+      try {
+        const cities = City.getCitiesOfState(countryCode, provinceCode);
+        if (cities && cities.length > 0) {
+          return cities.map((city, index) => ({
+            id: `${countryCode}-${provinceCode}-${index}`,
+            name: city.name,
+          }));
+        }
+      } catch (error: any) {
+        console.warn(
+          `[LocationService] Fallback también falló para provincia ${provinceCode}:`,
+          error?.message || error
+        );
+      }
+      
+      // Si todo falla, devolver array vacío
+      return [];
     }
 
     // Para otros países, usar country-state-city

@@ -152,15 +152,18 @@ export class GeorefService {
         params: {
           provincia: province.nombre,
           formato: "json",
-          max: 10000, // Argentina tiene muchas localidades
+          max: 5000, // Límite más seguro para evitar errores 400
         },
       });
 
       return response.data.localidades || [];
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
+      const statusCode = error?.response?.status || error?.statusCode;
       this.logger.error(
-        `Error fetching localities by province: ${error.message}`
+        `Error fetching localities by province: ${errorMessage} (status: ${statusCode})`
       );
+      this.logger.debug(`Province ID: ${provinceId}, Province name: ${province?.nombre}`);
       throw error;
     }
   }
