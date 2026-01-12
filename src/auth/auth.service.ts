@@ -51,7 +51,10 @@ export class AuthService {
    * Intercambiar authorization code por tokens de Google
    * Esto se usa para el Authorization Code Flow que es más seguro
    */
-  private async exchangeGoogleAuthCode(authCode: string): Promise<string> {
+  private async exchangeGoogleAuthCode(
+    authCode: string,
+    providedRedirectUri?: string
+  ): Promise<string> {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -61,11 +64,10 @@ export class AuthService {
       );
     }
 
-    // Probar con diferentes redirect URIs (Expo Go y dev builds)
-    const possibleRedirectUris = [
-      "trabajoya://",
-      "https://auth.expo.io/@fosorio/TrabajoYa",
-    ];
+    // Priorizar el redirectUri proporcionado por el cliente
+    const possibleRedirectUris = providedRedirectUri
+      ? [providedRedirectUri]
+      : ["trabajoya://", "https://auth.expo.io/@fosorio/TrabajoYa"];
 
     let lastError: any;
 
@@ -76,11 +78,7 @@ export class AuthService {
           `[Google Auth] Intentando intercambiar con redirectUri: ${redirectUri}`
         );
 
-        const oauth2Client = new OAuth2Client(
-          clientId,
-          clientSecret,
-          redirectUri
-        );
+        const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
         const { tokens } = await oauth2Client.getToken(authCode);
 
         if (!tokens.id_token) {
@@ -92,12 +90,8 @@ export class AuthService {
         );
         return tokens.id_token;
       } catch (error) {
-        console.log(
-          `[Google Auth] ❌ Falló con ${redirectUri}:`,
-          error.message
-        );
+        console.log(`[Google Auth] ❌ Falló con ${redirectUri}:`, error.message);
         lastError = error;
-        // Continuar con el siguiente redirect URI
       }
     }
 
@@ -164,7 +158,10 @@ export class AuthService {
     // Si viene googleAuthCode, intercambiarlo por idToken
     if (dto.googleAuthCode) {
       console.log("[Register] Procesando Google authorization code...");
-      dto.idToken = await this.exchangeGoogleAuthCode(dto.googleAuthCode);
+      dto.idToken = await this.exchangeGoogleAuthCode(
+        dto.googleAuthCode,
+        dto.googleRedirectUri
+      );
     }
 
     if (dto.idToken) {
@@ -882,7 +879,10 @@ export class AuthService {
     // Si viene googleAuthCode, intercambiarlo por idToken
     if (dto.googleAuthCode) {
       console.log("[Login] Procesando Google authorization code...");
-      dto.idToken = await this.exchangeGoogleAuthCode(dto.googleAuthCode);
+      dto.idToken = await this.exchangeGoogleAuthCode(
+        dto.googleAuthCode,
+        dto.googleRedirectUri
+      );
     }
 
     // Login con Google
