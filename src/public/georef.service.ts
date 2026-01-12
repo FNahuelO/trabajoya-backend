@@ -209,11 +209,25 @@ export class GeorefService {
       const statusCode = error?.response?.status || error?.statusCode;
       const errorData = error?.response?.data;
       
+      // Intentar obtener el nombre de la provincia para el log
+      let provinceName = 'Unknown';
+      try {
+        const provinces = await this.getProvinces();
+        const province = provinces.find(
+          (p) => p.id === provinceId || p.nombre === provinceId
+        );
+        if (province) {
+          provinceName = province.nombre;
+        }
+      } catch {
+        // Si falla obtener las provincias, usar solo el ID
+      }
+      
       this.logger.error(
         `Error fetching localities by province: ${errorMessage} (status: ${statusCode})`
       );
       this.logger.error(`Error details: ${JSON.stringify(errorData)}`);
-      this.logger.error(`Province ID: ${provinceId}, Province name: ${province?.nombre}`);
+      this.logger.error(`Province ID: ${provinceId}, Province name: ${provinceName}`);
       throw error;
     }
   }
