@@ -1,16 +1,34 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsEmail, IsString, IsNotEmpty, IsOptional, ValidateIf } from "class-validator";
+import {
+  IsEmail,
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  ValidateIf,
+} from "class-validator";
 import { i18nValidationMessage } from "nestjs-i18n";
 
 export class LoginDto {
   @ApiProperty({ example: "usuario@ejemplo.com", required: false })
-  @ValidateIf((dto) => !dto.idToken && !dto.identityToken && !dto.authorizationCode && !dto.googleAuthCode)
+  @ValidateIf(
+    (dto) =>
+      !dto.idToken &&
+      !dto.identityToken &&
+      !dto.authorizationCode &&
+      !dto.googleAuthCode
+  )
   @IsEmail({}, { message: i18nValidationMessage("validation.isEmail") })
   @IsNotEmpty({ message: i18nValidationMessage("validation.isNotEmpty") })
   email?: string;
 
   @ApiProperty({ example: "Password123!", required: false })
-  @ValidateIf((dto) => !dto.idToken && !dto.identityToken && !dto.authorizationCode && !dto.googleAuthCode)
+  @ValidateIf(
+    (dto) =>
+      !dto.idToken &&
+      !dto.identityToken &&
+      !dto.authorizationCode &&
+      !dto.googleAuthCode
+  )
   @IsString({ message: i18nValidationMessage("validation.isString") })
   @IsNotEmpty({ message: i18nValidationMessage("validation.isNotEmpty") })
   password?: string;
@@ -20,7 +38,10 @@ export class LoginDto {
   @IsString({ message: i18nValidationMessage("validation.isString") })
   idToken?: string;
 
-  @ApiProperty({ required: false, description: "Google Authorization Code (OAuth2 Code Flow)" })
+  @ApiProperty({
+    required: false,
+    description: "Google Authorization Code (OAuth2 Code Flow)",
+  })
   @IsOptional()
   @IsString({ message: i18nValidationMessage("validation.isString") })
   googleAuthCode?: string;
@@ -44,4 +65,12 @@ export class LoginDto {
   @IsOptional()
   @IsString({ message: i18nValidationMessage("validation.isString") })
   fullName?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "Google Redirect URI for code exchange",
+  })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  googleRedirectUri?: string;
 }

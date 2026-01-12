@@ -56,7 +56,10 @@ export class RegisterDto {
   @IsString({ message: i18nValidationMessage("validation.isString") })
   idToken?: string;
 
-  @ApiProperty({ required: false, description: "Google Authorization Code (OAuth2 Code Flow)" })
+  @ApiProperty({
+    required: false,
+    description: "Google Authorization Code (OAuth2 Code Flow)",
+  })
   @IsOptional()
   @IsString({ message: i18nValidationMessage("validation.isString") })
   googleAuthCode?: string;
@@ -84,4 +87,12 @@ export class RegisterDto {
   @IsOptional()
   @IsBoolean({ message: i18nValidationMessage("validation.isBoolean") })
   aceptaTerminos?: boolean;
+
+  @ApiProperty({
+    required: false,
+    description: "Google Redirect URI for code exchange",
+  })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  googleRedirectUri?: string;
 }

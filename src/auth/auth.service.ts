@@ -639,14 +639,10 @@ export class AuthService {
         },
       });
 
-      // Si no existe el usuario, lanzar error
+      // Si no existe el usuario, registrarlo automáticamente como POSTULANTE
       if (!user) {
-        throw new UnauthorizedException(
-          await this.getTranslation(
-            "auth.userNotFound",
-            "Usuario no encontrado. Por favor regístrate primero."
-          )
-        );
+        console.log(`[Google Auth] Usuario ${payload.email} no encontrado, registrando automáticamente...`);
+        return this.registerGoogle({ idToken: dto.idToken });
       }
 
       // Verificar que el usuario tenga googleId asociado o actualizarlo
