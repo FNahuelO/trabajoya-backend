@@ -15,6 +15,7 @@ export class RegisterDto {
   @ValidateIf(
     (dto) =>
       !dto.idToken &&
+      !dto.googleAuthCode &&
       !dto.identityToken &&
       !dto.authorizationCode &&
       !dto.appleUserId
@@ -54,6 +55,11 @@ export class RegisterDto {
   @IsOptional()
   @IsString({ message: i18nValidationMessage("validation.isString") })
   idToken?: string;
+
+  @ApiProperty({ required: false, description: "Google Authorization Code (OAuth2 Code Flow)" })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  googleAuthCode?: string;
 
   @ApiProperty({ required: false, description: "Apple Identity Token" })
   @IsOptional()

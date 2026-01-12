@@ -48,6 +48,48 @@ export class AuthService {
   }
 
   /**
+   * Intercambiar authorization code por tokens de Google
+   * Esto se usa para el Authorization Code Flow que es más seguro
+   */
+  private async exchangeGoogleAuthCode(authCode: string): Promise<string> {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const redirectUri = "https://auth.expo.io/@fosorio/TrabajoYa";
+
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException(
+        "Google OAuth credentials not configured on server"
+      );
+    }
+
+    const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
+
+    try {
+      console.log(
+        "[Google Auth] Intercambiando authorization code por tokens..."
+      );
+
+      const { tokens } = await oauth2Client.getToken(authCode);
+
+      if (!tokens.id_token) {
+        throw new Error("No se recibió id_token de Google");
+      }
+
+      console.log("[Google Auth] Tokens obtenidos exitosamente");
+
+      return tokens.id_token;
+    } catch (error) {
+      console.error(
+        "[Google Auth] Error intercambiando authorization code:",
+        error
+      );
+      throw new BadRequestException(
+        "Error al intercambiar el código de autorización con Google"
+      );
+    }
+  }
+
+  /**
    * Obtiene el cliente de Google OAuth, inicializándolo si es necesario
    * Esto asegura que funcione correctamente después de que AWS cargue los secretos
    */
@@ -97,6 +139,12 @@ export class AuthService {
   }
 
   async register(dto: any) {
+    // Si viene googleAuthCode, intercambiarlo por idToken
+    if (dto.googleAuthCode) {
+      console.log("[Register] Procesando Google authorization code...");
+      dto.idToken = await this.exchangeGoogleAuthCode(dto.googleAuthCode);
+    }
+
     if (dto.idToken) {
       // Registro con Google
       return this.registerGoogle({ idToken: dto.idToken });
@@ -629,53 +677,28 @@ export class AuthService {
       if (dto.identityToken) {
         // Primero decodificar el token sin verificar para obtener el audience
         const decodedToken = jwt.decode(dto.identityToken) as any;
-        console.log("[loginApple] Token decodificado:", {
-          iss: decodedToken?.iss,
-          aud: decodedToken?.aud,
-          sub: decodedToken?.sub,
-          email: decodedToken?.email,
-          email_verified: decodedToken?.email_verified,
-          exp: decodedToken?.exp,
-          APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID,
-        });
 
         // Lista de audiences válidos (iOS Bundle ID, Service ID, Web Client ID)
         // Esto permite que funcione tanto para apps móviles como web
         const validAudiences = [
           process.env.APPLE_CLIENT_ID, // Configurado en AWS (puede ser web o service ID)
           decodedToken?.aud, // El audience del token (Bundle ID de iOS o Service ID)
-          "com.trabajoya.app", // Bundle ID de iOS según app.json
-          "com.trabajoya.app.service", // Service ID según app.json
-          "com.trabajoya.web", // Web Client ID según AWS Secrets Manager
+          process.env.APPLE_BUNDLE_ID, // Bundle ID de iOS según app.json
         ].filter(Boolean); // Eliminar valores undefined/null
 
         // Remover duplicados
         const uniqueAudiences = [...new Set(validAudiences)];
-        console.log(
-          "[loginApple] Audiences válidos a intentar:",
-          uniqueAudiences
-        );
 
         // Intentar verificar con cada audience hasta que uno funcione
         let lastError: any = null;
         for (const audience of uniqueAudiences) {
           try {
-            console.log(
-              `[loginApple] Intentando verificar con audience: ${audience}`
-            );
             appleData = await appleSignin.verifyIdToken(dto.identityToken, {
               audience: audience as string,
               ignoreExpiration: false,
             });
-            console.log(
-              `[loginApple] ✅ Token verificado exitosamente con audience: ${audience}`
-            );
             break; // Si funciona, salir del loop
           } catch (verifyError: any) {
-            console.log(
-              `[loginApple] ❌ Error verificando con ${audience}:`,
-              verifyError.message
-            );
             lastError = verifyError;
             // Continuar con el siguiente audience
           }
@@ -683,9 +706,6 @@ export class AuthService {
 
         // Si ningún audience funcionó, lanzar error
         if (!appleData) {
-          console.error(
-            "[loginApple] ❌ No se pudo verificar el token con ningún audience válido"
-          );
           throw (
             lastError ||
             new Error(
@@ -716,13 +736,6 @@ export class AuthService {
           )
         );
       }
-
-      console.log("[loginApple] Datos de Apple obtenidos:", {
-        sub: appleData?.sub,
-        email: appleData?.email,
-        emailFromDto: dto.email,
-        appleUserIdFromDto: dto.appleUserId,
-      });
 
       // El email puede venir en el token o en dto.email
       // Si viene en el token, usar ese porque es más confiable
@@ -844,6 +857,12 @@ export class AuthService {
   }
 
   async login(dto: any) {
+    // Si viene googleAuthCode, intercambiarlo por idToken
+    if (dto.googleAuthCode) {
+      console.log("[Login] Procesando Google authorization code...");
+      dto.idToken = await this.exchangeGoogleAuthCode(dto.googleAuthCode);
+    }
+
     // Login con Google
     if (dto.idToken) {
       return this.loginGoogle({ idToken: dto.idToken });

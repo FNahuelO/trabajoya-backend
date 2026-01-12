@@ -128,6 +128,9 @@ export class AwsConfigService implements OnModuleInit {
       if (secrets.APPLE_CLIENT_ID) {
         process.env.APPLE_CLIENT_ID = secrets.APPLE_CLIENT_ID;
       }
+      if (secrets.APPLE_BUNDLE_ID) {
+        process.env.APPLE_BUNDLE_ID = secrets.APPLE_BUNDLE_ID;
+      }
       if (secrets.APPLE_TEAM_ID) {
         process.env.APPLE_TEAM_ID = secrets.APPLE_TEAM_ID;
       }
