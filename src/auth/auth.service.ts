@@ -54,7 +54,6 @@ export class AuthService {
   private async exchangeGoogleAuthCode(authCode: string): Promise<string> {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = "https://auth.expo.io/@fosorio/TrabajoYa";
 
     if (!clientId || !clientSecret) {
       throw new BadRequestException(
@@ -62,31 +61,54 @@ export class AuthService {
       );
     }
 
-    const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
+    // Probar con diferentes redirect URIs (Expo Go y dev builds)
+    const possibleRedirectUris = [
+      "trabajoya://",
+      "https://auth.expo.io/@fosorio/TrabajoYa",
+    ];
 
-    try {
-      console.log(
-        "[Google Auth] Intercambiando authorization code por tokens..."
-      );
+    let lastError: any;
 
-      const { tokens } = await oauth2Client.getToken(authCode);
+    // Intentar con cada redirect URI
+    for (const redirectUri of possibleRedirectUris) {
+      try {
+        console.log(
+          `[Google Auth] Intentando intercambiar con redirectUri: ${redirectUri}`
+        );
 
-      if (!tokens.id_token) {
-        throw new Error("No se recibió id_token de Google");
+        const oauth2Client = new OAuth2Client(
+          clientId,
+          clientSecret,
+          redirectUri
+        );
+        const { tokens } = await oauth2Client.getToken(authCode);
+
+        if (!tokens.id_token) {
+          throw new Error("No se recibió id_token de Google");
+        }
+
+        console.log(
+          `[Google Auth] ✅ Tokens obtenidos exitosamente con ${redirectUri}`
+        );
+        return tokens.id_token;
+      } catch (error) {
+        console.log(
+          `[Google Auth] ❌ Falló con ${redirectUri}:`,
+          error.message
+        );
+        lastError = error;
+        // Continuar con el siguiente redirect URI
       }
-
-      console.log("[Google Auth] Tokens obtenidos exitosamente");
-
-      return tokens.id_token;
-    } catch (error) {
-      console.error(
-        "[Google Auth] Error intercambiando authorization code:",
-        error
-      );
-      throw new BadRequestException(
-        "Error al intercambiar el código de autorización con Google"
-      );
     }
+
+    // Si llegamos aquí, todos los redirect URIs fallaron
+    console.error(
+      "[Google Auth] Error intercambiando authorization code con todos los redirect URIs:",
+      lastError
+    );
+    throw new BadRequestException(
+      "Error al intercambiar el código de autorización con Google"
+    );
   }
 
   /**
