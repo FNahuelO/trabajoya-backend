@@ -64,15 +64,42 @@ export class AuthService {
       );
     }
 
-    // Priorizar el redirectUri proporcionado por el cliente
-    const possibleRedirectUris = providedRedirectUri
-      ? [providedRedirectUri]
-      : ["trabajoya://", "https://auth.expo.io/@fosorio/TrabajoYa"];
+    // Construir lista de redirect URIs a intentar
+    // Priorizar el proporcionado por el cliente, luego agregar otros comunes
+    const possibleRedirectUris: string[] = [];
+    
+    if (providedRedirectUri) {
+      possibleRedirectUris.push(providedRedirectUri);
+    }
+    
+    // Agregar otros redirect URIs comunes
+    possibleRedirectUris.push(
+      "trabajoya://",
+      "com.trabajoya.app://",
+      "https://auth.expo.io/@fosorio/TrabajoYa"
+    );
+
+    // Si el redirect URI proporcionado parece ser de iOS (contiene com.googleusercontent.apps),
+    // también intentar sin el esquema completo (solo el path)
+    if (providedRedirectUri?.includes("com.googleusercontent.apps")) {
+      // Extraer solo la parte después de ://
+      const uriPath = providedRedirectUri.split("://")[1];
+      if (uriPath) {
+        possibleRedirectUris.push(`${uriPath}://`);
+      }
+    }
 
     let lastError: any;
+    const attemptedUris: string[] = [];
 
     // Intentar con cada redirect URI
     for (const redirectUri of possibleRedirectUris) {
+      // Evitar duplicados
+      if (attemptedUris.includes(redirectUri)) {
+        continue;
+      }
+      attemptedUris.push(redirectUri);
+
       try {
         console.log(
           `[Google Auth] Intentando intercambiar con redirectUri: ${redirectUri}`
@@ -89,9 +116,23 @@ export class AuthService {
           `[Google Auth] ✅ Tokens obtenidos exitosamente con ${redirectUri}`
         );
         return tokens.id_token;
-      } catch (error) {
-        console.log(`[Google Auth] ❌ Falló con ${redirectUri}:`, error.message);
+      } catch (error: any) {
+        const errorMessage = error?.message || String(error);
+        const errorCode = error?.code || error?.response?.data?.error;
+        
+        console.log(
+          `[Google Auth] ❌ Falló con ${redirectUri}: ${errorMessage}${errorCode ? ` (${errorCode})` : ""}`
+        );
+        
+        // Guardar el error para referencia
         lastError = error;
+        
+        // Si el error es invalid_grant, puede ser que el redirect URI no coincida
+        // Continuar intentando con otros URIs antes de fallar
+        if (errorCode === "invalid_grant" || errorMessage.includes("invalid_grant")) {
+          // Continuar con el siguiente URI
+          continue;
+        }
       }
     }
 
@@ -100,8 +141,20 @@ export class AuthService {
       "[Google Auth] Error intercambiando authorization code con todos los redirect URIs:",
       lastError
     );
+    
+    const errorMessage = lastError?.message || "Error desconocido";
+    const errorCode = lastError?.code || lastError?.response?.data?.error;
+    
+    if (errorCode === "invalid_grant" || errorMessage.includes("invalid_grant")) {
+      throw new BadRequestException(
+        `Error al intercambiar el código de autorización: ${errorMessage}. ` +
+        `Asegúrate de que el redirect URI "${providedRedirectUri || "usado"}" esté autorizado en Google Cloud Console ` +
+        `en la sección "URIs de redirección autorizados" de tu credencial OAuth 2.0 (cliente web).`
+      );
+    }
+    
     throw new BadRequestException(
-      "Error al intercambiar el código de autorización con Google"
+      `Error al intercambiar el código de autorización con Google: ${errorMessage}`
     );
   }
 
@@ -160,7 +213,8 @@ export class AuthService {
       console.log("[Register] Procesando Google authorization code...");
       dto.idToken = await this.exchangeGoogleAuthCode(
         dto.googleAuthCode,
-        dto.googleRedirectUri
+        dto.googleRedirectUri,
+        dto.googleClientId
       );
     }
 
@@ -877,7 +931,8 @@ export class AuthService {
       console.log("[Login] Procesando Google authorization code...");
       dto.idToken = await this.exchangeGoogleAuthCode(
         dto.googleAuthCode,
-        dto.googleRedirectUri
+        dto.googleRedirectUri,
+        dto.googleClientId
       );
     }
 

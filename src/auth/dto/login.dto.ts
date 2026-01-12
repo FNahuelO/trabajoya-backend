@@ -73,4 +73,12 @@ export class LoginDto {
   @IsOptional()
   @IsString({ message: i18nValidationMessage("validation.isString") })
   googleRedirectUri?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "Google Client ID used for code exchange",
+  })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  googleClientId?: string;
 }
