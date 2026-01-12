@@ -13,11 +13,52 @@ export class FavoritesService {
 
   async listJobFavorites(userId: string) {
     const postulante = await this.findPostulanteId(userId);
-    return this.prisma.jobFavorite.findMany({
+    const favorites = await this.prisma.jobFavorite.findMany({
       where: { postulanteId: postulante.id },
       include: { job: { include: { empresa: true } } },
       orderBy: { createdAt: "desc" },
     });
+
+    // Transformar logos de empresas a URLs (CloudFront o S3 presigned)
+    const favoritesWithProcessedLogos = await Promise.all(
+      favorites.map(async (favorite) => {
+        if (
+          favorite.job?.empresa?.logo &&
+          !favorite.job.empresa.logo.startsWith("http")
+        ) {
+          try {
+            if (this.cloudFrontSigner.isCloudFrontConfigured()) {
+              const logoPath = favorite.job.empresa.logo.startsWith("/")
+                ? favorite.job.empresa.logo
+                : `/${favorite.job.empresa.logo}`;
+              const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+              if (
+                cloudFrontUrl &&
+                cloudFrontUrl.startsWith("https://") &&
+                !cloudFrontUrl.includes("https:///")
+              ) {
+                favorite.job.empresa.logo = cloudFrontUrl;
+              } else {
+                favorite.job.empresa.logo = await this.s3UploadService.getObjectUrl(
+                  favorite.job.empresa.logo,
+                  3600
+                );
+              }
+            } else {
+              favorite.job.empresa.logo = await this.s3UploadService.getObjectUrl(
+                favorite.job.empresa.logo,
+                3600
+              );
+            }
+          } catch (error) {
+            console.error("Error generando URL para logo en favoritos de trabajos:", error);
+          }
+        }
+        return favorite;
+      })
+    );
+
+    return favoritesWithProcessedLogos;
   }
 
   async listCompanyFavorites(userId: string) {
