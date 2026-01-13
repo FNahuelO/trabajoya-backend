@@ -213,8 +213,7 @@ export class AuthService {
       console.log("[Register] Procesando Google authorization code...");
       dto.idToken = await this.exchangeGoogleAuthCode(
         dto.googleAuthCode,
-        dto.googleRedirectUri,
-        dto.googleClientId
+        dto.googleRedirectUri
       );
     }
 
@@ -931,8 +930,7 @@ export class AuthService {
       console.log("[Login] Procesando Google authorization code...");
       dto.idToken = await this.exchangeGoogleAuthCode(
         dto.googleAuthCode,
-        dto.googleRedirectUri,
-        dto.googleClientId
+        dto.googleRedirectUri
       );
     }
 
