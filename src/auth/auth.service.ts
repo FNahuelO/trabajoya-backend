@@ -64,98 +64,62 @@ export class AuthService {
       );
     }
 
-    // Construir lista de redirect URIs a intentar
-    // Priorizar el proporcionado por el cliente, luego agregar otros comunes
-    const possibleRedirectUris: string[] = [];
-    
-    if (providedRedirectUri) {
-      possibleRedirectUris.push(providedRedirectUri);
-    }
-    
-    // Agregar otros redirect URIs comunes
-    possibleRedirectUris.push(
-      "trabajoya://",
-      "com.trabajoya.app://",
-      "https://auth.expo.io/@fosorio/TrabajoYa"
-    );
+    console.log("[Google Auth] Iniciando intercambio de código:", {
+      authCodeLength: authCode?.length,
+      providedRedirectUri,
+      clientId: clientId?.substring(0, 20) + "...",
+    });
 
-    // Si el redirect URI proporcionado parece ser de iOS (contiene com.googleusercontent.apps),
-    // también intentar sin el esquema completo (solo el path)
-    if (providedRedirectUri?.includes("com.googleusercontent.apps")) {
-      // Extraer solo la parte después de ://
-      const uriPath = providedRedirectUri.split("://")[1];
-      if (uriPath) {
-        possibleRedirectUris.push(`${uriPath}://`);
-      }
-    }
-
-    let lastError: any;
-    const attemptedUris: string[] = [];
-
-    // Intentar con cada redirect URI
-    for (const redirectUri of possibleRedirectUris) {
-      // Evitar duplicados
-      if (attemptedUris.includes(redirectUri)) {
-        continue;
-      }
-      attemptedUris.push(redirectUri);
-
-      try {
-        console.log(
-          `[Google Auth] Intentando intercambiar con redirectUri: ${redirectUri}`
-        );
-
-        const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
-        const { tokens } = await oauth2Client.getToken(authCode);
-
-        if (!tokens.id_token) {
-          throw new Error("No se recibió id_token de Google");
-        }
-
-        console.log(
-          `[Google Auth] ✅ Tokens obtenidos exitosamente con ${redirectUri}`
-        );
-        return tokens.id_token;
-      } catch (error: any) {
-        const errorMessage = error?.message || String(error);
-        const errorCode = error?.code || error?.response?.data?.error;
-        
-        console.log(
-          `[Google Auth] ❌ Falló con ${redirectUri}: ${errorMessage}${errorCode ? ` (${errorCode})` : ""}`
-        );
-        
-        // Guardar el error para referencia
-        lastError = error;
-        
-        // Si el error es invalid_grant, puede ser que el redirect URI no coincida
-        // Continuar intentando con otros URIs antes de fallar
-        if (errorCode === "invalid_grant" || errorMessage.includes("invalid_grant")) {
-          // Continuar con el siguiente URI
-          continue;
-        }
-      }
-    }
-
-    // Si llegamos aquí, todos los redirect URIs fallaron
-    console.error(
-      "[Google Auth] Error intercambiando authorization code con todos los redirect URIs:",
-      lastError
-    );
-    
-    const errorMessage = lastError?.message || "Error desconocido";
-    const errorCode = lastError?.code || lastError?.response?.data?.error;
-    
-    if (errorCode === "invalid_grant" || errorMessage.includes("invalid_grant")) {
+    // CRÍTICO: Los códigos de autorización son de un solo uso
+    // Debemos usar SOLO el redirect URI exacto proporcionado por el cliente
+    // Intentar múltiples URIs consumiría el código en el primer intento fallido
+    if (!providedRedirectUri) {
       throw new BadRequestException(
-        `Error al intercambiar el código de autorización: ${errorMessage}. ` +
-        `Asegúrate de que el redirect URI "${providedRedirectUri || "usado"}" esté autorizado en Google Cloud Console ` +
-        `en la sección "URIs de redirección autorizados" de tu credencial OAuth 2.0 (cliente web).`
+        "Redirect URI requerido para intercambiar el código de autorización. " +
+        "El redirect URI debe coincidir exactamente con el usado para obtener el código."
       );
     }
-    
-    throw new BadRequestException(
-      `Error al intercambiar el código de autorización con Google: ${errorMessage}`
-    );
+
+    try {
+      console.log(
+        `[Google Auth] Intentando intercambiar con redirectUri exacto: ${providedRedirectUri}`
+      );
+
+      const oauth2Client = new OAuth2Client(clientId, clientSecret, providedRedirectUri);
+      const { tokens } = await oauth2Client.getToken(authCode);
+
+      if (!tokens.id_token) {
+        throw new Error("No se recibió id_token de Google");
+      }
+
+      console.log(
+        `[Google Auth] ✅ Tokens obtenidos exitosamente con ${providedRedirectUri}`
+      );
+      return tokens.id_token;
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      const errorCode = error?.code || error?.response?.data?.error;
+      
+      console.error(
+        `[Google Auth] ❌ Error intercambiando código: ${errorMessage}${errorCode ? ` (${errorCode})` : ""}`
+      );
+      
+      if (errorCode === "invalid_grant" || errorMessage.includes("invalid_grant")) {
+        // El código puede haber sido usado ya, o el redirect URI no coincide
+        throw new BadRequestException(
+          `Error al intercambiar el código de autorización: ${errorMessage}. ` +
+          `Asegúrate de que: ` +
+          `1) El redirect URI "${providedRedirectUri}" esté autorizado en Google Cloud Console ` +
+          `en la sección "URIs de redirección autorizados" de tu credencial OAuth 2.0 (cliente web). ` +
+          `2) El redirect URI coincida exactamente con el usado para obtener el código de autorización. ` +
+          `3) El código de autorización no haya sido usado previamente (los códigos son de un solo uso).`
+        );
+      }
+      
+      throw new BadRequestException(
+        `Error al intercambiar el código de autorización con Google: ${errorMessage}`
+      );
+    }
   }
 
   /**
@@ -208,13 +172,62 @@ export class AuthService {
   }
 
   async register(dto: any) {
-    // Si viene googleAuthCode, intercambiarlo por idToken
+    // Si viene googleAuthCode, verificar si contiene idToken directamente o necesita intercambio
     if (dto.googleAuthCode) {
       console.log("[Register] Procesando Google authorization code...");
-      dto.idToken = await this.exchangeGoogleAuthCode(
-        dto.googleAuthCode,
-        dto.googleRedirectUri
-      );
+      
+      // Parsear googleAuthCode si viene como JSON string
+      let authCode = dto.googleAuthCode;
+      let redirectUri = dto.googleRedirectUri;
+      let idTokenFromResponse: string | undefined;
+      
+      try {
+        const parsed = JSON.parse(dto.googleAuthCode);
+        
+        // Si la respuesta de Google ya incluye id_token, usarlo directamente
+        if (parsed.id_token || parsed.idToken) {
+          idTokenFromResponse = parsed.id_token || parsed.idToken;
+          console.log("[Register] ✅ id_token encontrado en respuesta de Google, usando directamente");
+          dto.idToken = idTokenFromResponse;
+        } else if (parsed.code) {
+          // Si solo viene el código, intentar intercambiarlo
+          authCode = parsed.code;
+          redirectUri = parsed.redirectUri || redirectUri;
+          console.log("[Register] GoogleAuthCode parseado (solo código):", {
+            code: authCode?.substring(0, 20) + "...",
+            redirectUri,
+            clientId: parsed.clientId?.substring(0, 20) + "...",
+          });
+          
+          // Intentar intercambiar el código por id_token
+          try {
+            dto.idToken = await this.exchangeGoogleAuthCode(
+              authCode,
+              redirectUri
+            );
+          } catch (exchangeError: any) {
+            // Si el intercambio falla, verificar si hay un id_token en la respuesta
+            if (parsed.id_token || parsed.idToken) {
+              console.log("[Register] Intercambio falló pero id_token disponible en respuesta, usándolo");
+              dto.idToken = parsed.id_token || parsed.idToken;
+            } else {
+              throw exchangeError;
+            }
+          }
+        }
+      } catch (e) {
+        // Si no es JSON, intentar usar como código directamente
+        console.log("[Register] GoogleAuthCode no es JSON, intentando como código de autorización");
+        try {
+          dto.idToken = await this.exchangeGoogleAuthCode(
+            dto.googleAuthCode,
+            redirectUri
+          );
+        } catch (exchangeError) {
+          // Si falla, lanzar el error
+          throw exchangeError;
+        }
+      }
     }
 
     if (dto.idToken) {
@@ -925,13 +938,62 @@ export class AuthService {
   }
 
   async login(dto: any) {
-    // Si viene googleAuthCode, intercambiarlo por idToken
+    // Si viene googleAuthCode, verificar si contiene idToken directamente o necesita intercambio
     if (dto.googleAuthCode) {
       console.log("[Login] Procesando Google authorization code...");
-      dto.idToken = await this.exchangeGoogleAuthCode(
-        dto.googleAuthCode,
-        dto.googleRedirectUri
-      );
+      
+      // Parsear googleAuthCode si viene como JSON string
+      let authCode = dto.googleAuthCode;
+      let redirectUri = dto.googleRedirectUri;
+      let idTokenFromResponse: string | undefined;
+      
+      try {
+        const parsed = JSON.parse(dto.googleAuthCode);
+        
+        // Si la respuesta de Google ya incluye id_token, usarlo directamente
+        if (parsed.id_token || parsed.idToken) {
+          idTokenFromResponse = parsed.id_token || parsed.idToken;
+          console.log("[Login] ✅ id_token encontrado en respuesta de Google, usando directamente");
+          dto.idToken = idTokenFromResponse;
+        } else if (parsed.code) {
+          // Si solo viene el código, intentar intercambiarlo
+          authCode = parsed.code;
+          redirectUri = parsed.redirectUri || redirectUri;
+          console.log("[Login] GoogleAuthCode parseado (solo código):", {
+            code: authCode?.substring(0, 20) + "...",
+            redirectUri,
+            clientId: parsed.clientId?.substring(0, 20) + "...",
+          });
+          
+          // Intentar intercambiar el código por id_token
+          try {
+            dto.idToken = await this.exchangeGoogleAuthCode(
+              authCode,
+              redirectUri
+            );
+          } catch (exchangeError: any) {
+            // Si el intercambio falla, verificar si hay un id_token en la respuesta
+            if (parsed.id_token || parsed.idToken) {
+              console.log("[Login] Intercambio falló pero id_token disponible en respuesta, usándolo");
+              dto.idToken = parsed.id_token || parsed.idToken;
+            } else {
+              throw exchangeError;
+            }
+          }
+        }
+      } catch (e) {
+        // Si no es JSON, intentar usar como código directamente
+        console.log("[Login] GoogleAuthCode no es JSON, intentando como código de autorización");
+        try {
+          dto.idToken = await this.exchangeGoogleAuthCode(
+            dto.googleAuthCode,
+            redirectUri
+          );
+        } catch (exchangeError) {
+          // Si falla, lanzar el error
+          throw exchangeError;
+        }
+      }
     }
 
     // Login con Google
