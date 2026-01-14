@@ -6,13 +6,17 @@ import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
-import { Logger, UseGuards } from "@nestjs/common";
+import { Logger } from "@nestjs/common";
 import { CallsService } from "./calls.service";
+import { WebSocketAuthService } from "../common/services/websocket-auth.service";
 
-// Mapa para rastrear usuarios conectados
-const connectedUsers = new Map<string, string>(); // userId -> socketId
+type AuthenticatedSocket = Socket & {
+  userId?: string;
+  heartbeatInterval?: NodeJS.Timeout;
+};
 
 @WebSocketGateway({
   cors: {
@@ -20,46 +24,177 @@ const connectedUsers = new Map<string, string>(); // userId -> socketId
     credentials: true,
   },
   namespace: "/calls",
+  pingInterval: 25000, // Ping cada 25 segundos
+  pingTimeout: 60000, // Timeout de 60 segundos
 })
-export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class CallsGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
   private logger = new Logger("CallsGateway");
+  private connectedUsers: Map<string, string> = new Map(); // userId -> socketId
+  private readonly HEARTBEAT_INTERVAL = 30000; // 30 segundos
 
-  constructor(private callsService: CallsService) {}
+  constructor(
+    private callsService: CallsService,
+    private wsAuthService: WebSocketAuthService
+  ) {}
 
-  handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
+  afterInit(server: Server) {
+    this.logger.log("Calls Gateway initialized");
   }
 
-  handleDisconnect(client: Socket) {
+  async handleConnection(client: AuthenticatedSocket) {
+    try {
+      // Intentar autenticación con token (para clientes que lo envían)
+      const authResult = await this.wsAuthService.validateConnection(client);
+
+      if (authResult.isValid && authResult.userId) {
+        const userId = authResult.userId;
+        client.userId = userId;
+
+        // Si el usuario ya está conectado en otro socket, desconectar el anterior
+        const existingSocketId = this.connectedUsers.get(userId);
+        if (existingSocketId && existingSocketId !== client.id) {
+          const existingSocket = this.server.sockets.sockets.get(existingSocketId);
+          if (existingSocket) {
+            this.logger.log(
+              `Disconnecting previous socket ${existingSocketId} for user ${userId}`
+            );
+            existingSocket.emit("disconnected", {
+              reason: "Nueva conexión establecida",
+            });
+            existingSocket.disconnect();
+          }
+        }
+
+        this.connectedUsers.set(userId, client.id);
+        this.logger.log(
+          `User ${userId} connected with socket ${client.id} (authenticated)`
+        );
+
+        // Iniciar heartbeat
+        this.startHeartbeat(client);
+
+        // Notificar al usuario que se conectó
+        client.emit("connected", { message: "Conectado al servicio de llamadas" });
+      } else {
+        // Permitir conexión temporal sin autenticación
+        // El cliente deberá registrarse después con el evento 'register'
+        this.logger.log(
+          `Client ${client.id} connected without authentication (will register later)`
+        );
+      }
+    } catch (error) {
+      this.logger.error("Error handling connection:", error);
+      // No desconectar, permitir que se registre después
+    }
+  }
+
+  handleDisconnect(client: AuthenticatedSocket) {
+    // Detener heartbeat
+    if (client.heartbeatInterval) {
+      clearInterval(client.heartbeatInterval);
+    }
+
     this.logger.log(`Client disconnected: ${client.id}`);
+
     // Buscar y eliminar el usuario del mapa
-    for (const [userId, socketId] of connectedUsers.entries()) {
-      if (socketId === client.id) {
-        connectedUsers.delete(userId);
-        this.logger.log(`User ${userId} disconnected`);
-        break;
+    if (client.userId) {
+      // Solo eliminar del mapa si este es el socket activo del usuario
+      if (this.connectedUsers.get(client.userId) === client.id) {
+        this.connectedUsers.delete(client.userId);
+      }
+      this.logger.log(`User ${client.userId} disconnected (socket ${client.id})`);
+    } else {
+      // Si no tiene userId, buscar en el mapa
+      for (const [userId, socketId] of this.connectedUsers.entries()) {
+        if (socketId === client.id) {
+          this.connectedUsers.delete(userId);
+          this.logger.log(`User ${userId} disconnected`);
+          break;
+        }
       }
     }
   }
 
   /**
-   * Registrar usuario conectado
+   * Iniciar heartbeat para mantener la conexión viva
+   */
+  private startHeartbeat(client: AuthenticatedSocket) {
+    // Limpiar heartbeat anterior si existe
+    if (client.heartbeatInterval) {
+      clearInterval(client.heartbeatInterval);
+    }
+
+    // Enviar ping cada 30 segundos
+    client.heartbeatInterval = setInterval(() => {
+      if (client.connected) {
+        client.emit("ping", { timestamp: Date.now() });
+      } else {
+        // Si el cliente no está conectado, limpiar el intervalo
+        if (client.heartbeatInterval) {
+          clearInterval(client.heartbeatInterval);
+        }
+      }
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  /**
+   * Responder a pong del cliente
+   */
+  @SubscribeMessage("pong")
+  handlePong(
+    @MessageBody() data: { timestamp: number },
+    @ConnectedSocket() client: AuthenticatedSocket
+  ) {
+    // El cliente respondió, la conexión está viva
+    const latency = Date.now() - data.timestamp;
+    this.logger.debug(
+      `Pong received from ${client.userId || client.id} (latency: ${latency}ms)`
+    );
+  }
+
+  /**
+   * Registrar usuario conectado (para clientes que no enviaron token en handshake)
    */
   @SubscribeMessage("register")
   handleRegister(
     @MessageBody() data: { userId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { userId } = data;
-    connectedUsers.set(userId, client.id);
+
+    // Si el usuario ya está conectado en otro socket, desconectar el anterior
+    const existingSocketId = this.connectedUsers.get(userId);
+    if (existingSocketId && existingSocketId !== client.id) {
+      const existingSocket = this.server.sockets.sockets.get(existingSocketId);
+      if (existingSocket) {
+        this.logger.log(
+          `Disconnecting previous socket ${existingSocketId} for user ${userId}`
+        );
+        existingSocket.emit("disconnected", {
+          reason: "Nueva conexión establecida",
+        });
+        existingSocket.disconnect();
+      }
+    }
+
+    client.userId = userId;
+    this.connectedUsers.set(userId, client.id);
+
+    // Iniciar heartbeat si no se había iniciado
+    if (!client.heartbeatInterval) {
+      this.startHeartbeat(client);
+    }
+
     this.logger.log(`User ${userId} registered with socket ${client.id}`);
-    this.logger.log(`Total connected users: ${connectedUsers.size}`);
+    this.logger.log(`Total connected users: ${this.connectedUsers.size}`);
     this.logger.log(
       `Connected users map:`,
-      Array.from(connectedUsers.entries())
+      Array.from(this.connectedUsers.entries())
     );
     return { success: true };
   }
@@ -71,20 +206,20 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleInitiateCall(
     @MessageBody()
     data: { fromUserId: string; toUserId: string; callId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { fromUserId, toUserId, callId } = data;
     this.logger.log(
       `Call initiated from ${fromUserId} to ${toUserId} with callId ${callId}`
     );
-    this.logger.log(`Total connected users: ${connectedUsers.size}`);
+    this.logger.log(`Total connected users: ${this.connectedUsers.size}`);
     this.logger.log(
       `Connected users map:`,
-      Array.from(connectedUsers.entries())
+      Array.from(this.connectedUsers.entries())
     );
 
     // Obtener el socket del destinatario
-    const toSocketId = connectedUsers.get(toUserId);
+    const toSocketId = this.connectedUsers.get(toUserId);
 
     if (toSocketId) {
       this.logger.log(
@@ -100,7 +235,7 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { success: true, message: "Llamada iniciada" };
     } else {
       this.logger.warn(`User ${toUserId} not found in connected users map`);
-      this.logger.warn(`Available users:`, Array.from(connectedUsers.keys()));
+      this.logger.warn(`Available users:`, Array.from(this.connectedUsers.keys()));
       return { success: false, message: "Usuario no disponible" };
     }
   }
@@ -112,13 +247,13 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleAcceptCall(
     @MessageBody()
     data: { callId: string; fromUserId: string; toUserId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { callId, fromUserId } = data;
     this.logger.log(`Call ${callId} accepted`);
 
     // Notificar al llamador que la llamada fue aceptada
-    const fromSocketId = connectedUsers.get(fromUserId);
+    const fromSocketId = this.connectedUsers.get(fromUserId);
     if (fromSocketId) {
       this.server.to(fromSocketId).emit("call:accepted", {
         callId,
@@ -135,13 +270,13 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("call:reject")
   async handleRejectCall(
     @MessageBody() data: { callId: string; fromUserId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { callId, fromUserId } = data;
     this.logger.log(`Call ${callId} rejected`);
 
     // Notificar al llamador que la llamada fue rechazada
-    const fromSocketId = connectedUsers.get(fromUserId);
+    const fromSocketId = this.connectedUsers.get(fromUserId);
     if (fromSocketId) {
       this.server.to(fromSocketId).emit("call:rejected", { callId });
     }
@@ -155,13 +290,13 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("call:cancel")
   async handleCancelCall(
     @MessageBody() data: { callId: string; toUserId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { callId, toUserId } = data;
     this.logger.log(`Call ${callId} cancelled`);
 
     // Notificar al destinatario que la llamada fue cancelada
-    const toSocketId = connectedUsers.get(toUserId);
+    const toSocketId = this.connectedUsers.get(toUserId);
     if (toSocketId) {
       this.server.to(toSocketId).emit("call:cancelled", { callId });
     }
@@ -176,14 +311,14 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleEndCall(
     @MessageBody()
     data: { callId: string; fromUserId: string; toUserId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { callId, fromUserId, toUserId } = data;
     this.logger.log(`Call ${callId} ended`);
 
     // Notificar a ambas partes que la llamada finalizó
-    const fromSocketId = connectedUsers.get(fromUserId);
-    const toSocketId = connectedUsers.get(toUserId);
+    const fromSocketId = this.connectedUsers.get(fromUserId);
+    const toSocketId = this.connectedUsers.get(toUserId);
 
     const endCallData = {
       callId,
@@ -213,10 +348,10 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("webrtc:offer")
   handleWebRTCOffer(
     @MessageBody() data: { offer: any; toUserId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { offer, toUserId } = data;
-    const toSocketId = connectedUsers.get(toUserId);
+    const toSocketId = this.connectedUsers.get(toUserId);
 
     if (toSocketId) {
       this.server.to(toSocketId).emit("webrtc:offer", {
@@ -234,10 +369,10 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("webrtc:answer")
   handleWebRTCAnswer(
     @MessageBody() data: { answer: any; toUserId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { answer, toUserId } = data;
-    const toSocketId = connectedUsers.get(toUserId);
+    const toSocketId = this.connectedUsers.get(toUserId);
 
     if (toSocketId) {
       this.server.to(toSocketId).emit("webrtc:answer", {
@@ -255,10 +390,10 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage("webrtc:ice-candidate")
   handleICECandidate(
     @MessageBody() data: { candidate: any; toUserId: string },
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: AuthenticatedSocket
   ) {
     const { candidate, toUserId } = data;
-    const toSocketId = connectedUsers.get(toUserId);
+    const toSocketId = this.connectedUsers.get(toUserId);
 
     if (toSocketId) {
       this.server.to(toSocketId).emit("webrtc:ice-candidate", {

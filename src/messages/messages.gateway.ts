@@ -9,13 +9,15 @@ import {
   OnGatewayInit,
 } from "@nestjs/websockets";
 import { Server, Socket as SocketIOSocket } from "socket.io";
-import { Logger, UseGuards } from "@nestjs/common";
+import { Logger } from "@nestjs/common";
 import { MessagesService } from "./messages.service";
+import { WebSocketAuthService } from "../common/services/websocket-auth.service";
 
 import { SendMessageDto } from "./dto";
 
 type AuthenticatedSocket = SocketIOSocket & {
   userId?: string;
+  heartbeatInterval?: NodeJS.Timeout;
 };
 
 @WebSocketGateway({
@@ -24,6 +26,8 @@ type AuthenticatedSocket = SocketIOSocket & {
     credentials: true,
   },
   namespace: "/messages",
+  pingInterval: 25000, // Ping cada 25 segundos
+  pingTimeout: 60000, // Timeout de 60 segundos
 })
 export class MessagesGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
@@ -33,8 +37,12 @@ export class MessagesGateway
 
   private logger: Logger = new Logger("MessagesGateway");
   private connectedUsers: Map<string, string> = new Map(); // userId -> socketId
+  private readonly HEARTBEAT_INTERVAL = 30000; // 30 segundos
 
-  constructor(private messagesService: MessagesService) {}
+  constructor(
+    private messagesService: MessagesService,
+    private wsAuthService: WebSocketAuthService
+  ) {}
 
   afterInit(server: Server) {
     this.logger.log("Messages Gateway initialized");
@@ -42,32 +50,42 @@ export class MessagesGateway
 
   async handleConnection(client: AuthenticatedSocket) {
     try {
-      // Extraer el token del handshake
-      const token =
-        client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.replace("Bearer ", "");
+      // Validar autenticación usando el servicio
+      const authResult = await this.wsAuthService.validateConnection(client);
 
-      if (!token) {
-        this.logger.warn("No token provided for WebSocket connection");
+      if (!authResult.isValid || !authResult.userId) {
+        this.logger.warn(
+          `Authentication failed for socket ${client.id}: ${authResult.error}`
+        );
+        client.emit("error", { message: "Authentication failed" });
         client.disconnect();
         return;
       }
 
-      // Aquí deberías validar el JWT token
-      // Por simplicidad, asumimos que el token es válido
-      // En producción, deberías usar el mismo servicio de JWT que usas en HTTP
-      const userId = this.extractUserIdFromToken(token);
-
-      if (!userId) {
-        this.logger.warn("Invalid token for WebSocket connection");
-        client.disconnect();
-        return;
-      }
-
+      const userId = authResult.userId;
       client.userId = userId;
+
+      // Si el usuario ya está conectado en otro socket, desconectar el anterior
+      const existingSocketId = this.connectedUsers.get(userId);
+      if (existingSocketId && existingSocketId !== client.id) {
+        const existingSocket = this.server.sockets.sockets.get(existingSocketId);
+        if (existingSocket) {
+          this.logger.log(
+            `Disconnecting previous socket ${existingSocketId} for user ${userId}`
+          );
+          existingSocket.emit("disconnected", {
+            reason: "Nueva conexión establecida",
+          });
+          existingSocket.disconnect();
+        }
+      }
+
       this.connectedUsers.set(userId, client.id);
 
       this.logger.log(`User ${userId} connected with socket ${client.id}`);
+
+      // Iniciar heartbeat
+      this.startHeartbeat(client);
 
       // Notificar al usuario que se conectó
       client.emit("connected", { message: "Conectado al chat" });
@@ -77,15 +95,61 @@ export class MessagesGateway
       client.emit("unreadCount", { count: unreadCount });
     } catch (error) {
       this.logger.error("Error handling WebSocket connection:", error);
+      client.emit("error", { message: "Connection error" });
       client.disconnect();
     }
   }
 
   handleDisconnect(client: AuthenticatedSocket) {
-    if (client.userId) {
-      this.connectedUsers.delete(client.userId);
-      this.logger.log(`User ${client.userId} disconnected`);
+    // Detener heartbeat
+    if (client.heartbeatInterval) {
+      clearInterval(client.heartbeatInterval);
     }
+
+    if (client.userId) {
+      // Solo eliminar del mapa si este es el socket activo del usuario
+      if (this.connectedUsers.get(client.userId) === client.id) {
+        this.connectedUsers.delete(client.userId);
+      }
+      this.logger.log(`User ${client.userId} disconnected (socket ${client.id})`);
+    }
+  }
+
+  /**
+   * Iniciar heartbeat para mantener la conexión viva
+   */
+  private startHeartbeat(client: AuthenticatedSocket) {
+    // Limpiar heartbeat anterior si existe
+    if (client.heartbeatInterval) {
+      clearInterval(client.heartbeatInterval);
+    }
+
+    // Enviar ping cada 30 segundos
+    client.heartbeatInterval = setInterval(() => {
+      if (client.connected) {
+        client.emit("ping", { timestamp: Date.now() });
+      } else {
+        // Si el cliente no está conectado, limpiar el intervalo
+        if (client.heartbeatInterval) {
+          clearInterval(client.heartbeatInterval);
+        }
+      }
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  /**
+   * Responder a pong del cliente
+   */
+  @SubscribeMessage("pong")
+  handlePong(
+    @MessageBody() data: { timestamp: number },
+    @ConnectedSocket() client: AuthenticatedSocket
+  ) {
+    // El cliente respondió, la conexión está viva
+    const latency = Date.now() - data.timestamp;
+    this.logger.debug(
+      `Pong received from ${client.userId} (latency: ${latency}ms)`
+    );
   }
 
   @SubscribeMessage("sendMessage")
@@ -255,20 +319,5 @@ export class MessagesGateway
     // Crear un nombre de sala consistente independientemente del orden de los usuarios
     const sortedIds = [userId1, userId2].sort();
     return `conversation:${sortedIds[0]}:${sortedIds[1]}`;
-  }
-
-  private extractUserIdFromToken(token: string): string | null {
-    try {
-      // Aquí deberías usar el mismo servicio de JWT que usas en HTTP
-      // Por simplicidad, asumimos que el token contiene el userId
-      // En producción, deberías decodificar el JWT y extraer el sub
-      const payload = JSON.parse(
-        Buffer.from(token.split(".")[1], "base64").toString()
-      );
-      return payload.sub || payload.userId;
-    } catch (error) {
-      this.logger.error("Error extracting userId from token:", error);
-      return null;
-    }
   }
 }

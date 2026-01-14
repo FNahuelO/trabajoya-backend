@@ -114,15 +114,21 @@ export class JobDescriptionService {
     }
 
     try {
+      // Construir el prompt sin incluir el título del puesto
+      const contextParts: string[] = [];
+      if (dto.jobArea) contextParts.push(`Área: ${dto.jobArea}`);
+      if (dto.modality) contextParts.push(`Modalidad: ${dto.modality}`);
+      if (dto.jobType) contextParts.push(`Tipo: ${dto.jobType}`);
+      if (dto.experienceLevel) contextParts.push(`Nivel de experiencia: ${dto.experienceLevel}`);
+      if (dto.location) contextParts.push(`Ubicación: ${dto.location}`);
+      if (dto.companyName) contextParts.push(`Empresa: ${dto.companyName}`);
+
+      const contextInfo = contextParts.length > 0 ? contextParts.join("\n") : "No se proporcionó información adicional.";
+
       const prompt = `Genera una descripción profesional y atractiva para una oferta de trabajo. La descripción debe ser clara, concisa y persuasiva.
 
-Título del puesto: ${dto.title}
-${dto.jobArea ? `Área: ${dto.jobArea}` : ""}
-${dto.modality ? `Modalidad: ${dto.modality}` : ""}
-${dto.jobType ? `Tipo: ${dto.jobType}` : ""}
-${dto.experienceLevel ? `Nivel de experiencia: ${dto.experienceLevel}` : ""}
-${dto.location ? `Ubicación: ${dto.location}` : ""}
-${dto.companyName ? `Empresa: ${dto.companyName}` : ""}
+Información del puesto:
+${contextInfo}
 
 La descripción debe incluir:
 1. Una introducción atractiva sobre la posición
@@ -131,7 +137,15 @@ La descripción debe incluir:
 4. Beneficios o ventajas de trabajar en esta posición (opcional, 2-3 puntos)
 5. Una invitación a aplicar
 
-Formato: Texto continuo, sin viñetas ni listas numeradas. Párrafos bien estructurados. Máximo 500 palabras.`;
+IMPORTANTE:
+- Formato: Texto continuo, sin viñetas ni listas numeradas. Párrafos bien estructurados.
+- NO incluyas el título del puesto en la descripción.
+- La descripción debe tener un máximo de 2000 caracteres.
+- Solo genera el texto de la descripción, sin encabezados ni títulos.`;
+
+      // Calcular max_tokens basado en 2000 caracteres (aproximadamente 500 tokens)
+      // Usamos un factor conservador: ~4 caracteres por token
+      const maxTokens = Math.floor(2000 / 4); // ~500 tokens para 2000 caracteres
 
       const response = await this.openai.chat.completions.create({
         model: this.configService.get<string>("OPENAI_MODEL") || "gpt-4o-mini",
@@ -139,7 +153,7 @@ Formato: Texto continuo, sin viñetas ni listas numeradas. Párrafos bien estruc
           {
             role: "system",
             content:
-              "Eres un experto en recursos humanos y redacción de ofertas de trabajo. Generas descripciones profesionales, claras y atractivas.",
+              "Eres un experto en recursos humanos y redacción de ofertas de trabajo. Generas descripciones profesionales, claras y atractivas. IMPORTANTE: No incluyas el título del puesto en la descripción, solo genera el texto descriptivo.",
           },
           {
             role: "user",
@@ -147,13 +161,23 @@ Formato: Texto continuo, sin viñetas ni listas numeradas. Párrafos bien estruc
           },
         ],
         temperature: 0.7, // Un poco más creativo para descripciones
-        max_tokens: 800, // Suficiente para una descripción completa
+        max_tokens: maxTokens, // Limitado para asegurar máximo 2000 caracteres
       });
 
-      const description = response.choices[0]?.message?.content?.trim();
+      let description = response.choices[0]?.message?.content?.trim();
 
       if (!description) {
         throw new Error("No se recibió respuesta de OpenAI");
+      }
+
+      // Asegurar que la descripción no supere los 2000 caracteres
+      if (description.length > 2000) {
+        description = description.substring(0, 2000).trim();
+        // Intentar cortar en un punto o espacio para evitar cortar palabras
+        const lastPeriod = description.lastIndexOf('.');
+        const lastSpace = description.lastIndexOf(' ');
+        const cutPoint = lastPeriod > 1800 ? lastPeriod + 1 : lastSpace > 1800 ? lastSpace : 2000;
+        description = description.substring(0, cutPoint).trim();
       }
 
       return { description };
