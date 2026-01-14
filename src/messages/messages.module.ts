@@ -7,6 +7,7 @@ import { PrismaModule } from "../prisma/prisma.module";
 import { UploadModule } from "../upload/upload.module";
 import { WebSocketAuthService } from "../common/services/websocket-auth.service";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { WebSocketMessageInterceptor } from "./interceptors/websocket-message.interceptor";
 
 @Module({
   imports: [
@@ -19,7 +20,12 @@ import { NotificationsModule } from "../notifications/notifications.module";
     }),
   ],
   controllers: [MessagesController],
-  providers: [MessagesService, MessagesGateway, WebSocketAuthService],
+  providers: [
+    MessagesService,
+    MessagesGateway,
+    WebSocketAuthService,
+    WebSocketMessageInterceptor, // Registrar el interceptor como provider para inyección de dependencias
+  ],
   exports: [MessagesService, MessagesGateway],
 })
 export class MessagesModule {}

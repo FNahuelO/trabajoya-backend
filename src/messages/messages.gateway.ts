@@ -172,6 +172,14 @@ export class MessagesGateway
         data
       );
 
+      // Obtener nombre del remitente
+      const fromUser = (message as any).fromUser;
+      const senderName =
+        fromUser?.postulante?.fullName ||
+        fromUser?.empresa?.companyName ||
+        fromUser?.email ||
+        "Alguien";
+
       // Enviar mensaje al destinatario si está conectado
       const recipientSocketId = this.connectedUsers.get(data.toUserId);
       if (recipientSocketId) {
@@ -184,36 +192,29 @@ export class MessagesGateway
         this.server
           .to(recipientSocketId)
           .emit("unreadCount", { count: unreadCount });
-      } else {
-        // Si el usuario no está conectado, enviar notificación push
-        this.logger.log(
-          `Recipient ${data.toUserId} not connected, sending push notification`
-        );
-        
-        // Obtener nombre del remitente
-        const fromUser = (message as any).fromUser;
-        const senderName =
-          fromUser?.postulante?.fullName ||
-          fromUser?.empresa?.companyName ||
-          fromUser?.email ||
-          "Alguien";
-
-        // Enviar notificación push
-        await this.notificationsService
-          .sendMessageNotification(
-            data.toUserId,
-            senderName,
-            data.message,
-            {
-              messageId: message.id,
-              fromUserId: client.userId,
-              toUserId: data.toUserId,
-            }
-          )
-          .catch((error) => {
-            this.logger.error("Error sending push notification:", error);
-          });
       }
+
+      // SIEMPRE enviar notificación push, incluso si el usuario está conectado
+      // Esto asegura que las notificaciones funcionen cuando la app está en segundo plano o cerrada
+      this.logger.log(
+        `Sending push notification to user ${data.toUserId} (connected: ${!!recipientSocketId})`
+      );
+      
+      // Enviar notificación push
+      await this.notificationsService
+        .sendMessageNotification(
+          data.toUserId,
+          senderName,
+          data.message,
+          {
+            messageId: message.id,
+            fromUserId: client.userId,
+            toUserId: data.toUserId,
+          }
+        )
+        .catch((error) => {
+          this.logger.error("Error sending push notification:", error);
+        });
 
       // Confirmar al remitente que el mensaje se envió
       client.emit("messageSent", message);

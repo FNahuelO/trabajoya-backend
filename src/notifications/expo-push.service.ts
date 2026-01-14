@@ -10,6 +10,10 @@ interface ExpoPushMessage {
   badge?: number;
   priority?: "default" | "normal" | "high";
   channelId?: string;
+  android?: {
+    priority?: "default" | "normal" | "high";
+    channelId?: string;
+  };
 }
 
 interface ExpoPushTicket {
@@ -126,8 +130,13 @@ export class ExpoPushService {
       body,
       data,
       badge: options?.badge,
-      priority: options?.priority || "high",
+      priority: options?.priority || "high", // "high" es necesario para notificaciones en background
       channelId: options?.channelId,
+      // Configuraciones adicionales para Android para asegurar que funcionen en background
+      android: {
+        priority: options?.priority || "high",
+        channelId: options?.channelId || "general",
+      },
     }));
 
     try {

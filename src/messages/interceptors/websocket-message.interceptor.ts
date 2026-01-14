@@ -3,14 +3,24 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  Inject,
+  forwardRef,
+  Logger,
 } from "@nestjs/common";
 import { Observable } from "rxjs";
 import { tap } from "rxjs/operators";
 import { MessagesGateway } from "../messages.gateway";
+import { NotificationsService } from "../../notifications/notifications.service";
 
 @Injectable()
 export class WebSocketMessageInterceptor implements NestInterceptor {
-  constructor(private messagesGateway: MessagesGateway) {}
+  private logger = new Logger("WebSocketMessageInterceptor");
+
+  constructor(
+    private messagesGateway: MessagesGateway,
+    @Inject(forwardRef(() => NotificationsService))
+    private notificationsService: NotificationsService
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
@@ -34,6 +44,35 @@ export class WebSocketMessageInterceptor implements NestInterceptor {
               data.toUserId,
               unreadCount
             );
+
+            // SIEMPRE enviar notificación push, incluso si el usuario está conectado
+            // Esto asegura que las notificaciones funcionen cuando la app está en segundo plano o cerrada
+            try {
+              // Obtener nombre del remitente
+              const fromUser = (data as any).fromUser;
+              const senderName =
+                fromUser?.postulante?.fullName ||
+                fromUser?.empresa?.companyName ||
+                fromUser?.email ||
+                "Alguien";
+
+              // Obtener contenido del mensaje
+              const messageContent = (data as any).content || "";
+
+              // Enviar notificación push
+              await this.notificationsService.sendMessageNotification(
+                data.toUserId,
+                senderName,
+                messageContent,
+                {
+                  messageId: data.id,
+                  fromUserId: data.fromUserId,
+                  toUserId: data.toUserId,
+                }
+              );
+            } catch (error) {
+              this.logger.error("Error sending push notification:", error);
+            }
           }
 
           // Si es marcar como leído, notificar al remitente
