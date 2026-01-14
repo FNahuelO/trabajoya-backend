@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { ExtractedCVData } from "../cv/types/extracted-cv-data.type";
 import OpenAI from "openai";
 
@@ -6,18 +7,38 @@ import OpenAI from "openai";
 export class CVParserService {
   private readonly logger = new Logger(CVParserService.name);
   private openai: OpenAI | null = null;
+  private initializationAttempted = false;
 
-  constructor() {
-    // Inicializar cliente de OpenAI si hay API key
-    const apiKey = process.env.OPENAI_API_KEY;
+  constructor(private configService: ConfigService) {
+    // No inicializar aquí, esperar a que los secretos se carguen desde AWS
+  }
+
+  /**
+   * Inicializar cliente de OpenAI de forma lazy
+   * Se llama automáticamente cuando se necesita usar OpenAI
+   */
+  private ensureOpenAIIsInitialized() {
+    // Si ya intentamos inicializar y no hay API key, no intentar de nuevo
+    if (this.initializationAttempted) {
+      return;
+    }
+
+    this.initializationAttempted = true;
+
+    // Intentar obtener la API key desde ConfigService (que puede venir de AWS Secrets Manager)
+    // o desde process.env directamente
+    const apiKey =
+      this.configService.get<string>("OPENAI_API_KEY") ||
+      process.env.OPENAI_API_KEY;
+
     if (apiKey) {
       this.openai = new OpenAI({
         apiKey: apiKey,
       });
-      this.logger.log("Cliente de OpenAI inicializado correctamente");
+      this.logger.log("✅ Cliente de OpenAI inicializado correctamente");
     } else {
       this.logger.warn(
-        "OPENAI_API_KEY no configurada. El parsing de CVs usará fallback basado en regex."
+        "⚠️  OPENAI_API_KEY no configurada. El parsing de CVs usará fallback basado en regex."
       );
     }
   }
@@ -26,6 +47,9 @@ export class CVParserService {
    * Extraer datos del texto del CV usando IA
    */
   async parseCVText(text: string): Promise<ExtractedCVData> {
+    // Inicializar OpenAI si aún no se ha hecho (lazy initialization)
+    this.ensureOpenAIIsInitialized();
+
     // Si no hay OpenAI configurado, usar fallback
     if (!this.openai) {
       this.logger.warn("Usando parsing basado en regex (fallback)");

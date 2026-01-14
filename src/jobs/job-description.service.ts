@@ -18,21 +18,44 @@ export interface GenerateJobDescriptionDto {
 export class JobDescriptionService {
   private readonly logger = new Logger(JobDescriptionService.name);
   private openai: OpenAI | null = null;
+  private initializationAttempted = false;
 
   constructor(
     private configService: ConfigService,
     private subscriptionsService: SubscriptionsService,
     private prisma: PrismaService
   ) {
-    const apiKey = this.configService.get<string>("OPENAI_API_KEY");
+    // No inicializar aquí, esperar a que los secretos se carguen desde AWS
+  }
+
+  /**
+   * Inicializar cliente de OpenAI de forma lazy
+   * Se llama automáticamente cuando se necesita usar OpenAI
+   */
+  private ensureOpenAIIsInitialized() {
+    // Si ya intentamos inicializar y no hay API key, no intentar de nuevo
+    if (this.initializationAttempted) {
+      return;
+    }
+
+    this.initializationAttempted = true;
+
+    // Intentar obtener la API key desde ConfigService (que puede venir de AWS Secrets Manager)
+    // o desde process.env directamente
+    const apiKey =
+      this.configService.get<string>("OPENAI_API_KEY") ||
+      process.env.OPENAI_API_KEY;
+
     if (apiKey) {
       this.openai = new OpenAI({
         apiKey: apiKey,
       });
-      this.logger.log("Cliente de OpenAI inicializado para generación de descripciones");
+      this.logger.log(
+        "✅ Cliente de OpenAI inicializado para generación de descripciones"
+      );
     } else {
       this.logger.warn(
-        "OPENAI_API_KEY no configurada. La generación de descripciones no estará disponible."
+        "⚠️  OPENAI_API_KEY no configurada. La generación de descripciones no estará disponible."
       );
     }
   }
@@ -45,9 +68,14 @@ export class JobDescriptionService {
    */
   async canGenerateDescription(empresaId: string): Promise<boolean> {
     // Verificar suscripción (compatibilidad con sistema anterior)
-    const subscription = await this.subscriptionsService.getActiveSubscription(empresaId);
+    const subscription = await this.subscriptionsService.getActiveSubscription(
+      empresaId
+    );
     if (subscription) {
-      if (subscription.planType === "PREMIUM" || subscription.planType === "ENTERPRISE") {
+      if (
+        subscription.planType === "PREMIUM" ||
+        subscription.planType === "ENTERPRISE"
+      ) {
         return true;
       }
     }
@@ -77,6 +105,9 @@ export class JobDescriptionService {
         "Esta funcionalidad está disponible solo para planes PREMIUM, ENTERPRISE o planes con funcionalidad de IA habilitada"
       );
     }
+
+    // Inicializar OpenAI si aún no se ha hecho (lazy initialization)
+    this.ensureOpenAIIsInitialized();
 
     if (!this.openai) {
       throw new Error("OpenAI no está configurado");
@@ -120,7 +151,7 @@ Formato: Texto continuo, sin viñetas ni listas numeradas. Párrafos bien estruc
       });
 
       const description = response.choices[0]?.message?.content?.trim();
-      
+
       if (!description) {
         throw new Error("No se recibió respuesta de OpenAI");
       }
@@ -135,4 +166,3 @@ Formato: Texto continuo, sin viñetas ni listas numeradas. Párrafos bien estruc
     }
   }
 }
-

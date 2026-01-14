@@ -145,6 +145,9 @@ export class AwsConfigService implements OnModuleInit {
       }
       if (secrets.OPENAI_API_KEY) {
         process.env.OPENAI_API_KEY = secrets.OPENAI_API_KEY;
+        this.logger.log("✅ OPENAI_API_KEY cargado desde Secrets Manager");
+      } else {
+        this.logger.warn("⚠️  OPENAI_API_KEY no encontrado en Secrets Manager");
       }
       if (secrets.PAYPAL_CLIENT_ID) {
         process.env.PAYPAL_CLIENT_ID = secrets.PAYPAL_CLIENT_ID;
