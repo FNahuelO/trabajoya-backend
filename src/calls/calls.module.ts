@@ -11,11 +11,13 @@ import { PrismaModule } from "../prisma/prisma.module";
 import { MessagesModule } from "../messages/messages.module";
 import { ConfigModule } from "@nestjs/config";
 import { WebSocketAuthService } from "../common/services/websocket-auth.service";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
   imports: [
     PrismaModule,
     forwardRef(() => MessagesModule),
+    forwardRef(() => NotificationsModule),
     ConfigModule,
     JwtModule.register({
       secret: process.env.JWT_ACCESS_SECRET,

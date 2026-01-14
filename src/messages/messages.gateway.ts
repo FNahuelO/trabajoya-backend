@@ -9,9 +9,10 @@ import {
   OnGatewayInit,
 } from "@nestjs/websockets";
 import { Server, Socket as SocketIOSocket } from "socket.io";
-import { Logger } from "@nestjs/common";
+import { Logger, Inject, forwardRef } from "@nestjs/common";
 import { MessagesService } from "./messages.service";
 import { WebSocketAuthService } from "../common/services/websocket-auth.service";
+import { NotificationsService } from "../notifications/notifications.service";
 
 import { SendMessageDto } from "./dto";
 
@@ -41,7 +42,9 @@ export class MessagesGateway
 
   constructor(
     private messagesService: MessagesService,
-    private wsAuthService: WebSocketAuthService
+    private wsAuthService: WebSocketAuthService,
+    @Inject(forwardRef(() => NotificationsService))
+    private notificationsService: NotificationsService
   ) {}
 
   afterInit(server: Server) {
@@ -181,6 +184,35 @@ export class MessagesGateway
         this.server
           .to(recipientSocketId)
           .emit("unreadCount", { count: unreadCount });
+      } else {
+        // Si el usuario no está conectado, enviar notificación push
+        this.logger.log(
+          `Recipient ${data.toUserId} not connected, sending push notification`
+        );
+        
+        // Obtener nombre del remitente
+        const fromUser = (message as any).fromUser;
+        const senderName =
+          fromUser?.postulante?.fullName ||
+          fromUser?.empresa?.companyName ||
+          fromUser?.email ||
+          "Alguien";
+
+        // Enviar notificación push
+        await this.notificationsService
+          .sendMessageNotification(
+            data.toUserId,
+            senderName,
+            data.message,
+            {
+              messageId: message.id,
+              fromUserId: client.userId,
+              toUserId: data.toUserId,
+            }
+          )
+          .catch((error) => {
+            this.logger.error("Error sending push notification:", error);
+          });
       }
 
       // Confirmar al remitente que el mensaje se envió

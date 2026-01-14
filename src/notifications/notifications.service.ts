@@ -1,0 +1,443 @@
+import { Injectable, Logger } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { ExpoPushService } from "./expo-push.service";
+import { NotificationPreferencesDto } from "./dto/notification-preferences.dto";
+
+interface PostulanteNotificationPreferences {
+  newJobs: boolean;
+  companyMessages: boolean;
+  applicationUpdates: boolean;
+  tipsAdvice: boolean;
+  calls: boolean;
+}
+
+interface EmpresaNotificationPreferences {
+  newApplications: boolean;
+  applicantMessages: boolean;
+  interviewReminders: boolean;
+  systemUpdates: boolean;
+  calls: boolean;
+}
+
+type NotificationPreferences =
+  | PostulanteNotificationPreferences
+  | EmpresaNotificationPreferences;
+
+const DEFAULT_POSTULANTE_PREFERENCES: PostulanteNotificationPreferences = {
+  newJobs: true,
+  companyMessages: true,
+  applicationUpdates: true,
+  tipsAdvice: true,
+  calls: true,
+};
+
+const DEFAULT_EMPRESA_PREFERENCES: EmpresaNotificationPreferences = {
+  newApplications: true,
+  applicantMessages: true,
+  interviewReminders: true,
+  systemUpdates: true,
+  calls: true,
+};
+
+@Injectable()
+export class NotificationsService {
+  private logger = new Logger("NotificationsService");
+
+  constructor(
+    private prisma: PrismaService,
+    private expoPushService: ExpoPushService
+  ) {}
+
+  /**
+   * Registrar token de push
+   */
+  async registerPushToken(
+    userId: string,
+    token: string,
+    platform: string,
+    deviceId?: string
+  ): Promise<void> {
+    try {
+      // Verificar si el token ya existe
+      const existing = await this.prisma.pushToken.findUnique({
+        where: { token },
+      });
+
+      if (existing) {
+        // Actualizar si cambió el usuario o dispositivo
+        if (existing.userId !== userId || existing.deviceId !== deviceId) {
+          await this.prisma.pushToken.update({
+            where: { token },
+            data: {
+              userId,
+              deviceId,
+              isActive: true,
+              updatedAt: new Date(),
+            },
+          });
+          this.logger.log(`Updated push token for user ${userId}`);
+        } else {
+          // Solo actualizar la fecha
+          await this.prisma.pushToken.update({
+            where: { token },
+            data: {
+              isActive: true,
+              updatedAt: new Date(),
+            },
+          });
+        }
+      } else {
+        // Crear nuevo token
+        await this.prisma.pushToken.create({
+          data: {
+            userId,
+            token,
+            platform,
+            deviceId,
+            isActive: true,
+          },
+        });
+        this.logger.log(`Registered new push token for user ${userId}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error registering push token for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Desregistrar token de push
+   */
+  async unregisterPushToken(token: string): Promise<void> {
+    try {
+      await this.prisma.pushToken.updateMany({
+        where: { token },
+        data: { isActive: false },
+      });
+      this.logger.log(`Unregistered push token: ${token}`);
+    } catch (error) {
+      this.logger.error(`Error unregistering push token:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Desregistrar todos los tokens de un usuario
+   */
+  async unregisterAllUserTokens(userId: string): Promise<void> {
+    try {
+      await this.prisma.pushToken.updateMany({
+        where: { userId },
+        data: { isActive: false },
+      });
+      this.logger.log(`Unregistered all push tokens for user ${userId}`);
+    } catch (error) {
+      this.logger.error(
+        `Error unregistering all tokens for user ${userId}:`,
+        error
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Obtener tokens activos de un usuario
+   */
+  async getUserActiveTokens(userId: string): Promise<string[]> {
+    try {
+      const tokens = await this.prisma.pushToken.findMany({
+        where: {
+          userId,
+          isActive: true,
+        },
+        select: {
+          token: true,
+        },
+      });
+
+      return tokens.map((t) => t.token);
+    } catch (error) {
+      this.logger.error(
+        `Error getting active tokens for user ${userId}:`,
+        error
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Verificar si un usuario tiene tokens activos
+   */
+  async hasActiveTokens(userId: string): Promise<boolean> {
+    try {
+      const count = await this.prisma.pushToken.count({
+        where: {
+          userId,
+          isActive: true,
+        },
+      });
+
+      return count > 0;
+    } catch (error) {
+      this.logger.error(
+        `Error checking active tokens for user ${userId}:`,
+        error
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Enviar notificación push a un usuario
+   */
+  async sendPushToUser(
+    userId: string,
+    title: string,
+    body: string,
+    data?: any
+  ): Promise<void> {
+    await this.expoPushService.sendToUser(userId, title, body, data);
+  }
+
+  /**
+   * Enviar notificación de mensaje
+   */
+  async sendMessageNotification(
+    toUserId: string,
+    fromUserName: string,
+    messageContent: string,
+    messageData: any
+  ): Promise<void> {
+    // Verificar preferencias del usuario
+    const preferences = await this.getUserPreferences(toUserId);
+    
+    // Verificar según tipo de usuario
+    const hasMessagesEnabled =
+      (preferences as any).companyMessages ?? // Postulante
+      (preferences as any).applicantMessages ?? // Empresa
+      true;
+
+    if (!hasMessagesEnabled) {
+      this.logger.debug(
+        `User ${toUserId} has disabled message notifications`
+      );
+      return;
+    }
+
+    await this.expoPushService.sendMessageNotification(
+      toUserId,
+      fromUserName,
+      messageContent,
+      messageData
+    );
+  }
+
+  /**
+   * Enviar notificación de llamada
+   */
+  async sendCallNotification(
+    toUserId: string,
+    fromUserName: string,
+    callData: any
+  ): Promise<void> {
+    // Verificar preferencias del usuario
+    const preferences = await this.getUserPreferences(toUserId);
+    if (!preferences.calls) {
+      this.logger.debug(`User ${toUserId} has disabled call notifications`);
+      return;
+    }
+
+    await this.expoPushService.sendCallNotification(
+      toUserId,
+      fromUserName,
+      callData
+    );
+  }
+
+  /**
+   * Obtener preferencias de notificaciones del usuario
+   */
+  async getUserPreferences(userId: string): Promise<NotificationPreferences> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          userType: true,
+          postulante: {
+            select: {
+              notificationPreferences: true,
+            },
+          },
+          empresa: {
+            select: {
+              notificationPreferences: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        return DEFAULT_POSTULANTE_PREFERENCES;
+      }
+
+      // Si es postulante
+      if (user.userType === "POSTULANTE") {
+        if (user.postulante?.notificationPreferences) {
+          const prefs = user.postulante.notificationPreferences as any;
+          return {
+            newJobs:
+              prefs.newJobs ?? DEFAULT_POSTULANTE_PREFERENCES.newJobs,
+            companyMessages:
+              prefs.companyMessages ??
+              DEFAULT_POSTULANTE_PREFERENCES.companyMessages,
+            applicationUpdates:
+              prefs.applicationUpdates ??
+              DEFAULT_POSTULANTE_PREFERENCES.applicationUpdates,
+            tipsAdvice:
+              prefs.tipsAdvice ?? DEFAULT_POSTULANTE_PREFERENCES.tipsAdvice,
+            calls: prefs.calls ?? DEFAULT_POSTULANTE_PREFERENCES.calls,
+          } as PostulanteNotificationPreferences;
+        }
+        return DEFAULT_POSTULANTE_PREFERENCES;
+      }
+
+      // Si es empresa
+      if (user.userType === "EMPRESA") {
+        if (user.empresa?.notificationPreferences) {
+          const prefs = user.empresa.notificationPreferences as any;
+          return {
+            newApplications:
+              prefs.newApplications ??
+              DEFAULT_EMPRESA_PREFERENCES.newApplications,
+            applicantMessages:
+              prefs.applicantMessages ??
+              DEFAULT_EMPRESA_PREFERENCES.applicantMessages,
+            interviewReminders:
+              prefs.interviewReminders ??
+              DEFAULT_EMPRESA_PREFERENCES.interviewReminders,
+            systemUpdates:
+              prefs.systemUpdates ?? DEFAULT_EMPRESA_PREFERENCES.systemUpdates,
+            calls: prefs.calls ?? DEFAULT_EMPRESA_PREFERENCES.calls,
+          } as EmpresaNotificationPreferences;
+        }
+        return DEFAULT_EMPRESA_PREFERENCES;
+      }
+
+      return DEFAULT_POSTULANTE_PREFERENCES;
+    } catch (error) {
+      this.logger.error(
+        `Error getting preferences for user ${userId}:`,
+        error
+      );
+      return DEFAULT_POSTULANTE_PREFERENCES;
+    }
+  }
+
+  /**
+   * Actualizar preferencias de notificaciones del usuario
+   */
+  async updateUserPreferences(
+    userId: string,
+    preferences: NotificationPreferencesDto
+  ): Promise<NotificationPreferences> {
+    try {
+      // Obtener usuario
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          postulante: {
+            select: {
+              id: true,
+              notificationPreferences: true,
+            },
+          },
+          empresa: {
+            select: {
+              id: true,
+              notificationPreferences: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        throw new Error("Usuario no encontrado");
+      }
+
+      // Si es postulante
+      if (user.postulante) {
+        const currentPrefs =
+          (user.postulante.notificationPreferences as any) || {};
+
+        const newPrefs: PostulanteNotificationPreferences = {
+          newJobs: preferences.newJobs ?? currentPrefs.newJobs ?? true,
+          companyMessages:
+            preferences.companyMessages ?? currentPrefs.companyMessages ?? true,
+          applicationUpdates:
+            preferences.applicationUpdates ??
+            currentPrefs.applicationUpdates ??
+            true,
+          tipsAdvice: preferences.tipsAdvice ?? currentPrefs.tipsAdvice ?? true,
+          calls: preferences.calls ?? currentPrefs.calls ?? true,
+        };
+
+        await this.prisma.postulanteProfile.update({
+          where: { id: user.postulante.id },
+          data: {
+            notificationPreferences: newPrefs as any,
+          },
+        });
+
+        this.logger.log(
+          `Updated postulante notification preferences for user ${userId}`
+        );
+
+        return newPrefs;
+      }
+
+      // Si es empresa
+      if (user.empresa) {
+        const currentPrefs =
+          (user.empresa.notificationPreferences as any) || {};
+
+        const newPrefs: EmpresaNotificationPreferences = {
+          newApplications:
+            preferences.newApplications ?? currentPrefs.newApplications ?? true,
+          applicantMessages:
+            preferences.applicantMessages ??
+            currentPrefs.applicantMessages ??
+            true,
+          interviewReminders:
+            preferences.interviewReminders ??
+            currentPrefs.interviewReminders ??
+            true,
+          systemUpdates:
+            preferences.systemUpdates ?? currentPrefs.systemUpdates ?? true,
+          calls: preferences.calls ?? currentPrefs.calls ?? true,
+        };
+
+        await this.prisma.empresaProfile.update({
+          where: { id: user.empresa.id },
+          data: {
+            notificationPreferences: newPrefs as any,
+          },
+        });
+
+        this.logger.log(
+          `Updated empresa notification preferences for user ${userId}`
+        );
+
+        return newPrefs;
+      }
+
+      throw new Error("Usuario no tiene perfil de postulante ni empresa");
+    } catch (error) {
+      this.logger.error(
+        `Error updating preferences for user ${userId}:`,
+        error
+      );
+      throw error;
+    }
+  }
+}
+

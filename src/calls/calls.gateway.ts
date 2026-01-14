@@ -9,9 +9,10 @@ import {
   OnGatewayInit,
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
-import { Logger } from "@nestjs/common";
+import { Logger, Inject, forwardRef } from "@nestjs/common";
 import { CallsService } from "./calls.service";
 import { WebSocketAuthService } from "../common/services/websocket-auth.service";
+import { NotificationsService } from "../notifications/notifications.service";
 
 type AuthenticatedSocket = Socket & {
   userId?: string;
@@ -39,7 +40,9 @@ export class CallsGateway
 
   constructor(
     private callsService: CallsService,
-    private wsAuthService: WebSocketAuthService
+    private wsAuthService: WebSocketAuthService,
+    @Inject(forwardRef(() => NotificationsService))
+    private notificationsService: NotificationsService
   ) {}
 
   afterInit(server: Server) {
@@ -236,6 +239,44 @@ export class CallsGateway
     } else {
       this.logger.warn(`User ${toUserId} not found in connected users map`);
       this.logger.warn(`Available users:`, Array.from(this.connectedUsers.keys()));
+      
+      // Enviar notificación push al usuario no conectado
+      this.logger.log(`Sending push notification for incoming call to user ${toUserId}`);
+      
+      // Obtener información del llamador
+      try {
+        const fromUser = await this.callsService["prisma"].user.findUnique({
+          where: { id: fromUserId },
+          include: {
+            postulante: {
+              select: { fullName: true },
+            },
+            empresa: {
+              select: { companyName: true },
+            },
+          },
+        });
+
+        const callerName =
+          fromUser?.postulante?.fullName ||
+          fromUser?.empresa?.companyName ||
+          fromUser?.email ||
+          "Alguien";
+
+        // Enviar notificación push
+        await this.notificationsService
+          .sendCallNotification(toUserId, callerName, {
+            callId,
+            fromUserId,
+            toUserId,
+          })
+          .catch((error) => {
+            this.logger.error("Error sending push notification for call:", error);
+          });
+      } catch (error) {
+        this.logger.error("Error getting caller info for push notification:", error);
+      }
+
       return { success: false, message: "Usuario no disponible" };
     }
   }

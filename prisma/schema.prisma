@@ -188,6 +188,7 @@ model EmpresaProfile {
   beneficiosEmpresa           String[] // Array de beneficios que aparecerán en los avisos
   // Otros
   logo                        String?
+  notificationPreferences     Json? // Preferencias de notificaciones
   user                        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobs                        Job[]
   favorites                   CompanyFavorite[]
@@ -597,4 +598,20 @@ enum PaymentMethod {
   PAYPAL
   MERCADOPAGO
   STRIPE
+}
+
+// Push Notifications
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String   // 'ios' | 'android' | 'web'
+  deviceId  String?  // Identificador del dispositivo
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([token])
+  @@index([isActive])
 }
