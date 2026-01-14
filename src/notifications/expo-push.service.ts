@@ -14,6 +14,12 @@ interface ExpoPushMessage {
     priority?: "default" | "normal" | "high";
     channelId?: string;
   };
+  ios?: {
+    sound?: "default" | null;
+    badge?: number;
+    priority?: "default" | "normal" | "high";
+    categoryId?: string;
+  };
 }
 
 interface ExpoPushTicket {
@@ -136,6 +142,13 @@ export class ExpoPushService {
       android: {
         priority: options?.priority || "high",
         channelId: options?.channelId || "general",
+      },
+      // Configuraciones específicas para iOS para asegurar que funcionen en background
+      ios: {
+        sound: "default",
+        badge: options?.badge,
+        priority: options?.priority || "high",
+        categoryId: options?.channelId === "messages" ? "message" : undefined,
       },
     }));
 

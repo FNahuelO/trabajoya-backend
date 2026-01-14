@@ -419,6 +419,7 @@ enum TermsType {
   POSTULANTE
   EMPRESA
   PRIVACY
+  TERMS
 }
 
 model TermsAndConditions {

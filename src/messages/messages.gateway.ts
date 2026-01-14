@@ -70,8 +70,13 @@ export class MessagesGateway
 
       // Si el usuario ya está conectado en otro socket, desconectar el anterior
       const existingSocketId = this.connectedUsers.get(userId);
-      if (existingSocketId && existingSocketId !== client.id) {
-        const existingSocket = this.server.sockets.sockets.get(existingSocketId);
+      if (
+        existingSocketId &&
+        existingSocketId !== client.id &&
+        this.server?.sockets?.sockets
+      ) {
+        const existingSocket =
+          this.server.sockets.sockets.get(existingSocketId);
         if (existingSocket) {
           this.logger.log(
             `Disconnecting previous socket ${existingSocketId} for user ${userId}`
@@ -98,8 +103,12 @@ export class MessagesGateway
       client.emit("unreadCount", { count: unreadCount });
     } catch (error) {
       this.logger.error("Error handling WebSocket connection:", error);
-      client.emit("error", { message: "Connection error" });
-      client.disconnect();
+      if (client && typeof client.emit === "function") {
+        client.emit("error", { message: "Connection error" });
+      }
+      if (client && typeof client.disconnect === "function") {
+        client.disconnect();
+      }
     }
   }
 
@@ -114,7 +123,9 @@ export class MessagesGateway
       if (this.connectedUsers.get(client.userId) === client.id) {
         this.connectedUsers.delete(client.userId);
       }
-      this.logger.log(`User ${client.userId} disconnected (socket ${client.id})`);
+      this.logger.log(
+        `User ${client.userId} disconnected (socket ${client.id})`
+      );
     }
   }
 
@@ -197,21 +208,18 @@ export class MessagesGateway
       // SIEMPRE enviar notificación push, incluso si el usuario está conectado
       // Esto asegura que las notificaciones funcionen cuando la app está en segundo plano o cerrada
       this.logger.log(
-        `Sending push notification to user ${data.toUserId} (connected: ${!!recipientSocketId})`
+        `Sending push notification to user ${
+          data.toUserId
+        } (connected: ${!!recipientSocketId})`
       );
-      
+
       // Enviar notificación push
       await this.notificationsService
-        .sendMessageNotification(
-          data.toUserId,
-          senderName,
-          data.message,
-          {
-            messageId: message.id,
-            fromUserId: client.userId,
-            toUserId: data.toUserId,
-          }
-        )
+        .sendMessageNotification(data.toUserId, senderName, data.message, {
+          messageId: message.id,
+          fromUserId: client.userId,
+          toUserId: data.toUserId,
+        })
         .catch((error) => {
           this.logger.error("Error sending push notification:", error);
         });

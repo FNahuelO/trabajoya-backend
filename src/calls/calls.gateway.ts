@@ -60,8 +60,13 @@ export class CallsGateway
 
         // Si el usuario ya está conectado en otro socket, desconectar el anterior
         const existingSocketId = this.connectedUsers.get(userId);
-        if (existingSocketId && existingSocketId !== client.id) {
-          const existingSocket = this.server.sockets.sockets.get(existingSocketId);
+        if (
+          existingSocketId &&
+          existingSocketId !== client.id &&
+          this.server?.sockets?.sockets
+        ) {
+          const existingSocket =
+            this.server.sockets.sockets.get(existingSocketId);
           if (existingSocket) {
             this.logger.log(
               `Disconnecting previous socket ${existingSocketId} for user ${userId}`
@@ -82,7 +87,9 @@ export class CallsGateway
         this.startHeartbeat(client);
 
         // Notificar al usuario que se conectó
-        client.emit("connected", { message: "Conectado al servicio de llamadas" });
+        client.emit("connected", {
+          message: "Conectado al servicio de llamadas",
+        });
       } else {
         // Permitir conexión temporal sin autenticación
         // El cliente deberá registrarse después con el evento 'register'
@@ -110,7 +117,9 @@ export class CallsGateway
       if (this.connectedUsers.get(client.userId) === client.id) {
         this.connectedUsers.delete(client.userId);
       }
-      this.logger.log(`User ${client.userId} disconnected (socket ${client.id})`);
+      this.logger.log(
+        `User ${client.userId} disconnected (socket ${client.id})`
+      );
     } else {
       // Si no tiene userId, buscar en el mapa
       for (const [userId, socketId] of this.connectedUsers.entries()) {
@@ -168,38 +177,54 @@ export class CallsGateway
     @MessageBody() data: { userId: string },
     @ConnectedSocket() client: AuthenticatedSocket
   ) {
-    const { userId } = data;
-
-    // Si el usuario ya está conectado en otro socket, desconectar el anterior
-    const existingSocketId = this.connectedUsers.get(userId);
-    if (existingSocketId && existingSocketId !== client.id) {
-      const existingSocket = this.server.sockets.sockets.get(existingSocketId);
-      if (existingSocket) {
-        this.logger.log(
-          `Disconnecting previous socket ${existingSocketId} for user ${userId}`
-        );
-        existingSocket.emit("disconnected", {
-          reason: "Nueva conexión establecida",
-        });
-        existingSocket.disconnect();
+    try {
+      if (!data || !data.userId) {
+        client.emit("error", { message: "UserId requerido" });
+        return { success: false, message: "UserId requerido" };
       }
+
+      const { userId } = data;
+
+      // Si el usuario ya está conectado en otro socket, desconectar el anterior
+      const existingSocketId = this.connectedUsers.get(userId);
+      if (
+        existingSocketId &&
+        existingSocketId !== client.id &&
+        this.server?.sockets?.sockets
+      ) {
+        const existingSocket =
+          this.server.sockets.sockets.get(existingSocketId);
+        if (existingSocket) {
+          this.logger.log(
+            `Disconnecting previous socket ${existingSocketId} for user ${userId}`
+          );
+          existingSocket.emit("disconnected", {
+            reason: "Nueva conexión establecida",
+          });
+          existingSocket.disconnect();
+        }
+      }
+
+      client.userId = userId;
+      this.connectedUsers.set(userId, client.id);
+
+      // Iniciar heartbeat si no se había iniciado
+      if (!client.heartbeatInterval) {
+        this.startHeartbeat(client);
+      }
+
+      this.logger.log(`User ${userId} registered with socket ${client.id}`);
+      this.logger.log(`Total connected users: ${this.connectedUsers.size}`);
+      this.logger.log(
+        `Connected users map:`,
+        Array.from(this.connectedUsers.entries())
+      );
+      return { success: true };
+    } catch (error) {
+      this.logger.error("Error in handleRegister:", error);
+      client.emit("error", { message: "Error al registrar usuario" });
+      return { success: false, message: "Error al registrar usuario" };
     }
-
-    client.userId = userId;
-    this.connectedUsers.set(userId, client.id);
-
-    // Iniciar heartbeat si no se había iniciado
-    if (!client.heartbeatInterval) {
-      this.startHeartbeat(client);
-    }
-
-    this.logger.log(`User ${userId} registered with socket ${client.id}`);
-    this.logger.log(`Total connected users: ${this.connectedUsers.size}`);
-    this.logger.log(
-      `Connected users map:`,
-      Array.from(this.connectedUsers.entries())
-    );
-    return { success: true };
   }
 
   /**
@@ -238,11 +263,16 @@ export class CallsGateway
       return { success: true, message: "Llamada iniciada" };
     } else {
       this.logger.warn(`User ${toUserId} not found in connected users map`);
-      this.logger.warn(`Available users:`, Array.from(this.connectedUsers.keys()));
-      
+      this.logger.warn(
+        `Available users:`,
+        Array.from(this.connectedUsers.keys())
+      );
+
       // Enviar notificación push al usuario no conectado
-      this.logger.log(`Sending push notification for incoming call to user ${toUserId}`);
-      
+      this.logger.log(
+        `Sending push notification for incoming call to user ${toUserId}`
+      );
+
       // Obtener información del llamador
       try {
         const fromUser = await this.callsService["prisma"].user.findUnique({
@@ -271,10 +301,16 @@ export class CallsGateway
             toUserId,
           })
           .catch((error) => {
-            this.logger.error("Error sending push notification for call:", error);
+            this.logger.error(
+              "Error sending push notification for call:",
+              error
+            );
           });
       } catch (error) {
-        this.logger.error("Error getting caller info for push notification:", error);
+        this.logger.error(
+          "Error getting caller info for push notification:",
+          error
+        );
       }
 
       return { success: false, message: "Usuario no disponible" };

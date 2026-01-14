@@ -1282,6 +1282,54 @@ export class AuthService {
     };
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        await this.getTranslation("users.userNotFound", "Usuario no encontrado")
+      );
+    }
+
+    // Verificar que la contraseña actual sea correcta
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException(
+        await this.getTranslation(
+          "auth.invalidCurrentPassword",
+          "La contraseña actual es incorrecta"
+        )
+      );
+    }
+
+    // Verificar que la nueva contraseña sea diferente a la actual
+    const isSamePassword = await bcrypt.compare(newPassword, user.passwordHash);
+    if (isSamePassword) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "auth.samePassword",
+          "La nueva contraseña debe ser diferente a la actual"
+        )
+      );
+    }
+
+    // Actualizar la contraseña
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    return {
+      message: await this.getTranslation(
+        "auth.passwordChangedSuccess",
+        "Contraseña cambiada exitosamente"
+      ),
+    };
+  }
+
   async verifyEmail(token: string) {
     const user = await this.prisma.user.findFirst({
       where: { verificationToken: token },
