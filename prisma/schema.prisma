@@ -14,6 +14,8 @@ model User {
   userType          UserType
   googleId          String?               @unique
   appleId           String?               @unique
+  googleAccessToken String?              // Token de acceso de Google Calendar
+  googleRefreshToken String?              // Refresh token de Google Calendar
   isVerified        Boolean               @default(false)
   language          String                @default("es")
   resetToken        String?               @unique

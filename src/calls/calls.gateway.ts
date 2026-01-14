@@ -25,8 +25,8 @@ type AuthenticatedSocket = Socket & {
     credentials: true,
   },
   namespace: "/calls",
-  pingInterval: 25000, // Ping cada 25 segundos
-  pingTimeout: 60000, // Timeout de 60 segundos
+  pingInterval: 15000, // Ping cada 15 segundos para asegurar latidos frecuentes
+  pingTimeout: 240000, // Timeout de 240 segundos (4 minutos) para permitir llamadas largas sin desconexión
 })
 export class CallsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
@@ -36,7 +36,7 @@ export class CallsGateway
 
   private logger = new Logger("CallsGateway");
   private connectedUsers: Map<string, string> = new Map(); // userId -> socketId
-  private readonly HEARTBEAT_INTERVAL = 30000; // 30 segundos
+  private readonly HEARTBEAT_INTERVAL = 20000; // 20 segundos para emitir pings más frecuentes durante llamadas
 
   constructor(
     private callsService: CallsService,

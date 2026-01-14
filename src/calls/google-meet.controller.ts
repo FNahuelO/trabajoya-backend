@@ -17,11 +17,15 @@ import { GoogleMeetService } from "./google-meet.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
 import { Public } from "../common/decorators/public.decorator";
+import { PrismaService } from "../prisma/prisma.service";
 
 @ApiTags("google-meet")
 @Controller("api/google-meet")
 export class GoogleMeetController {
-  constructor(private googleMeetService: GoogleMeetService) {}
+  constructor(
+    private googleMeetService: GoogleMeetService,
+    private prisma: PrismaService
+  ) {}
 
   @Get("auth-url")
   @UseGuards(JwtAuthGuard)
@@ -92,20 +96,19 @@ export class GoogleMeetController {
       body.redirectUri || defaultRedirectUri
     );
 
-    // TODO: Guardar los tokens en la base de datos asociados al usuario
-    // Por ejemplo, agregar campos googleAccessToken y googleRefreshToken al modelo User
-    // await this.prisma.user.update({
-    //   where: { id: req.user.sub },
-    //   data: {
-    //     googleAccessToken: tokens.accessToken,
-    //     googleRefreshToken: tokens.refreshToken,
-    //   },
-    // });
+    // Guardar los tokens en la base de datos asociados al usuario
+    await this.prisma.user.update({
+      where: { id: req.user?.sub },
+      data: {
+        googleAccessToken: tokens.accessToken,
+        googleRefreshToken: tokens.refreshToken,
+      },
+    });
 
     return createResponse({
       success: true,
-      message: "Autorización exitosa. Guarda estos tokens en la base de datos.",
-      data: tokens,
+      message: "Google Calendar conectado exitosamente",
+      data: { connected: true },
     });
   }
 
@@ -132,16 +135,76 @@ export class GoogleMeetController {
       body.refreshToken
     );
 
-    // TODO: Actualizar el accessToken en la base de datos
-    // await this.prisma.user.update({
-    //   where: { id: req.user.sub },
-    //   data: { googleAccessToken: tokens.accessToken },
-    // });
+    // Actualizar el accessToken en la base de datos
+    await this.prisma.user.update({
+      where: { id: req.user?.sub },
+      data: { googleAccessToken: tokens.accessToken },
+    });
 
     return createResponse({
       success: true,
       message: "Token refrescado exitosamente",
       data: tokens,
+    });
+  }
+
+  @Get("status")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Verificar si el usuario tiene Google Calendar conectado",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Estado de conexión de Google Calendar",
+    schema: {
+      type: "object",
+      properties: {
+        connected: { type: "boolean" },
+      },
+    },
+  })
+  async getConnectionStatus(@Req() req: any) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: req.user?.sub },
+      select: {
+        googleAccessToken: true,
+        googleRefreshToken: true,
+      },
+    });
+
+    return createResponse({
+      success: true,
+      message: "Estado de conexión obtenido",
+      data: {
+        connected: !!(user?.googleAccessToken || user?.googleRefreshToken),
+      },
+    });
+  }
+
+  @Post("disconnect")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Desconectar Google Calendar",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Google Calendar desconectado exitosamente",
+  })
+  async disconnect(@Req() req: any) {
+    await this.prisma.user.update({
+      where: { id: req.user?.sub },
+      data: {
+        googleAccessToken: null,
+        googleRefreshToken: null,
+      },
+    });
+
+    return createResponse({
+      success: true,
+      message: "Google Calendar desconectado exitosamente",
+      data: { connected: false },
     });
   }
 }

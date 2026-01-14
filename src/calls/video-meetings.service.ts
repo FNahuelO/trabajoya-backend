@@ -222,6 +222,7 @@ export class VideoMeetingsService {
 
   /**
    * Aceptar una reunión (solo el invitado)
+   * Crea eventos en Google Calendar de ambos usuarios si tienen tokens configurados
    */
   async acceptMeeting(
     userId: string,
@@ -229,6 +230,24 @@ export class VideoMeetingsService {
   ): Promise<VideoMeetingResponseDto> {
     const meeting = await this.prisma.videoMeeting.findUnique({
       where: { id: meetingId },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            googleAccessToken: true,
+            googleRefreshToken: true,
+          },
+        },
+        invitedUser: {
+          select: {
+            id: true,
+            email: true,
+            googleAccessToken: true,
+            googleRefreshToken: true,
+          },
+        },
+      },
     });
 
     if (!meeting) {
@@ -243,12 +262,150 @@ export class VideoMeetingsService {
       throw new BadRequestException("La reunión ya no está disponible");
     }
 
+    // Calcular fecha de fin basada en la duración
+    const startTime = new Date(meeting.scheduledAt);
+    const durationMinutes = meeting.duration || 30;
+    const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
+
+    // Intentar crear eventos en Google Calendar para ambos usuarios
+    let meetingUrl: string | undefined = meeting.meetingUrl;
+    let googleEventIdCreator: string | undefined;
+    let googleEventIdInvited: string | undefined;
+
+    // Crear evento en el calendario del creador (empresa)
+    if (
+      this.googleMeetService &&
+      meeting.createdBy.googleAccessToken &&
+      meeting.createdBy.email
+    ) {
+      try {
+        // Intentar refrescar el token si es necesario
+        let accessToken = meeting.createdBy.googleAccessToken;
+        if (meeting.createdBy.googleRefreshToken) {
+          try {
+            const refreshed = await this.googleMeetService.refreshAccessToken(
+              meeting.createdBy.googleRefreshToken
+            );
+            accessToken = refreshed.accessToken;
+            // Actualizar el token en la base de datos
+            await this.prisma.user.update({
+              where: { id: meeting.createdById },
+              data: { googleAccessToken: accessToken },
+            });
+          } catch (refreshError) {
+            // Si falla el refresh, usar el token actual
+            console.warn(
+              `No se pudo refrescar el token del creador: ${refreshError}`
+            );
+          }
+        }
+
+        const creatorEvent = await this.googleMeetService.createMeeting(
+          meeting.createdBy.email,
+          accessToken,
+          meeting.title || "Videollamada",
+          meeting.description || "",
+          startTime,
+          endTime,
+          [meeting.invitedUser.email].filter(Boolean)
+        );
+
+        meetingUrl = creatorEvent.meetingUrl;
+        googleEventIdCreator = creatorEvent.eventId;
+      } catch (error) {
+        console.error(
+          "Error creando evento en calendario del creador:",
+          error
+        );
+        // Continuar sin fallar si no se puede crear el evento
+      }
+    }
+
+    // Crear evento en el calendario del invitado (postulante)
+    if (
+      this.googleMeetService &&
+      meeting.invitedUser.googleAccessToken &&
+      meeting.invitedUser.email
+    ) {
+      try {
+        // Intentar refrescar el token si es necesario
+        let accessToken = meeting.invitedUser.googleAccessToken;
+        if (meeting.invitedUser.googleRefreshToken) {
+          try {
+            const refreshed = await this.googleMeetService.refreshAccessToken(
+              meeting.invitedUser.googleRefreshToken
+            );
+            accessToken = refreshed.accessToken;
+            // Actualizar el token en la base de datos
+            await this.prisma.user.update({
+              where: { id: meeting.invitedUserId },
+              data: { googleAccessToken: accessToken },
+            });
+          } catch (refreshError) {
+            // Si falla el refresh, usar el token actual
+            console.warn(
+              `No se pudo refrescar el token del invitado: ${refreshError}`
+            );
+          }
+        }
+
+        const invitedEvent = await this.googleMeetService.createMeeting(
+          meeting.invitedUser.email,
+          accessToken,
+          meeting.title || "Videollamada",
+          meeting.description || "",
+          startTime,
+          endTime,
+          [meeting.createdBy.email].filter(Boolean)
+        );
+
+        // Si no había URL antes, usar la del evento del invitado
+        if (!meetingUrl) {
+          meetingUrl = invitedEvent.meetingUrl;
+        }
+        googleEventIdInvited = invitedEvent.eventId;
+      } catch (error) {
+        console.error(
+          "Error creando evento en calendario del invitado:",
+          error
+        );
+        // Continuar sin fallar si no se puede crear el evento
+      }
+    }
+
+    // Actualizar la reunión con el estado ACCEPTED y la URL si se generó
+    const updateData: any = {
+      status: VideoMeetingStatus.ACCEPTED,
+    };
+
+    if (meetingUrl && !meeting.meetingUrl) {
+      updateData.meetingUrl = meetingUrl;
+    }
+
     const updatedMeeting = await this.prisma.videoMeeting.update({
       where: { id: meetingId },
-      data: {
-        status: VideoMeetingStatus.ACCEPTED,
-      },
+      data: updateData,
     });
+
+    // Enviar mensaje de confirmación al creador
+    try {
+      const formattedDate = startTime.toLocaleString("es-ES", {
+        dateStyle: "full",
+        timeStyle: "short",
+      });
+      const confirmationMessage = `✅ Tu videollamada${
+        meeting.title ? ` "${meeting.title}"` : ""
+      } ha sido aceptada.\n\n📅 Fecha: ${formattedDate}${
+        meetingUrl ? `\n🔗 ${meetingUrl}` : ""
+      }`;
+
+      await this.messagesService.sendMessage(meeting.invitedUserId, {
+        toUserId: meeting.createdById,
+        message: confirmationMessage,
+      });
+    } catch (error) {
+      console.error("Error al enviar mensaje de confirmación:", error);
+    }
 
     return this.mapMeetingToResponse(updatedMeeting);
   }
