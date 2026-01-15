@@ -21,6 +21,7 @@
     "prisma:seed-if-empty": "ts-node --transpile-only prisma/seed-if-empty.ts",
     "create-admin": "ts-node --transpile-only scripts/create-admin.ts",
     "create-terms": "ts-node --transpile-only scripts/create-terms.ts",
+    "resolve-failed-migrations": "ts-node --transpile-only scripts/resolve-failed-migrations.ts",
     "vercel:postdeploy": "echo '🚀 Iniciando post-deploy en Vercel...' && echo '📦 Ejecutando migraciones...' && npm run prisma:deploy && echo '🌱 Ejecutando seed...' && npm run prisma:seed-if-empty && echo '✅ Post-deploy completado'",
     "docker:dev": "docker compose up --build",
     "docker:prod": "docker compose -f docker-compose.prod.yml up --build",

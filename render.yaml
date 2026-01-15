@@ -5,7 +5,7 @@ services:
     plan: starter
     region: oregon
     buildCommand: npm ci && npm run prisma:generate && npm run build
-    startCommand: echo "🚀 Iniciando aplicación..." && echo "📦 Aplicando migraciones de base de datos..." && npx prisma migrate deploy && echo "✅ Migraciones aplicadas correctamente" && echo "🌱 Iniciando servidor..." && node dist/main.js
+    startCommand: echo "🚀 Iniciando aplicación..." && echo "🔧 Resolviendo migraciones fallidas..." && node scripts/resolve-failed-migrations.js || echo "⚠️  No se pudo resolver migraciones fallidas, continuando..." && echo "📦 Aplicando migraciones de base de datos..." && npx prisma migrate deploy && echo "✅ Migraciones aplicadas correctamente" && echo "🌱 Iniciando servidor..." && node dist/main.js
     autoDeploy: true
     envVars:
       - key: NODE_ENV
@@ -57,6 +57,10 @@ services:
       # FRONT URL para los links de mails
       - key: APP_WEB_URL
         value: https://app.trabajo-ya.com
+
+      # WebSocket - URL del backend para conexiones WebSocket
+      - key: WEBSOCKET_URL
+        value: wss://trabajoya-backend.onrender.com
 
 databases:
   - name: trabajoya-db

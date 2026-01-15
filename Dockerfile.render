@@ -25,4 +25,4 @@ RUN npm run build
 EXPOSE 4000
 
 # Comando de inicio
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "echo '🔧 Resolviendo migraciones fallidas...' && node scripts/resolve-failed-migrations.js || echo '⚠️  Continuando...' && echo '📦 Aplicando migraciones...' && npx prisma migrate deploy && echo '✅ Migraciones aplicadas' && echo '🚀 Iniciando servidor...' && node dist/main.js"]

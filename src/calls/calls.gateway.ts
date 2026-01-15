@@ -21,12 +21,15 @@ type AuthenticatedSocket = Socket & {
 
 @WebSocketGateway({
   cors: {
-    origin: "*", // En producción, especificar el dominio exacto
+    origin: process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+      : "*", // En producción, especificar el dominio exacto
     credentials: true,
   },
   namespace: "/calls",
   pingInterval: 15000, // Ping cada 15 segundos para asegurar latidos frecuentes
   pingTimeout: 240000, // Timeout de 240 segundos (4 minutos) para permitir llamadas largas sin desconexión
+  transports: ["websocket", "polling"], // Soporte para polling como fallback
 })
 export class CallsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

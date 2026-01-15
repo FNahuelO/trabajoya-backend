@@ -23,12 +23,15 @@ type AuthenticatedSocket = SocketIOSocket & {
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+      : process.env.FRONTEND_URL || "http://localhost:3000",
     credentials: true,
   },
   namespace: "/messages",
   pingInterval: 25000, // Ping cada 25 segundos
   pingTimeout: 60000, // Timeout de 60 segundos
+  transports: ["websocket", "polling"], // Soporte para polling como fallback
 })
 export class MessagesGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
