@@ -9,6 +9,7 @@ FAILED_MIGRATION=$(psql "$DATABASE_URL" -t -c "SELECT migration_name FROM \"_pri
 
 if [ -z "$FAILED_MIGRATION" ]; then
   echo "✅ No se encontraron migraciones fallidas."
+  # No hacer exit aquí, solo continuar
   exit 0
 fi
 

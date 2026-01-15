@@ -27,7 +27,8 @@ EXPOSE 4000
 # Copiar y hacer ejecutables los scripts
 COPY scripts/resolve-failed-migrations.sh ./scripts/
 COPY scripts/migrate-deploy.sh ./scripts/
-RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh
+COPY scripts/start.sh ./scripts/
+RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh ./scripts/start.sh
 
 # Instalar postgresql-client para usar psql
 RUN apk add --no-cache postgresql-client
