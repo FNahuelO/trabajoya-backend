@@ -29,11 +29,12 @@ COPY scripts/resolve-failed-migrations.sh ./scripts/
 COPY scripts/migrate-deploy.sh ./scripts/
 COPY scripts/start.sh ./scripts/
 COPY scripts/seed-if-empty.js ./scripts/
+COPY scripts/ensure-schema.js ./scripts/
 RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh ./scripts/start.sh
 
 # Instalar postgresql-client para usar psql
 RUN apk add --no-cache postgresql-client
 
-# Comando de inicio - usar el wrapper para migrate deploy
-CMD ["sh", "-c", "./scripts/migrate-deploy.sh && echo '✅ Migraciones aplicadas' && echo '🚀 Iniciando servidor...' && node dist/main.js"]
+# Comando de inicio - usar start.sh que incluye todo el flujo
+CMD ["sh", "-c", "./scripts/start.sh"]
 

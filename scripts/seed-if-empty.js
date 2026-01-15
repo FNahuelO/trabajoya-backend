@@ -8,15 +8,41 @@ const bcrypt = require("bcryptjs");
 
 const prisma = new PrismaClient();
 
+async function checkTablesExist() {
+  try {
+    // Verificar si la tabla User existe usando SQL directo
+    const result = await prisma.$queryRaw`
+      SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'User'
+      ) as exists;
+    `;
+    
+    return result[0]?.exists || false;
+  } catch (error) {
+    console.error("Error verificando si las tablas existen:", error);
+    return false;
+  }
+}
+
 async function isDatabaseEmpty() {
   try {
+    // Primero verificar si las tablas existen
+    const tablesExist = await checkTablesExist();
+    if (!tablesExist) {
+      console.log("⚠️  Las tablas no existen. El esquema debe aplicarse primero.");
+      return false; // No ejecutar seed si no hay tablas
+    }
+    
     // Verificar si hay usuarios en la base de datos
     const userCount = await prisma.user.count();
     return userCount === 0;
   } catch (error) {
     console.error("Error verificando si la base de datos está vacía:", error);
-    // Si hay un error, asumimos que está vacía para intentar el seed
-    return true;
+    // Si hay un error (como tabla no existe), no ejecutar seed
+    return false;
   }
 }
 

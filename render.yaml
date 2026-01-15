@@ -5,7 +5,7 @@ services:
     plan: starter
     region: oregon
     buildCommand: npm ci && npm run prisma:generate && npm run build
-    startCommand: ./scripts/migrate-deploy.sh && echo "✅ Migraciones aplicadas correctamente" && echo "🚀 Iniciando servidor..." && node dist/main.js
+    startCommand: ./scripts/start.sh
     autoDeploy: true
     envVars:
       - key: NODE_ENV
