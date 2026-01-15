@@ -1,9 +1,11 @@
 /**
  * Script para resolver migraciones fallidas de Prisma
  * Versión JavaScript que se puede ejecutar directamente con Node.js
+ * Usa el comando oficial de Prisma 'migrate resolve' para resolver migraciones fallidas
  */
 
 const { PrismaClient } = require("@prisma/client");
+const { execSync } = require("child_process");
 
 const prisma = new PrismaClient();
 
@@ -61,42 +63,83 @@ async function resolveFailedMigrations() {
           console.log(
             "   ✅ La columna phoneCountryCode ya existe. Marcando migración como aplicada..."
           );
-          // Marcar la migración como aplicada
-          await prisma.$executeRaw`
-            UPDATE "_prisma_migrations"
-            SET finished_at = NOW(),
-                applied_steps_count = 1
-            WHERE migration_name = ${migration.migration_name}
-            AND finished_at IS NULL;
-          `;
-          console.log(
-            `   ✅ Migración ${migration.migration_name} marcada como aplicada.`
-          );
+          // Usar el comando oficial de Prisma para marcar como aplicada
+          try {
+            execSync(
+              `npx prisma migrate resolve --applied "${migration.migration_name}"`,
+              { stdio: "inherit" }
+            );
+            console.log(
+              `   ✅ Migración ${migration.migration_name} marcada como aplicada.`
+            );
+          } catch (error) {
+            console.log(
+              `   ⚠️  Error al usar prisma migrate resolve, usando método alternativo...`
+            );
+            // Método alternativo: actualizar directamente en la BD
+            await prisma.$executeRaw`
+              UPDATE "_prisma_migrations"
+              SET finished_at = NOW(),
+                  applied_steps_count = 1
+              WHERE migration_name = ${migration.migration_name}
+              AND finished_at IS NULL;
+            `;
+            console.log(
+              `   ✅ Migración ${migration.migration_name} marcada como aplicada (método alternativo).`
+            );
+          }
         } else {
           console.log(
-            "   ⚠️  La columna no existe o la migración es inválida. Eliminando del registro..."
+            "   ⚠️  La columna no existe. Marcando migración como revertida..."
           );
-          // Eliminar la migración del registro (es inválida o no es necesaria)
+          // Usar el comando oficial de Prisma para marcar como revertida
+          try {
+            execSync(
+              `npx prisma migrate resolve --rolled-back "${migration.migration_name}"`,
+              { stdio: "inherit" }
+            );
+            console.log(
+              `   ✅ Migración ${migration.migration_name} marcada como revertida.`
+            );
+          } catch (error) {
+            console.log(
+              `   ⚠️  Error al usar prisma migrate resolve, usando método alternativo...`
+            );
+            // Método alternativo: eliminar del registro
+            await prisma.$executeRaw`
+              DELETE FROM "_prisma_migrations"
+              WHERE migration_name = ${migration.migration_name}
+              AND finished_at IS NULL;
+            `;
+            console.log(
+              `   ✅ Migración ${migration.migration_name} eliminada del registro (método alternativo).`
+            );
+          }
+        }
+      } else {
+        // Para otras migraciones fallidas, marcarlas como revertidas por defecto
+        console.log(`   ⚠️  Migración desconocida. Marcando como revertida...`);
+        try {
+          execSync(
+            `npx prisma migrate resolve --rolled-back "${migration.migration_name}"`,
+            { stdio: "inherit" }
+          );
+          console.log(
+            `   ✅ Migración ${migration.migration_name} marcada como revertida.`
+          );
+        } catch (error) {
+          console.log(
+            `   ⚠️  Error al usar prisma migrate resolve, usando método alternativo...`
+          );
           await prisma.$executeRaw`
             DELETE FROM "_prisma_migrations"
             WHERE migration_name = ${migration.migration_name}
             AND finished_at IS NULL;
           `;
           console.log(
-            `   ✅ Migración ${migration.migration_name} eliminada del registro.`
+            `   ✅ Migración ${migration.migration_name} eliminada del registro (método alternativo).`
           );
         }
-      } else {
-        // Para otras migraciones fallidas, marcarlas como revertidas por defecto
-        console.log(`   ⚠️  Migración desconocida. Eliminando del registro...`);
-        await prisma.$executeRaw`
-          DELETE FROM "_prisma_migrations"
-          WHERE migration_name = ${migration.migration_name}
-          AND finished_at IS NULL;
-        `;
-        console.log(
-          `   ✅ Migración ${migration.migration_name} eliminada del registro.`
-        );
       }
     }
 

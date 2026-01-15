@@ -24,5 +24,13 @@ RUN npm run build
 # Exponer puerto
 EXPOSE 4000
 
-# Comando de inicio
-CMD ["sh", "-c", "echo '🔧 Resolviendo migraciones fallidas...' && node scripts/resolve-failed-migrations.js || echo '⚠️  Continuando...' && echo '📦 Aplicando migraciones...' && npx prisma migrate deploy && echo '✅ Migraciones aplicadas' && echo '🚀 Iniciando servidor...' && node dist/main.js"]
+# Copiar y hacer ejecutables los scripts
+COPY scripts/resolve-failed-migrations.sh ./scripts/
+COPY scripts/migrate-deploy.sh ./scripts/
+RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh
+
+# Instalar postgresql-client para usar psql
+RUN apk add --no-cache postgresql-client
+
+# Comando de inicio - usar el wrapper para migrate deploy
+CMD ["sh", "-c", "./scripts/migrate-deploy.sh && echo '✅ Migraciones aplicadas' && echo '🚀 Iniciando servidor...' && node dist/main.js"]
