@@ -5,7 +5,7 @@ services:
     plan: starter
     region: oregon
     buildCommand: npm ci && npm run prisma:generate && npm run build
-    startCommand: npx prisma migrate deploy && node dist/main.js
+    startCommand: echo "🚀 Iniciando aplicación..." && echo "📦 Aplicando migraciones de base de datos..." && npx prisma migrate deploy && echo "✅ Migraciones aplicadas correctamente" && echo "🌱 Iniciando servidor..." && node dist/main.js
     autoDeploy: true
     envVars:
       - key: NODE_ENV

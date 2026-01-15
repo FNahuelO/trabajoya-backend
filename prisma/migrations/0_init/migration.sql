@@ -1,25 +1,3 @@
--- Eliminar todas las tablas primero (CASCADE eliminará también constraints)
-DO $$ 
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != '_prisma_migrations') 
-    LOOP
-        EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
-    END LOOP;
-END $$;
-
--- Eliminar todos los tipos enum
-DO $$ 
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN (SELECT typname FROM pg_type WHERE typtype = 'e' AND typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public'))
-    LOOP
-        EXECUTE 'DROP TYPE IF EXISTS public.' || quote_ident(r.typname) || ' CASCADE';
-    END LOOP;
-END $$;
-
 -- CreateEnum
 CREATE TYPE "UserType" AS ENUM ('POSTULANTE', 'EMPRESA', 'ADMIN');
 
@@ -51,7 +29,7 @@ CREATE TYPE "SubscriptionPlan" AS ENUM ('BASIC', 'PREMIUM', 'ENTERPRISE');
 CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'CANCELED', 'EXPIRED', 'PENDING');
 
 -- CreateEnum
-CREATE TYPE "TermsType" AS ENUM ('POSTULANTE', 'EMPRESA', 'PRIVACY');
+CREATE TYPE "TermsType" AS ENUM ('POSTULANTE', 'EMPRESA', 'PRIVACY', 'TERMS');
 
 -- CreateEnum
 CREATE TYPE "MediaAssetType" AS ENUM ('CV', 'AVATAR', 'VIDEO', 'LOGO');
@@ -79,6 +57,8 @@ CREATE TABLE "User" (
     "userType" "UserType" NOT NULL,
     "googleId" TEXT,
     "appleId" TEXT,
+    "googleAccessToken" TEXT,
+    "googleRefreshToken" TEXT,
     "isVerified" BOOLEAN NOT NULL DEFAULT false,
     "language" TEXT NOT NULL DEFAULT 'es',
     "resetToken" TEXT,
@@ -214,6 +194,7 @@ CREATE TABLE "EmpresaProfile" (
     "documento" TEXT,
     "email" TEXT NOT NULL,
     "phone" TEXT,
+    "phoneCountryCode" TEXT,
     "sitioWeb" TEXT,
     "descripcion" TEXT,
     "sector" TEXT,
@@ -236,6 +217,7 @@ CREATE TABLE "EmpresaProfile" (
     "encabezadosAvisos" TEXT[],
     "beneficiosEmpresa" TEXT[],
     "logo" TEXT,
+    "notificationPreferences" JSONB,
 
     CONSTRAINT "EmpresaProfile_pkey" PRIMARY KEY ("id")
 );
@@ -481,6 +463,20 @@ CREATE TABLE "PaymentTransaction" (
     CONSTRAINT "PaymentTransaction_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "PushToken" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "platform" TEXT NOT NULL,
+    "deviceId" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PushToken_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -643,6 +639,18 @@ CREATE INDEX "PaymentTransaction_status_idx" ON "PaymentTransaction"("status");
 -- CreateIndex
 CREATE INDEX "PaymentTransaction_createdAt_idx" ON "PaymentTransaction"("createdAt");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "PushToken_token_key" ON "PushToken"("token");
+
+-- CreateIndex
+CREATE INDEX "PushToken_userId_idx" ON "PushToken"("userId");
+
+-- CreateIndex
+CREATE INDEX "PushToken_token_idx" ON "PushToken"("token");
+
+-- CreateIndex
+CREATE INDEX "PushToken_isActive_idx" ON "PushToken"("isActive");
+
 -- AddForeignKey
 ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -723,3 +731,7 @@ ALTER TABLE "PaymentTransaction" ADD CONSTRAINT "PaymentTransaction_userId_fkey"
 
 -- AddForeignKey
 ALTER TABLE "PaymentTransaction" ADD CONSTRAINT "PaymentTransaction_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EmpresaProfile"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PushToken" ADD CONSTRAINT "PushToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
