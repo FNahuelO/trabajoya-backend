@@ -28,12 +28,33 @@ export class S3UploadService {
 
   constructor(private configService: ConfigService) {
     const region = this.configService.get<string>("AWS_REGION") || "us-east-1";
+    const accessKeyId = this.configService.get<string>("AWS_ACCESS_KEY_ID");
+    const secretAccessKey = this.configService.get<string>(
+      "AWS_SECRET_ACCESS_KEY"
+    );
 
-    this.s3Client = new S3Client({
+    // Configurar credenciales explícitamente si están disponibles
+    const clientConfig: any = {
       region,
-      // Las credenciales se obtienen automáticamente desde el IAM Role de EC2
-      // o desde variables de entorno AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY
-    });
+    };
+
+    // Si hay credenciales explícitas, usarlas (necesario para Render y otros servicios sin IAM roles)
+    if (accessKeyId && secretAccessKey) {
+      clientConfig.credentials = {
+        accessKeyId,
+        secretAccessKey,
+      };
+      console.log(
+        "[S3UploadService] ✅ Credenciales AWS configuradas desde variables de entorno"
+      );
+    } else {
+      console.warn(
+        "[S3UploadService] ⚠️  AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY no están configuradas. " +
+          "Intentando usar credenciales por defecto (IAM roles, etc.)"
+      );
+    }
+
+    this.s3Client = new S3Client(clientConfig);
   }
 
   /**
@@ -126,7 +147,6 @@ export class S3UploadService {
       // Log detallado para debugging
       const urlParams = new URL(uploadUrl).searchParams;
       const allParams = Array.from(urlParams.keys());
-  
 
       // Advertencia si ContentType está en el comando pero no en la URL
       if (
@@ -305,7 +325,7 @@ export class S3UploadService {
     });
 
     const response = await this.s3Client.send(command);
-    
+
     // Convertir el stream a Buffer
     const chunks: Uint8Array[] = [];
     if (response.Body) {
@@ -313,7 +333,7 @@ export class S3UploadService {
         chunks.push(chunk);
       }
     }
-    
+
     return Buffer.concat(chunks);
   }
 

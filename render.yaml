@@ -5,7 +5,7 @@ services:
     plan: starter
     region: oregon
     buildCommand: npm ci && npm run prisma:generate && npm run build
-    startCommand: echo "🔧 Resolviendo migraciones fallidas..." && ./scripts/resolve-failed-migrations.sh || echo "⚠️  Continuando..." && echo "📦 Aplicando migraciones..." && npx prisma migrate deploy && echo "✅ Migraciones aplicadas correctamente" && echo "🚀 Iniciando servidor..." && node dist/main.js
+    startCommand: ./scripts/migrate-deploy.sh && echo "✅ Migraciones aplicadas correctamente" && echo "🚀 Iniciando servidor..." && node dist/main.js
     autoDeploy: true
     envVars:
       - key: NODE_ENV

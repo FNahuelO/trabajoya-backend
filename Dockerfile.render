@@ -28,6 +28,7 @@ EXPOSE 4000
 COPY scripts/resolve-failed-migrations.sh ./scripts/
 COPY scripts/migrate-deploy.sh ./scripts/
 COPY scripts/start.sh ./scripts/
+COPY scripts/seed-if-empty.js ./scripts/
 RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh ./scripts/start.sh
 
 # Instalar postgresql-client para usar psql

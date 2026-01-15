@@ -20,7 +20,13 @@ npx prisma migrate deploy || {
 
 echo "✅ Migraciones aplicadas correctamente"
 
-# Paso 3: Iniciar servidor
-echo "🌱 Paso 3: Iniciando servidor Node.js..."
+# Paso 3: Ejecutar seed si la base de datos está vacía
+echo "🌱 Paso 3: Verificando si necesitamos ejecutar seed..."
+node scripts/seed-if-empty.js || {
+  echo "⚠️  No se pudo ejecutar el seed (puede que la BD ya tenga datos o haya un error)"
+}
+
+# Paso 4: Iniciar servidor
+echo "🚀 Paso 4: Iniciando servidor Node.js..."
 exec node dist/main.js
 

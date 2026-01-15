@@ -10,3 +10,9 @@ echo "🔧 Resolviendo migraciones fallidas antes de aplicar nuevas migraciones.
 echo "📦 Aplicando migraciones..."
 npx prisma migrate deploy
 
+# Ejecutar seed si la base de datos está vacía
+echo "🌱 Verificando si necesitamos ejecutar seed..."
+node scripts/seed-if-empty.js || {
+  echo "⚠️  No se pudo ejecutar el seed (puede que la BD ya tenga datos o haya un error)"
+}
+
