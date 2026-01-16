@@ -49,13 +49,33 @@ export class JobsService {
     }
 
     if (q.categoria) {
-      where.AND.push({ category: q.categoria });
+      // Filtrar por categoría del trabajo O por industria/sector de la empresa
+      where.AND.push({
+        OR: [
+          { category: q.categoria },
+          { empresa: { sector: q.categoria } },
+          { empresa: { industria: q.categoria } },
+        ],
+      });
     }
     if (q.tipoEmpleo) {
       where.AND.push({ jobType: q.tipoEmpleo });
     }
     if (q.modalidad) {
       where.AND.push({ workMode: q.modalidad });
+    }
+    if (q.nivelLaboral) {
+      where.AND.push({ experienceLevel: q.nivelLaboral });
+    }
+
+    // Filtro por fecha desde (fechaDesde)
+    if (q.fechaDesde) {
+      const fechaDesde = new Date(q.fechaDesde);
+      where.AND.push({
+        publishedAt: {
+          gte: fechaDesde,
+        },
+      });
     }
 
     const page = Number(q.page || 1);
@@ -90,15 +110,21 @@ export class JobsService {
     // Transformar logos a URLs (CloudFront o S3 presigned)
     const jobsWithProcessedLogos = await Promise.all(
       jobs.map(async (job) => {
-        const logoValue = job.empresa?.logo as unknown as string | null | undefined;
-        if (logoValue && typeof logoValue === "string" && !logoValue.startsWith("http")) {
+        const logoValue = job.empresa?.logo as unknown as
+          | string
+          | null
+          | undefined;
+        if (
+          logoValue &&
+          typeof logoValue === "string" &&
+          !logoValue.startsWith("http")
+        ) {
           const logo: string = logoValue;
           try {
             if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-              const logoPath = logo.startsWith("/")
-                ? logo
-                : `/${logo}`;
-              const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+              const logoPath = logo.startsWith("/") ? logo : `/${logo}`;
+              const cloudFrontUrl =
+                this.cloudFrontSigner.getCloudFrontUrl(logoPath);
               if (
                 cloudFrontUrl &&
                 cloudFrontUrl.startsWith("https://") &&
@@ -106,16 +132,12 @@ export class JobsService {
               ) {
                 (job.empresa as any).logo = cloudFrontUrl;
               } else {
-                (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
-                  logo,
-                  3600
-                );
+                (job.empresa as any).logo =
+                  await this.s3UploadService.getObjectUrl(logo, 3600);
               }
             } else {
-              (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
-                logo,
-                3600
-              );
+              (job.empresa as any).logo =
+                await this.s3UploadService.getObjectUrl(logo, 3600);
             }
           } catch (error) {
             console.error("Error generando URL para logo en jobs:", error);
@@ -161,14 +183,17 @@ export class JobsService {
 
     // Transformar logo a URL (CloudFront o S3 presigned)
     const logoValue = job.empresa?.logo as unknown as string | null | undefined;
-    if (logoValue && typeof logoValue === "string" && !logoValue.startsWith("http")) {
+    if (
+      logoValue &&
+      typeof logoValue === "string" &&
+      !logoValue.startsWith("http")
+    ) {
       const logo: string = logoValue;
       try {
         if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-          const logoPath = logo.startsWith("/")
-            ? logo
-            : `/${logo}`;
-          const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
+          const logoPath = logo.startsWith("/") ? logo : `/${logo}`;
+          const cloudFrontUrl =
+            this.cloudFrontSigner.getCloudFrontUrl(logoPath);
           if (
             cloudFrontUrl &&
             cloudFrontUrl.startsWith("https://") &&
