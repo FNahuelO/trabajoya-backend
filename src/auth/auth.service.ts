@@ -1486,8 +1486,9 @@ export class AuthService {
     }
 
     // Verificar si el CUIT ya existe
+    const cuitToCheck = dto.cuit || dto.documento;
     const existingEmpresa = await this.prisma.empresaProfile.findUnique({
-      where: { cuit: dto.documento },
+      where: { cuit: cuitToCheck },
     });
 
     if (existingEmpresa) {
@@ -1541,12 +1542,13 @@ export class AuthService {
     const phone = dto.telefono ? dto.telefono.trim() : undefined;
 
     // Crear perfil de empresa con todos los datos
+    const cuitValue = dto.cuit || dto.documento;
     await this.prisma.empresaProfile.create({
       data: {
         userId: user.id,
         companyName: dto.companyName,
         razonSocial: dto.razonSocial,
-        cuit: dto.documento,
+        cuit: cuitValue,
         documento: dto.documento,
         email: dto.email,
         ...(phone && { phone }),

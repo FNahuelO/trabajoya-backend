@@ -31,6 +31,11 @@ export class RegisterEmpresaDto {
   @IsNotEmpty({ message: i18nValidationMessage("validation.isNotEmpty") })
   documento: string;
 
+  @ApiProperty({ example: "20-12345678-9", required: false })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  cuit?: string;
+
   @ApiProperty({ example: "Buenos Aires" })
   @IsString({ message: i18nValidationMessage("validation.isString") })
   @IsNotEmpty({ message: i18nValidationMessage("validation.isNotEmpty") })
