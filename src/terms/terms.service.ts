@@ -156,61 +156,100 @@ export class TermsService {
         const page = await pdfDocument.getPage(pageNum);
         const textContent = await page.getTextContent();
         
-        // Convertir el contenido de texto a markdown
-        let pageMarkdown = "";
-        let lastY: number | null = null;
-        let lastFontSize = 12;
+        // Extraer texto preservando saltos de línea naturales
+        let pageText = "";
+        const items = textContent.items as any[];
         
-        for (const item of textContent.items as any[]) {
+        if (items.length === 0) {
+          continue;
+        }
+        
+        // Agrupar items por línea (misma posición Y aproximadamente)
+        const lines: { y: number; text: string; items: any[] }[] = [];
+        
+        for (const item of items) {
           const text = item.str || "";
           if (!text.trim()) continue;
           
-          // Obtener información del item
           const transform = item.transform || [];
-          const currentY = transform.length > 5 ? transform[5] : null;
-          const fontSize = item.height || item.transform?.[0] || 12;
-          const fontName = item.fontName || "";
-          const isBold = fontName.toLowerCase().includes("bold");
+          const currentY = transform.length > 5 ? Math.round(transform[5]) : null;
           
-          // Detectar títulos (texto más grande o en negrita)
-          const isTitle = fontSize > 14 || (isBold && fontSize > 12);
+          if (currentY === null) {
+            // Si no hay Y, agregar al final
+            if (lines.length > 0) {
+              lines[lines.length - 1].text += " " + text;
+            } else {
+              lines.push({ y: 0, text: text, items: [item] });
+            }
+            continue;
+          }
           
-          // Detectar saltos de línea o párrafos
-          if (lastY !== null && currentY !== null) {
-            const yDiff = Math.abs(currentY - lastY);
-            // Si hay un cambio significativo en Y, es probablemente una nueva línea
-            if (yDiff > 15) {
-              pageMarkdown += "\n";
+          // Buscar línea existente con Y similar (tolerancia de 5 píxeles)
+          let foundLine = false;
+          for (const line of lines) {
+            if (Math.abs(line.y - currentY) <= 5) {
+              // Misma línea, agregar texto
+              line.text += " " + text;
+              line.items.push(item);
+              foundLine = true;
+              break;
             }
           }
           
-          // Si es un título, formatearlo como markdown
-          if (isTitle && (lastY === null || (currentY !== null && Math.abs((currentY || 0) - (lastY || 0)) > 20))) {
-            // Nuevo título
-            if (pageMarkdown.trim() && !pageMarkdown.trim().endsWith("\n\n")) {
-              pageMarkdown += "\n\n";
-            }
-            pageMarkdown += `## ${text}\n\n`;
-          } else {
-            // Texto normal
-            pageMarkdown += text + " ";
+          if (!foundLine) {
+            // Nueva línea
+            lines.push({ y: currentY, text: text, items: [item] });
           }
-          
-          lastY = currentY;
-          lastFontSize = fontSize;
         }
         
-        // Limpiar espacios múltiples y agregar separador de página
-        pageMarkdown = pageMarkdown.replace(/\s+/g, " ").trim();
-        if (pageMarkdown) {
-          markdownContent += pageMarkdown + "\n\n";
+        // Ordenar líneas por Y (de arriba a abajo)
+        lines.sort((a, b) => b.y - a.y);
+        
+        // Construir texto de la página
+        let previousY: number | null = null;
+        for (const line of lines) {
+          const trimmedText = line.text.trim();
+          if (!trimmedText) continue;
+          
+          // Detectar si hay un salto de párrafo grande (espacio vertical significativo)
+          if (previousY !== null) {
+            const yDiff = previousY - line.y; // Diferencia positiva porque ordenamos descendente
+            // Si hay más de 20 píxeles de diferencia, es probablemente un párrafo nuevo
+            if (yDiff > 20) {
+              if (pageText && !pageText.endsWith("\n\n")) {
+                pageText += "\n\n";
+              }
+            } else if (pageText && !pageText.endsWith("\n")) {
+              pageText += "\n";
+            }
+          }
+          
+          // Manejar palabras divididas (terminan con guión)
+          if (pageText.endsWith("-")) {
+            pageText = pageText.slice(0, -1) + trimmedText;
+          } else {
+            pageText += trimmedText;
+          }
+          
+          previousY = line.y;
+        }
+        
+        // Agregar separador entre páginas si hay contenido
+        if (pageText.trim()) {
+          markdownContent += pageText.trim();
+          if (pageNum < numPages) {
+            markdownContent += "\n\n";
+          }
         }
       }
       
       // Limpiar el markdown final
       markdownContent = markdownContent
-        .replace(/\n{3,}/g, "\n\n") // Máximo 2 saltos de línea seguidos
+        .replace(/\n{3,}/g, "\n\n") // Máximo 2 saltos seguidos
         .replace(/\s+$/gm, "") // Eliminar espacios al final de líneas
+        .replace(/[ \t]+/g, " ") // Normalizar espacios horizontales dentro de líneas
+        .replace(/\n /g, "\n") // Eliminar espacios después de saltos de línea
+        .replace(/ \n/g, "\n") // Eliminar espacios antes de saltos de línea
         .trim();
       
       return markdownContent;
