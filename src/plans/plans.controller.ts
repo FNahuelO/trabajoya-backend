@@ -32,19 +32,15 @@ export class PlansController {
     @Query("page") page?: string,
     @Query("pageSize") pageSize?: string
   ) {
-    const data = await this.plansService.findAll(
+    // Usar método específico que filtra por isActive en la base de datos
+    const data = await this.plansService.findAllActive(
       parseInt(page || "1"),
-      parseInt(pageSize || "20")
+      parseInt(pageSize || "100") // Aumentar pageSize por defecto para obtener todos los planes
     );
-    // Filtrar solo planes activos
-    const activePlans = {
-      ...data,
-      items: data.items.filter((plan) => plan.isActive),
-    };
     return createResponse({
       success: true,
       message: "Planes obtenidos correctamente",
-      data: activePlans,
+      data,
     });
   }
 

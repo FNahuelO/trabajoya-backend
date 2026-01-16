@@ -37,6 +37,34 @@ export class PlansService {
     };
   }
 
+  /**
+   * Obtiene solo los planes activos (para endpoint público)
+   */
+  async findAllActive(page: number = 1, pageSize: number = 100) {
+    const skip = (page - 1) * pageSize;
+    const where = {
+      isActive: true,
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.plan.findMany({
+        where,
+        orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.plan.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
   async findOne(id: string) {
     const plan = await this.prisma.plan.findUnique({
       where: { id },

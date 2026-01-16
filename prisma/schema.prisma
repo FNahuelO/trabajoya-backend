@@ -686,7 +686,7 @@ model JobPostEntitlement {
 // Productos IAP mapeados a planes
 model IapProduct {
   id        String      @id @default(uuid())
-  productId String      @unique // e.g. 'job_urgent_7d'
+  productId String      // e.g. 'job_urgent_7d' - NO debe ser único solo, sino combinado con platform
   platform  IapPlatform
   planKey   String // 'URGENT', 'STANDARD', 'CRYSTAL'
   active    Boolean     @default(true)
@@ -694,10 +694,11 @@ model IapProduct {
   updatedAt DateTime    @updatedAt
   plan      Plan        @relation(fields: [planKey], references: [code], onDelete: Restrict)
 
-  @@unique([productId, platform])
+  @@unique([productId, platform]) // La combinación productId + platform debe ser única
   @@index([platform])
   @@index([planKey])
   @@index([active])
+  @@index([productId])
 }
 
 enum IapPlatform {

@@ -33,7 +33,8 @@ phases:
       - echo "Mostrando líneas relevantes del archivo..."
       - grep -n "Cargando parámetros" src/config/aws-config.service.ts || echo "No se encontró el texto"
       - echo "Construyendo imagen Docker con --no-cache (sin caché)..."
-      - docker build --no-cache --pull --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --build-arg GIT_COMMIT="$CODEBUILD_RESOLVED_SOURCE_VERSION" -f Dockerfile.prod -t "$REPOSITORY_URI:$IMAGE_TAG" .
+      - echo "📦 Nota: Las migraciones de Prisma se ejecutarán automáticamente al iniciar el contenedor"
+      - docker build --no-cache --pull --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" --build-arg GIT_COMMIT="$CODEBUILD_RESOLVED_SOURCE_VERSION" -f Dockerfile.aws -t "$REPOSITORY_URI:$IMAGE_TAG" .
       - docker tag "$REPOSITORY_URI:$IMAGE_TAG" "$REPOSITORY_URI:latest"
       - echo "Subiendo imagenes a ECR..."
       - docker push "$REPOSITORY_URI:$IMAGE_TAG"
@@ -47,6 +48,7 @@ phases:
       - echo "Post build iniciado"
       - chmod +x ./scripts/deploy-via-ssm.sh
       - ./scripts/deploy-via-ssm.sh
+      - echo "✅ Nota: Las migraciones de Prisma se ejecutarán automáticamente al iniciar el contenedor"
 
 artifacts:
   files:

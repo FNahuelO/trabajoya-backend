@@ -4,7 +4,13 @@ services:
     env: node
     plan: starter
     region: oregon
+    # Build: Instalar dependencias, generar Prisma Client y compilar
     buildCommand: npm ci && npm run prisma:generate && npm run build
+    # Start: El script start.sh ejecuta automáticamente:
+    #  1. Resuelve migraciones fallidas
+    #  2. Aplica migraciones pendientes (npx prisma migrate deploy)
+    #  3. Ejecuta seed si la BD está vacía
+    #  4. Inicia el servidor
     startCommand: ./scripts/start.sh
     autoDeploy: true
     envVars:
