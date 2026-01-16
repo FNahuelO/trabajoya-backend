@@ -32,11 +32,11 @@ export class GoogleMeetService {
 
   /**
    * Crea una reunión de Google Meet creando un evento en Google Calendar
-   * 
+   *
    * NOTA: Para usar esto, el usuario debe haber autorizado la aplicación
    * con los scopes necesarios de Google Calendar. En producción, necesitarás
    * implementar un flujo OAuth para obtener tokens de acceso del usuario.
-   * 
+   *
    * @param userEmail Email del usuario que crea la reunión
    * @param accessToken Token de acceso OAuth del usuario (obtenido del frontend)
    * @param title Título de la reunión
@@ -68,7 +68,10 @@ export class GoogleMeetService {
       });
 
       // Crear cliente de Google Calendar
-      const calendar = google.calendar({ version: "v3", auth: this.oauth2Client });
+      const calendar = google.calendar({
+        version: "v3",
+        auth: this.oauth2Client,
+      });
 
       // Crear el evento con Google Meet
       const event = {
@@ -85,7 +88,9 @@ export class GoogleMeetService {
         attendees: attendees.map((email) => ({ email })),
         conferenceData: {
           createRequest: {
-            requestId: `meet-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            requestId: `meet-${Date.now()}-${Math.random()
+              .toString(36)
+              .substring(7)}`,
             conferenceSolutionKey: {
               type: "hangoutsMeet",
             },
@@ -127,13 +132,13 @@ export class GoogleMeetService {
       };
     } catch (error: any) {
       this.logger.error("Error creando reunión de Google Meet:", error);
-      
+
       if (error.code === 401) {
         throw new BadRequestException(
           "Token de acceso inválido o expirado. Por favor, re-autoriza la aplicación."
         );
       }
-      
+
       if (error.code === 403) {
         throw new BadRequestException(
           "No tienes permisos para crear eventos de calendario. Por favor, autoriza el acceso a Google Calendar."
@@ -149,15 +154,13 @@ export class GoogleMeetService {
   /**
    * Genera una URL de autorización OAuth para que el usuario autorice
    * el acceso a Google Calendar
-   * 
+   *
    * @param redirectUri URI de redirección después de la autorización
    * @returns URL de autorización OAuth
    */
   getAuthUrl(redirectUri: string): string {
     if (!this.oauth2Client) {
-      throw new BadRequestException(
-        "Google OAuth no está configurado"
-      );
+      throw new BadRequestException("Google OAuth no está configurado");
     }
 
     const scopes = [
@@ -177,7 +180,7 @@ export class GoogleMeetService {
 
   /**
    * Intercambia un código de autorización por tokens de acceso
-   * 
+   *
    * @param code Código de autorización recibido del callback OAuth
    * @param redirectUri URI de redirección usado en la autorización
    * @returns Tokens de acceso y refresh
@@ -190,11 +193,33 @@ export class GoogleMeetService {
       throw new BadRequestException("Google OAuth no está configurado");
     }
 
+    const clientId = this.configService.get<string>("GOOGLE_CLIENT_ID");
+    const clientSecret = this.configService.get<string>("GOOGLE_CLIENT_SECRET");
+
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException("Google OAuth credentials no configuradas");
+    }
+
     try {
-      const { tokens } = await this.oauth2Client.getToken({
+      // IMPORTANTE: Crear un nuevo OAuth2Client con el redirectUri exacto que se usó en la autorización
+      // El redirectUri del móvil (ej: com.googleusercontent.apps.xxx:/google-calendar-callback)
+      // debe coincidir EXACTAMENTE con el usado para obtener el código
+      const oauth2Client = new OAuth2Client({
+        clientId,
+        clientSecret,
+        redirectUri, // Usar el redirectUri exacto del frontend
+      });
+
+      this.logger.log(
+        `[GoogleCalendar] Intercambiando código con redirectUri: ${redirectUri}`
+      );
+
+      const { tokens } = await oauth2Client.getToken({
         code,
         redirect_uri: redirectUri,
       });
+
+      this.logger.log(`[GoogleCalendar] Tokens obtenidos exitosamente`);
 
       return {
         accessToken: tokens.access_token || "",
@@ -202,15 +227,21 @@ export class GoogleMeetService {
       };
     } catch (error: any) {
       this.logger.error("Error obteniendo tokens de Google:", error);
+      this.logger.error(`[GoogleCalendar] redirectUri usado: ${redirectUri}`);
+      this.logger.error(
+        `[GoogleCalendar] Error completo:`,
+        JSON.stringify(error, null, 2)
+      );
+
       throw new BadRequestException(
-        `Error al obtener tokens: ${error.message}`
+        `Error al obtener tokens: ${error.message || "unknown_error"}`
       );
     }
   }
 
   /**
    * Refresca un token de acceso usando el refresh token
-   * 
+   *
    * @param refreshToken Refresh token del usuario
    * @returns Nuevo token de acceso
    */
@@ -241,7 +272,7 @@ export class GoogleMeetService {
 
   /**
    * Elimina un evento de Google Calendar (y por ende, la reunión de Meet)
-   * 
+   *
    * @param accessToken Token de acceso OAuth del usuario
    * @param eventId ID del evento a eliminar
    */
@@ -255,7 +286,10 @@ export class GoogleMeetService {
         access_token: accessToken,
       });
 
-      const calendar = google.calendar({ version: "v3", auth: this.oauth2Client });
+      const calendar = google.calendar({
+        version: "v3",
+        auth: this.oauth2Client,
+      });
 
       await calendar.events.delete({
         calendarId: "primary",
@@ -271,4 +305,3 @@ export class GoogleMeetService {
     }
   }
 }
-
