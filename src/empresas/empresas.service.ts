@@ -293,6 +293,7 @@ export class EmpresasService {
       // Crear entitlement
       await this.prisma.jobPostEntitlement.create({
         data: {
+          userId: userId,
           jobPostId: job.id,
           source: "PROMO",
           planKey: "LAUNCH_TRIAL",
@@ -301,6 +302,7 @@ export class EmpresasService {
           maxEdits: 0,
           editsUsed: 0,
           allowCategoryChange: false,
+          maxCategoryChanges: 0,
           categoryChangesUsed: 0,
           rawPayload: {
             promo_key: "LAUNCH_TRIAL_4D",

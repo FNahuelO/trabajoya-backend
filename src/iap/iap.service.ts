@@ -122,7 +122,7 @@ export class IapService {
         maxEdits: plan.allowedModifications,
         editsUsed: 0,
         allowCategoryChange: plan.canModifyCategory,
-        maxCategoryChanges: plan.categoryModifications,
+        maxCategoryChanges: plan.categoryModifications || 0,
         categoryChangesUsed: 0,
         transactionId: dto.transactionId,
         originalTransactionId: dto.transactionId, // En producción, obtener de Apple
@@ -220,7 +220,7 @@ export class IapService {
         maxEdits: plan.allowedModifications,
         editsUsed: 0,
         allowCategoryChange: plan.canModifyCategory,
-        maxCategoryChanges: plan.categoryModifications,
+        maxCategoryChanges: plan.categoryModifications || 0,
         categoryChangesUsed: 0,
         transactionId: dto.orderId || dto.purchaseToken, // Usar orderId si existe
         originalTransactionId: dto.orderId,
