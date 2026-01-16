@@ -1209,8 +1209,18 @@ export class AuthService {
   }
 
   async forgotPassword(email: string) {
+    // Validar que el email esté presente
+    if (!email || typeof email !== "string" || !email.trim()) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "validation.isEmail",
+          "El email es requerido y debe ser válido"
+        )
+      );
+    }
+
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: email.trim() },
     });
 
     if (!user) {
@@ -1235,7 +1245,7 @@ export class AuthService {
     });
 
     // Enviar email de recuperación
-    await this.mailService.sendPasswordResetEmail(email, resetToken);
+    await this.mailService.sendPasswordResetEmail(email.trim(), resetToken);
 
     return {
       message: await this.getTranslation(
@@ -1403,8 +1413,18 @@ export class AuthService {
   }
 
   async resendVerificationEmail(email: string) {
+    // Validar que el email esté presente
+    if (!email || typeof email !== "string" || !email.trim()) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "validation.isEmail",
+          "El email es requerido y debe ser válido"
+        )
+      );
+    }
+
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: email.trim() },
     });
 
     // Por seguridad, no revelar si el email existe o no
