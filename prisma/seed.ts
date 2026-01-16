@@ -1421,12 +1421,12 @@ async function main() {
       planKey: "STANDARD",
     },
     {
-      productId: "job_crystal_60d",
+      productId: "job_premium_60d",
       platform: "IOS",
       planKey: "CRYSTAL",
     },
     {
-      productId: "job_crystal_60d",
+      productId: "job_premium_60d",
       platform: "ANDROID",
       planKey: "CRYSTAL",
     },

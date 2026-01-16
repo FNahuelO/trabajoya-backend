@@ -290,5 +290,143 @@ export class IapService {
       },
     });
   }
+
+  /**
+   * Lista productos IAP para admin (con paginación)
+   */
+  async listIapProductsAdmin(
+    page: number,
+    pageSize: number,
+    planKey?: string,
+    platform?: 'IOS' | 'ANDROID',
+  ) {
+    const skip = (page - 1) * pageSize;
+    const where: any = {};
+
+    if (planKey) {
+      where.planKey = planKey;
+    }
+    if (platform) {
+      where.platform = platform;
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.iapProduct.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: {
+          plan: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+        orderBy: [{ platform: 'asc' }, { productId: 'asc' }],
+      }),
+      this.prisma.iapProduct.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  /**
+   * Obtiene producto IAP por ID
+   */
+  async getIapProductById(id: string) {
+    const product = await this.prisma.iapProduct.findUnique({
+      where: { id },
+      include: {
+        plan: true,
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Producto IAP con id ${id} no encontrado`);
+    }
+
+    return product;
+  }
+
+  /**
+   * Crea un producto IAP
+   */
+  async createIapProduct(dto: {
+    productId: string;
+    platform: 'IOS' | 'ANDROID';
+    planKey: string;
+    active?: boolean;
+  }) {
+    // Verificar que el plan existe
+    const plan = await this.prisma.plan.findUnique({
+      where: { code: dto.planKey },
+    });
+
+    if (!plan) {
+      throw new NotFoundException(`Plan con código ${dto.planKey} no encontrado`);
+    }
+
+    // Verificar que no exista ya
+    const existing = await this.prisma.iapProduct.findUnique({
+      where: {
+        productId_platform: {
+          productId: dto.productId,
+          platform: dto.platform,
+        },
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException(
+        `Ya existe un producto IAP con productId ${dto.productId} para plataforma ${dto.platform}`,
+      );
+    }
+
+    return this.prisma.iapProduct.create({
+      data: {
+        productId: dto.productId,
+        platform: dto.platform,
+        planKey: dto.planKey,
+        active: dto.active ?? true,
+      },
+      include: {
+        plan: true,
+      },
+    });
+  }
+
+  /**
+   * Actualiza un producto IAP
+   */
+  async updateIapProduct(id: string, dto: { active?: boolean }) {
+    const product = await this.getIapProductById(id);
+
+    return this.prisma.iapProduct.update({
+      where: { id },
+      data: dto,
+      include: {
+        plan: true,
+      },
+    });
+  }
+
+  /**
+   * Elimina un producto IAP
+   */
+  async deleteIapProduct(id: string) {
+    await this.getIapProductById(id);
+
+    return this.prisma.iapProduct.delete({
+      where: { id },
+    });
+  }
 }
 
