@@ -25,6 +25,12 @@ if ! node scripts/ensure-schema.js; then
   fi
 fi
 
+# Paso 2.5: Siempre ejecutar migrate deploy para aplicar migraciones pendientes
+echo "📦 Aplicando migraciones pendientes..."
+if ! npx prisma migrate deploy; then
+  echo "⚠️  No se pudieron aplicar todas las migraciones, pero continuando..."
+fi
+
 echo "✅ Esquema verificado/aplicado correctamente"
 
 # Paso 3: Ejecutar seed si la base de datos está vacía
