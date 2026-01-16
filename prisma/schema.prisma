@@ -8,34 +8,35 @@ datasource db {
 }
 
 model User {
-  id                String                @id @default(uuid())
-  email             String                @unique
-  passwordHash      String
-  userType          UserType
-  googleId          String?               @unique
-  appleId           String?               @unique
-  googleAccessToken String?              // Token de acceso de Google Calendar
-  googleRefreshToken String?              // Refresh token de Google Calendar
-  isVerified        Boolean               @default(false)
-  language          String                @default("es")
-  resetToken        String?               @unique
-  resetTokenExpiry  DateTime?
-  verificationToken String?               @unique
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  empresa           EmpresaProfile?
-  postulante        PostulanteProfile?
-  refreshTokens     RefreshToken[]
-  sentMessages      Message[]             @relation("SentMessages")
-  receivedMessages  Message[]             @relation("ReceivedMessages")
-  callsMade         Call[]                @relation("CallsMade")
-  callsReceived     Call[]                @relation("CallsReceived")
-  videoMeetingsCreated VideoMeeting[]     @relation("VideoMeetingsCreated")
-  videoMeetingsInvited VideoMeeting[]     @relation("VideoMeetingsInvited")
-  termsAcceptances  UserTermsAcceptance[]
-  mediaAssets       MediaAsset[]
-  paymentTransactions PaymentTransaction[]
-  pushTokens        PushToken[]
+  id                   String                @id @default(uuid())
+  email                String                @unique
+  passwordHash         String
+  userType             UserType
+  googleId             String?               @unique
+  appleId              String?               @unique
+  googleAccessToken    String? // Token de acceso de Google Calendar
+  googleRefreshToken   String? // Refresh token de Google Calendar
+  isVerified           Boolean               @default(false)
+  language             String                @default("es")
+  resetToken           String?               @unique
+  resetTokenExpiry     DateTime?
+  verificationToken    String?               @unique
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  empresa              EmpresaProfile?
+  postulante           PostulanteProfile?
+  refreshTokens        RefreshToken[]
+  sentMessages         Message[]             @relation("SentMessages")
+  receivedMessages     Message[]             @relation("ReceivedMessages")
+  callsMade            Call[]                @relation("CallsMade")
+  callsReceived        Call[]                @relation("CallsReceived")
+  videoMeetingsCreated VideoMeeting[]        @relation("VideoMeetingsCreated")
+  videoMeetingsInvited VideoMeeting[]        @relation("VideoMeetingsInvited")
+  termsAcceptances     UserTermsAcceptance[]
+  mediaAssets          MediaAsset[]
+  paymentTransactions  PaymentTransaction[]
+  pushTokens           PushToken[]
+  promotions           UserPromotion[]
 }
 
 model RefreshToken {
@@ -156,11 +157,11 @@ model Certification {
 }
 
 model EmpresaProfile {
-  id                          String            @id @default(uuid())
-  userId                      String            @unique
+  id                          String               @id @default(uuid())
+  userId                      String               @unique
   companyName                 String
   razonSocial                 String?
-  cuit                        String            @unique
+  cuit                        String               @unique
   documento                   String? // Alias para cuit
   email                       String
   phone                       String? // Número de teléfono sin código de país (ej: "2616162278")
@@ -172,7 +173,7 @@ model EmpresaProfile {
   tamano                      String?
   cantidadEmpleados           String? // Alias para tamano
   condicionFiscal             String?
-  contribuyenteIngresosBrutos Boolean           @default(false)
+  contribuyenteIngresosBrutos Boolean              @default(false)
   // Dirección
   calle                       String?
   numero                      String?
@@ -192,7 +193,7 @@ model EmpresaProfile {
   // Otros
   logo                        String?
   notificationPreferences     Json? // Preferencias de notificaciones
-  user                        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobs                        Job[]
   favorites                   CompanyFavorite[]
   subscriptions               Subscription[]
@@ -200,7 +201,7 @@ model EmpresaProfile {
 }
 
 model Job {
-  id                  String           @id @default(uuid())
+  id                  String               @id @default(uuid())
   empresaId           String
   title               String
   description         String
@@ -212,24 +213,25 @@ model Job {
   workMode            String?
   category            String
   experienceLevel     ExperienceLevel
-  status              String           @default("active")
-  publishedAt         DateTime         @default(now())
+  status              String               @default("active")
+  publishedAt         DateTime             @default(now())
   // Payment fields
-  isPaid              Boolean          @default(false)
+  isPaid              Boolean              @default(false)
   paymentOrderId      String?
   paymentAmount       Float?
-  paymentCurrency     String?          @default("USD")
+  paymentCurrency     String?              @default("USD")
   paymentStatus       String? // PENDING, COMPLETED, FAILED, REFUNDED
   paidAt              DateTime?
   // Moderation fields
-  moderationStatus    ModerationStatus @default(PENDING)
+  moderationStatus    ModerationStatus     @default(PENDING)
   moderationReason    String?
   moderatedBy         String?
   moderatedAt         DateTime?
   autoRejectionReason String?
   applications        Application[]
-  empresa             EmpresaProfile   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresa             EmpresaProfile       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   favorites           JobFavorite[]
+  entitlements        JobPostEntitlement[]
 }
 
 model Application {
@@ -351,22 +353,22 @@ enum CallStatus {
 }
 
 model VideoMeeting {
-  id          String            @id @default(uuid())
-  createdById String
+  id            String             @id @default(uuid())
+  createdById   String
   invitedUserId String
-  title       String?
-  description String?
-  scheduledAt DateTime
-  duration    Int? // Duración estimada en minutos
-  status      VideoMeetingStatus @default(SCHEDULED)
-  meetingUrl  String? // URL de la reunión (si se usa servicio externo)
-  callId      String? // ID de la llamada asociada cuando se inicia
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  startedAt   DateTime?
-  endedAt     DateTime?
-  createdBy   User              @relation("VideoMeetingsCreated", fields: [createdById], references: [id], onDelete: Cascade)
-  invitedUser User              @relation("VideoMeetingsInvited", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  title         String?
+  description   String?
+  scheduledAt   DateTime
+  duration      Int? // Duración estimada en minutos
+  status        VideoMeetingStatus @default(SCHEDULED)
+  meetingUrl    String? // URL de la reunión (si se usa servicio externo)
+  callId        String? // ID de la llamada asociada cuando se inicia
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  startedAt     DateTime?
+  endedAt       DateTime?
+  createdBy     User               @relation("VideoMeetingsCreated", fields: [createdById], references: [id], onDelete: Cascade)
+  invitedUser   User               @relation("VideoMeetingsInvited", fields: [invitedUserId], references: [id], onDelete: Cascade)
 
   @@index([createdById])
   @@index([invitedUserId])
@@ -473,9 +475,9 @@ model MediaAsset {
   bucket      String
   key         String           @unique
   mimeType    String
-  size        Int              // Tamaño en bytes
+  size        Int // Tamaño en bytes
   status      MediaAssetStatus @default(PENDING)
-  metadata    Json?            // Metadatos adicionales (ej: datos extraídos de CVs)
+  metadata    Json? // Metadatos adicionales (ej: datos extraídos de CVs)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   user        User             @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
@@ -509,13 +511,13 @@ enum CatalogLanguage {
 }
 
 model Catalog {
-  id        String              @id @default(uuid())
-  type      CatalogType
-  code      String
-  isActive  Boolean             @default(true)
-  order     Int                 @default(0)
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  id           String               @id @default(uuid())
+  type         CatalogType
+  code         String
+  isActive     Boolean              @default(true)
+  order        Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
   translations CatalogTranslation[]
 
   @@unique([type, code])
@@ -524,38 +526,38 @@ model Catalog {
 }
 
 model CatalogTranslation {
-  id        String            @id @default(uuid())
+  id        String          @id @default(uuid())
   catalogId String
   lang      CatalogLanguage
   label     String
-  catalog   Catalog           @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalog   Catalog         @relation(fields: [catalogId], references: [id], onDelete: Cascade)
 
   @@unique([catalogId, lang])
   @@index([catalogId])
 }
 
 model Plan {
-  id                      String             @id @default(uuid())
-  name                    String             @unique
-  code                    String             @unique // Código único para identificar el plan (URGENT, STANDARD, PREMIUM)
-  subscriptionPlan        SubscriptionPlan   @default(PREMIUM) // Tipo de suscripción al que pertenece este plan
-  price                   Float               // Precio del plan
-  currency                String              @default("USD") // Moneda del plan (USD para PayPal, ARS para otras pasarelas)
-  durationDays            Int                 // Duración en días desde la publicación
-  unlimitedCvs            Boolean             @default(true) // Siempre true según los requisitos
-  allowedModifications    Int                 @default(0) // Número de modificaciones permitidas del anuncio
-  canModifyCategory       Boolean             @default(false) // Si puede modificar el rubro
-  categoryModifications   Int                 @default(0) // Número de veces que puede modificar el rubro (0 o 1)
-  hasFeaturedOption       Boolean             @default(false) // Si tiene opción gráfica destacada
-  hasAIFeature            Boolean             @default(false) // Si tiene acceso a funcionalidades de IA (generación de descripciones)
-  launchBenefitAvailable  Boolean            @default(false) // Si tiene beneficio de lanzamiento disponible
-  launchBenefitDuration   Int?                // Duración del beneficio de lanzamiento en días (4 días)
-  isActive                Boolean             @default(true)
-  order                   Int                 @default(0)
-  description             String?             // Descripción del plan
-  createdAt               DateTime            @default(now())
-  updatedAt               DateTime            @updatedAt
-  paymentTransactions     PaymentTransaction[]
+  id                     String               @id @default(uuid())
+  name                   String               @unique
+  code                   String               @unique // Código único para identificar el plan (URGENT, STANDARD, PREMIUM)
+  subscriptionPlan       SubscriptionPlan     @default(PREMIUM) // Tipo de suscripción al que pertenece este plan
+  price                  Float // Precio del plan
+  currency               String               @default("USD") // Moneda del plan (USD para PayPal, ARS para otras pasarelas)
+  durationDays           Int // Duración en días desde la publicación
+  unlimitedCvs           Boolean              @default(true) // Siempre true según los requisitos
+  allowedModifications   Int                  @default(0) // Número de modificaciones permitidas del anuncio
+  canModifyCategory      Boolean              @default(false) // Si puede modificar el rubro
+  categoryModifications  Int                  @default(0) // Número de veces que puede modificar el rubro (0 o 1)
+  hasFeaturedOption      Boolean              @default(false) // Si tiene opción gráfica destacada
+  hasAIFeature           Boolean              @default(false) // Si tiene acceso a funcionalidades de IA (generación de descripciones)
+  launchBenefitAvailable Boolean              @default(false) // Si tiene beneficio de lanzamiento disponible
+  launchBenefitDuration  Int? // Duración del beneficio de lanzamiento en días (4 días)
+  isActive               Boolean              @default(true)
+  order                  Int                  @default(0)
+  description            String? // Descripción del plan
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  paymentTransactions    PaymentTransaction[]
 
   @@index([code])
   @@index([isActive])
@@ -564,24 +566,24 @@ model Plan {
 }
 
 model PaymentTransaction {
-  id              String                @id @default(uuid())
-  userId          String                 // Usuario que realizó el pago
-  empresaId      String?                // Empresa relacionada (si es pago de plan)
-  orderId        String                 @unique // PayPal Order ID
-  amount          Float                  // Monto del pago
-  currency        String                 @default("USD") // Moneda
-  status          PaymentStatus          @default(PENDING) // Estado del pago
-  paymentMethod   PaymentMethod          @default(PAYPAL) // Método de pago
-  description     String?                // Descripción del pago
-  planType        SubscriptionPlan?     // Tipo de plan (si aplica)
-  planId          String?                // ID del plan comprado
-  plan            Plan?                 @relation(fields: [planId], references: [id], onDelete: SetNull)
-  paypalData      Json?                 // Datos adicionales de PayPal (capture response)
-  failureReason   String?                // Razón del fallo (si aplica)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  empresa         EmpresaProfile?       @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  id            String            @id @default(uuid())
+  userId        String // Usuario que realizó el pago
+  empresaId     String? // Empresa relacionada (si es pago de plan)
+  orderId       String            @unique // PayPal Order ID
+  amount        Float // Monto del pago
+  currency      String            @default("USD") // Moneda
+  status        PaymentStatus     @default(PENDING) // Estado del pago
+  paymentMethod PaymentMethod     @default(PAYPAL) // Método de pago
+  description   String? // Descripción del pago
+  planType      SubscriptionPlan? // Tipo de plan (si aplica)
+  planId        String? // ID del plan comprado
+  plan          Plan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
+  paypalData    Json? // Datos adicionales de PayPal (capture response)
+  failureReason String? // Razón del fallo (si aplica)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  empresa       EmpresaProfile?   @relation(fields: [empresaId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([empresaId])
@@ -609,8 +611,8 @@ model PushToken {
   id        String   @id @default(uuid())
   userId    String
   token     String   @unique
-  platform  String   // 'ios' | 'android' | 'web'
-  deviceId  String?  // Identificador del dispositivo
+  platform  String // 'ios' | 'android' | 'web'
+  deviceId  String? // Identificador del dispositivo
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -619,4 +621,67 @@ model PushToken {
   @@index([userId])
   @@index([token])
   @@index([isActive])
+}
+
+// Promociones de lanzamiento
+model UserPromotion {
+  id        String          @id @default(uuid())
+  userId    String
+  promoKey  String // e.g. 'LAUNCH_TRIAL_4D'
+  status    PromotionStatus @default(AVAILABLE)
+  claimedAt DateTime?
+  usedAt    DateTime?
+  metadata  Json? // ip, userAgent, companyId, etc.
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, promoKey])
+  @@index([userId])
+  @@index([promoKey])
+  @@index([status])
+}
+
+enum PromotionStatus {
+  AVAILABLE
+  CLAIMED
+  USED
+  EXPIRED
+}
+
+// Entitlements por job post
+model JobPostEntitlement {
+  id                  String            @id @default(uuid())
+  jobPostId           String
+  source              EntitlementSource
+  planKey             String // e.g. 'LAUNCH_TRIAL', 'URGENT', 'STANDARD', 'CRYSTAL'
+  expiresAt           DateTime // Hora reloj
+  status              EntitlementStatus @default(ACTIVE)
+  maxEdits            Int               @default(0)
+  editsUsed           Int               @default(0)
+  allowCategoryChange Boolean           @default(false)
+  categoryChangesUsed Int               @default(0)
+  rawPayload          Json? // Datos adicionales (promo_key, claimed_at, etc.)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  job                 Job               @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+
+  @@unique([jobPostId])
+  @@index([jobPostId])
+  @@index([planKey])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+enum EntitlementSource {
+  IAP
+  PLAY_BILLING
+  PROMO
+  MANUAL
+}
+
+enum EntitlementStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
 }

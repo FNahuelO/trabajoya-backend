@@ -1321,5 +1321,81 @@ async function main() {
   console.log(
     `✅ Catálogos creados: ${jobAreas.length} áreas, ${jobTypes.length} tipos, ${jobLevels.length} niveles, ${modalities.length} modalidades, ${experienceLevels.length} niveles de experiencia, ${applicationStatuses.length} estados de aplicación, ${languageLevels.length} niveles de idioma, ${companySizes.length} tamaños de empresa, ${sectors.length} sectores, ${studyTypes.length} tipos de estudio, ${studyStatuses.length} estados de estudio, ${maritalStatuses.length} estados civiles`
   );
+
+  // Crear plan LAUNCH_TRIAL
+  const launchTrialPlan = await prisma.plan.upsert({
+    where: { code: "LAUNCH_TRIAL" },
+    update: {},
+    create: {
+      name: "Prueba gratis 4 días",
+      code: "LAUNCH_TRIAL",
+      subscriptionPlan: "PREMIUM",
+      price: 0,
+      currency: "USD",
+      durationDays: 4,
+      unlimitedCvs: true,
+      allowedModifications: 0,
+      canModifyCategory: false,
+      categoryModifications: 0,
+      hasFeaturedOption: false,
+      hasAIFeature: false,
+      launchBenefitAvailable: false,
+      isActive: true,
+      order: 0,
+      description: "Promoción de lanzamiento: 1 publicación gratis por 4 días",
+    },
+  });
+
+  console.log(`✅ Plan LAUNCH_TRIAL creado: ${launchTrialPlan.id}`);
+
+  // Crear promoción demo para empresa de prueba (si existe)
+  const empresaTest = await prisma.user.findUnique({
+    where: { email: "empresa.test@trabajoya.com" },
+    include: { empresa: true },
+  });
+
+  if (empresaTest && empresaTest.empresa) {
+    // Verificar si la ventana de promoción está abierta
+    const startAt = process.env.LAUNCH_TRIAL_START_AT;
+    const endAt = process.env.LAUNCH_TRIAL_END_AT;
+    const now = new Date();
+    let windowOpen = false;
+
+    if (startAt && endAt) {
+      try {
+        const start = new Date(startAt);
+        const end = new Date(endAt);
+        windowOpen = now >= start && now <= end;
+      } catch (error) {
+        console.warn("Error parsing LAUNCH_TRIAL dates:", error);
+      }
+    }
+
+    if (windowOpen) {
+      const promotion = await prisma.userPromotion.upsert({
+        where: {
+          userId_promoKey: {
+            userId: empresaTest.id,
+            promoKey: "LAUNCH_TRIAL_4D",
+          },
+        },
+        update: {},
+        create: {
+          userId: empresaTest.id,
+          promoKey: "LAUNCH_TRIAL_4D",
+          status: "AVAILABLE",
+          metadata: {
+            companyId: empresaTest.empresa.id,
+            cuit: empresaTest.empresa.cuit,
+            demo: true,
+          },
+        },
+      });
+
+      console.log(
+        `✅ Promoción demo creada para empresa.test@trabajoya.com: ${promotion.id}`
+      );
+    }
+  }
 }
 main().finally(() => prisma.$disconnect());

@@ -10,6 +10,7 @@ import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PaymentsService } from "../payments/payments.service";
 import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
 import { S3UploadService } from "../upload/s3-upload.service";
+import { PromotionsService } from "../promotions/promotions.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -21,7 +22,8 @@ export class EmpresasService {
     private paymentsService: PaymentsService,
     private cloudFrontSigner: CloudFrontSignerService,
     private s3UploadService: S3UploadService,
-    private configService: ConfigService
+    private configService: ConfigService,
+    private promotionsService: PromotionsService
   ) {}
 
   async getByUser(userId: string) {
@@ -236,6 +238,84 @@ export class EmpresasService {
       throw new NotFoundException("Mensaje de error");
     }
 
+    // Verificar si se está usando el plan LAUNCH_TRIAL
+    const planKey = dto.planKey || dto.plan_key;
+    const isLaunchTrial = planKey === "LAUNCH_TRIAL";
+
+    if (isLaunchTrial) {
+      // Validar que la promoción esté CLAIMED y no USED
+      const promotion = await this.promotionsService.getClaimedPromotion(userId);
+      
+      if (!promotion || promotion.status !== "CLAIMED") {
+        throw new BadRequestException(
+          "Debes reclamar la promoción de lanzamiento antes de publicar"
+        );
+      }
+
+      // Aplicar filtro automático de moderación
+      const moderationResult = this.contentModeration.analyzeJobContent({
+        title: dto.title || "",
+        description: dto.description || "",
+        requirements: dto.requirements || "",
+      });
+
+      let moderationStatus = "PENDING";
+      let status = "inactive";
+      let autoRejectionReason = null;
+
+      if (!moderationResult.isApproved) {
+        moderationStatus = "AUTO_REJECTED";
+        status = "inactive";
+        autoRejectionReason = moderationResult.reasons.join(". ");
+      } else {
+        moderationStatus = "PENDING";
+        status = "inactive";
+      }
+
+      // Crear el aviso
+      const publishedAt = new Date();
+      const expiresAt = new Date(publishedAt);
+      expiresAt.setDate(expiresAt.getDate() + 4); // 4 días desde publicación
+
+      const job = await this.prisma.job.create({
+        data: {
+          ...dto,
+          empresaId: profile.id,
+          moderationStatus: moderationStatus as any,
+          status: status,
+          autoRejectionReason: autoRejectionReason,
+          isPaid: true,
+          paymentStatus: "COMPLETED",
+          publishedAt: publishedAt,
+        },
+      });
+
+      // Crear entitlement
+      await this.prisma.jobPostEntitlement.create({
+        data: {
+          jobPostId: job.id,
+          source: "PROMO",
+          planKey: "LAUNCH_TRIAL",
+          expiresAt: expiresAt,
+          status: "ACTIVE",
+          maxEdits: 0,
+          editsUsed: 0,
+          allowCategoryChange: false,
+          categoryChangesUsed: 0,
+          rawPayload: {
+            promo_key: "LAUNCH_TRIAL_4D",
+            claimed_at: promotion.claimedAt,
+          },
+        },
+      });
+
+      // Marcar promoción como USED
+      await this.promotionsService.useLaunchTrial(userId, job.id);
+
+      return job;
+    }
+
+    // Flujo normal (sin trial)
     // Verificar si la empresa tiene una suscripción activa y su plan
     const activeSubscription =
       await this.subscriptionsService.getActiveSubscription(profile.id);
