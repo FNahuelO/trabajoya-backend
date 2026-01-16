@@ -1,0 +1,81 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { IapService } from './iap.service';
+import { VerifyAppleDto } from './dto/verify-apple.dto';
+import { VerifyGoogleDto } from './dto/verify-google.dto';
+import { RestoreDto } from './dto/restore.dto';
+import { createResponse } from '../common/mapper/api-response.mapper';
+
+@ApiTags('iap')
+@Controller('api/iap')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class IapController {
+  constructor(private readonly iapService: IapService) {}
+
+  @Post('apple/verify')
+  @ApiOperation({ summary: 'Verificar compra de Apple IAP' })
+  async verifyApple(@Req() req: any, @Body() dto: VerifyAppleDto) {
+    const result = await this.iapService.verifyApplePurchase(
+      req.user?.sub,
+      dto,
+    );
+    return createResponse({
+      success: true,
+      message: 'Compra verificada correctamente',
+      data: result,
+    });
+  }
+
+  @Post('google/verify')
+  @ApiOperation({ summary: 'Verificar compra de Google Play Billing' })
+  async verifyGoogle(@Req() req: any, @Body() dto: VerifyGoogleDto) {
+    const result = await this.iapService.verifyGooglePurchase(
+      req.user?.sub,
+      dto,
+    );
+    return createResponse({
+      success: true,
+      message: 'Compra verificada correctamente',
+      data: result,
+    });
+  }
+
+  @Post('restore')
+  @ApiOperation({ summary: 'Restaurar compras (iOS) o sincronizar (Android)' })
+  async restore(@Req() req: any, @Body() dto: RestoreDto) {
+    const result = await this.iapService.restorePurchases(
+      req.user?.sub,
+      dto,
+    );
+    return createResponse({
+      success: true,
+      message: 'Compras restauradas correctamente',
+      data: result,
+    });
+  }
+
+  @Get('products')
+  @ApiOperation({ summary: 'Obtener productos IAP por plataforma' })
+  async getProducts(@Query('platform') platform: 'IOS' | 'ANDROID') {
+    if (!platform || !['IOS', 'ANDROID'].includes(platform)) {
+      throw new Error('Platform debe ser IOS o ANDROID');
+    }
+    const products = await this.iapService.getIapProducts(platform);
+    return createResponse({
+      success: true,
+      message: 'Productos obtenidos correctamente',
+      data: products,
+    });
+  }
+}
+

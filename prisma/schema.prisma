@@ -37,6 +37,7 @@ model User {
   paymentTransactions  PaymentTransaction[]
   pushTokens           PushToken[]
   promotions           UserPromotion[]
+  JobPostEntitlement   JobPostEntitlement[]
 }
 
 model RefreshToken {
@@ -558,6 +559,7 @@ model Plan {
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   paymentTransactions    PaymentTransaction[]
+  iapProducts            IapProduct[]
 
   @@index([code])
   @@index([isActive])
@@ -651,31 +653,61 @@ enum PromotionStatus {
 
 // Entitlements por job post
 model JobPostEntitlement {
-  id                  String            @id @default(uuid())
-  jobPostId           String
-  source              EntitlementSource
-  planKey             String // e.g. 'LAUNCH_TRIAL', 'URGENT', 'STANDARD', 'CRYSTAL'
-  expiresAt           DateTime // Hora reloj
-  status              EntitlementStatus @default(ACTIVE)
-  maxEdits            Int               @default(0)
-  editsUsed           Int               @default(0)
-  allowCategoryChange Boolean           @default(false)
-  categoryChangesUsed Int               @default(0)
-  rawPayload          Json? // Datos adicionales (promo_key, claimed_at, etc.)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  job                 Job               @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  id                    String            @id @default(uuid())
+  userId                String // Usuario que compró
+  jobPostId             String
+  source                EntitlementSource
+  planKey               String // e.g. 'LAUNCH_TRIAL', 'URGENT', 'STANDARD', 'CRYSTAL'
+  expiresAt             DateTime // Hora reloj
+  status                EntitlementStatus @default(ACTIVE)
+  maxEdits              Int               @default(0)
+  editsUsed             Int               @default(0)
+  allowCategoryChange   Boolean           @default(false)
+  maxCategoryChanges    Int               @default(0)
+  categoryChangesUsed   Int               @default(0)
+  transactionId         String? // Transaction ID único de Apple/Google
+  originalTransactionId String? // Original transaction ID (Apple) o orderId (Google)
+  rawPayload            Json? // Datos adicionales (signedTransactionInfo, purchaseToken, etc.)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  job                   Job               @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([jobPostId])
+  @@unique([transactionId]) // Prevenir replay attacks
+  @@index([userId])
   @@index([jobPostId])
   @@index([planKey])
   @@index([status])
   @@index([expiresAt])
+  @@index([transactionId])
+}
+
+// Productos IAP mapeados a planes
+model IapProduct {
+  id        String      @id @default(uuid())
+  productId String      @unique // e.g. 'job_urgent_7d'
+  platform  IapPlatform
+  planKey   String // 'URGENT', 'STANDARD', 'CRYSTAL'
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  plan      Plan        @relation(fields: [planKey], references: [code], onDelete: Restrict)
+
+  @@unique([productId, platform])
+  @@index([platform])
+  @@index([planKey])
+  @@index([active])
+}
+
+enum IapPlatform {
+  IOS
+  ANDROID
 }
 
 enum EntitlementSource {
-  IAP
-  PLAY_BILLING
+  APPLE_IAP
+  GOOGLE_PLAY
   PROMO
   MANUAL
 }
@@ -684,4 +716,5 @@ enum EntitlementStatus {
   ACTIVE
   EXPIRED
   REVOKED
+  REFUNDED
 }

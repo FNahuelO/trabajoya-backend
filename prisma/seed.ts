@@ -1397,5 +1397,111 @@ async function main() {
       );
     }
   }
+
+  // Crear productos IAP
+  const iapProducts = [
+    {
+      productId: "job_urgent_7d",
+      platform: "IOS",
+      planKey: "URGENT",
+    },
+    {
+      productId: "job_urgent_7d",
+      platform: "ANDROID",
+      planKey: "URGENT",
+    },
+    {
+      productId: "job_standard_30d",
+      platform: "IOS",
+      planKey: "STANDARD",
+    },
+    {
+      productId: "job_standard_30d",
+      platform: "ANDROID",
+      planKey: "STANDARD",
+    },
+    {
+      productId: "job_crystal_60d",
+      platform: "IOS",
+      planKey: "CRYSTAL",
+    },
+    {
+      productId: "job_crystal_60d",
+      platform: "ANDROID",
+      planKey: "CRYSTAL",
+    },
+  ];
+
+  // Crear planes URGENT, STANDARD, CRYSTAL si no existen
+  const plans = [
+    {
+      name: "URGENT",
+      code: "URGENT",
+      price: 25000,
+      currency: "ARS",
+      durationDays: 7,
+      allowedModifications: 0,
+      canModifyCategory: false,
+      categoryModifications: 0,
+      order: 10,
+      description: "Plan Urgente: 7 días, 0 ediciones, sin cambio de rubro",
+    },
+    {
+      name: "STANDARD",
+      code: "STANDARD",
+      price: 40000,
+      currency: "ARS",
+      durationDays: 30,
+      allowedModifications: 2,
+      canModifyCategory: false,
+      categoryModifications: 0,
+      order: 20,
+      description: "Plan Estándar: 30 días, 2 ediciones, sin cambio de rubro",
+    },
+    {
+      name: "CRYSTAL",
+      code: "CRYSTAL",
+      price: 90000,
+      currency: "ARS",
+      durationDays: 60,
+      allowedModifications: 4,
+      canModifyCategory: true,
+      categoryModifications: 1,
+      order: 30,
+      description: "Plan Crystal: 60 días, 4 ediciones, 1 cambio de rubro",
+    },
+  ];
+
+  for (const planData of plans) {
+    const plan = await prisma.plan.upsert({
+      where: { code: planData.code },
+      update: {},
+      create: planData,
+    });
+
+    // Crear productos IAP para este plan
+    for (const product of iapProducts.filter(
+      (p) => p.planKey === planData.code
+    )) {
+      await prisma.iapProduct.upsert({
+        where: {
+          productId_platform: {
+            productId: product.productId,
+            platform: product.platform as any,
+          },
+        },
+        update: {},
+        create: {
+          productId: product.productId,
+          platform: product.platform as any,
+          planKey: product.planKey,
+          active: true,
+        },
+      });
+    }
+  }
+
+  console.log(`✅ Planes IAP creados: ${plans.length}`);
+  console.log(`✅ Productos IAP creados: ${iapProducts.length}`);
 }
 main().finally(() => prisma.$disconnect());
