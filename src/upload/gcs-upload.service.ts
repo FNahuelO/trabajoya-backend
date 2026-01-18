@@ -99,7 +99,9 @@ export class GCSUploadService {
       return {
         exists: true,
         contentType: metadata.contentType,
-        contentLength: parseInt(metadata.size || "0", 10),
+        contentLength: typeof metadata.size === 'string' 
+          ? parseInt(metadata.size, 10) 
+          : (metadata.size || 0),
         lastModified: metadata.updated ? new Date(metadata.updated) : undefined,
       };
     } catch (error: any) {
