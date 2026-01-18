@@ -31,13 +31,15 @@ RUN apk add --no-cache postgresql-client
 COPY scripts/resolve-failed-migrations.sh ./scripts/
 COPY scripts/migrate-deploy.sh ./scripts/
 COPY scripts/start.sh ./scripts/
+COPY scripts/start-gcp.sh ./scripts/
 COPY scripts/seed-if-empty.js ./scripts/
 COPY scripts/ensure-schema.js ./scripts/
-RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh ./scripts/start.sh
+RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh ./scripts/start.sh ./scripts/start-gcp.sh
 
 # Cloud Run usa PORT variable, ajustar start.sh para usarlo
 ENV PORT=8080
 
-# Comando de inicio - usar start.sh que incluye todo el flujo
-CMD ["sh", "-c", "./scripts/start.sh"]
+# Comando de inicio - usar script optimizado para Cloud Run
+# Este script ejecuta migraciones en background y inicia la app inmediatamente
+CMD ["sh", "-c", "./scripts/start-gcp.sh"]
 
