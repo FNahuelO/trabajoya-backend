@@ -21,12 +21,12 @@ import { createResponse } from '../common/mapper/api-response.mapper';
 
 @ApiTags('iap')
 @Controller('api/iap')
-@UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
 export class IapController {
   constructor(private readonly iapService: IapService) {}
 
   @Post('apple/verify')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Verificar compra de Apple IAP' })
   async verifyApple(@Req() req: any, @Body() dto: VerifyAppleDto) {
     const result = await this.iapService.verifyApplePurchase(
@@ -41,6 +41,8 @@ export class IapController {
   }
 
   @Post('google/verify')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Verificar compra de Google Play Billing' })
   async verifyGoogle(@Req() req: any, @Body() dto: VerifyGoogleDto) {
     const result = await this.iapService.verifyGooglePurchase(
@@ -55,6 +57,8 @@ export class IapController {
   }
 
   @Post('restore')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Restaurar compras (iOS) o sincronizar (Android)' })
   async restore(@Req() req: any, @Body() dto: RestoreDto) {
     const result = await this.iapService.restorePurchases(
@@ -69,7 +73,7 @@ export class IapController {
   }
 
   @Get('products')
-  @ApiOperation({ summary: 'Obtener productos IAP por plataforma' })
+  @ApiOperation({ summary: 'Obtener productos IAP por plataforma (público)' })
   async getProducts(@Query('platform') platform: 'IOS' | 'ANDROID') {
     if (!platform || !['IOS', 'ANDROID'].includes(platform)) {
       throw new Error('Platform debe ser IOS o ANDROID');

@@ -118,7 +118,11 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT || 4000;
-  await app.listen(port);
+  
+  // Cloud Run usa WebSocket upgrade automáticamente, pero necesitamos configurarlo
+  // NestJS con Socket.IO funciona correctamente en Cloud Run sin cambios adicionales
+  
+  await app.listen(port, "0.0.0.0");
   console.log("=".repeat(50));
   console.log(`✅ Application is running on: http://localhost:${port}`);
   console.log(

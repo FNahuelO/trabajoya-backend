@@ -129,28 +129,34 @@ export class ExpoPushService {
       channelId?: string;
     }
   ): Promise<void> {
-    const messages: ExpoPushMessage[] = tokens.map((token) => ({
-      to: token,
-      sound: "default",
-      title,
-      body,
-      data,
-      badge: options?.badge,
-      priority: options?.priority || "high", // "high" es necesario para notificaciones en background
-      channelId: options?.channelId,
-      // Configuraciones adicionales para Android para asegurar que funcionen en background
-      android: {
-        priority: options?.priority || "high",
-        channelId: options?.channelId || "general",
-      },
-      // Configuraciones específicas para iOS para asegurar que funcionen en background
-      ios: {
+    const messages: ExpoPushMessage[] = tokens.map((token) => {
+      const channelId = options?.channelId || "general";
+      const priority = options?.priority || "high";
+      
+      return {
+        to: token,
         sound: "default",
+        title,
+        body,
+        data,
         badge: options?.badge,
-        priority: options?.priority || "high",
-        categoryId: options?.channelId === "messages" ? "message" : undefined,
-      },
-    }));
+        priority, // "high" es necesario para notificaciones en background
+        channelId, // ChannelId a nivel raíz para compatibilidad
+        // Configuraciones adicionales para Android para asegurar que funcionen en background
+        // IMPORTANTE: El channelId en android debe coincidir con el canal creado en el frontend
+        android: {
+          priority, // "high" es necesario para notificaciones en background/cerrada
+          channelId, // Usar el mismo channelId que se configuró en el frontend
+        },
+        // Configuraciones específicas para iOS para asegurar que funcionen en background
+        ios: {
+          sound: "default",
+          badge: options?.badge,
+          priority, // "high" es necesario para notificaciones en background
+          categoryId: channelId === "messages" ? "message" : undefined,
+        },
+      };
+    });
 
     try {
       const response = await fetch(this.EXPO_PUSH_ENDPOINT, {
@@ -273,6 +279,7 @@ export class ExpoPushService {
 
   /**
    * Enviar notificación de llamada
+   * IMPORTANTE: Las llamadas necesitan máxima prioridad para funcionar cuando la app está cerrada
    */
   async sendCallNotification(
     toUserId: string,
@@ -288,8 +295,8 @@ export class ExpoPushService {
         type: "call",
       },
       {
-        priority: "high",
-        channelId: "calls",
+        priority: "high", // "high" es necesario para notificaciones en background
+        channelId: "calls", // Canal específico para llamadas con MAX importance
       }
     );
   }
