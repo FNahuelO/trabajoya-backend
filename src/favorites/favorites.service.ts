@@ -1,13 +1,13 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { S3UploadService } from "../upload/s3-upload.service";
 
 @Injectable()
 export class FavoritesService {
   constructor(
     private prisma: PrismaService,
-    private cloudFrontSigner: CloudFrontSignerService,
+    private gcpCdnService: GcpCdnService,
     private s3UploadService: S3UploadService
   ) {}
 
@@ -27,23 +27,10 @@ export class FavoritesService {
           !favorite.job.empresa.logo.startsWith("http")
         ) {
           try {
-            if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-              const logoPath = favorite.job.empresa.logo.startsWith("/")
-                ? favorite.job.empresa.logo
-                : `/${favorite.job.empresa.logo}`;
-              const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
-              if (
-                cloudFrontUrl &&
-                cloudFrontUrl.startsWith("https://") &&
-                !cloudFrontUrl.includes("https:///")
-              ) {
-                favorite.job.empresa.logo = cloudFrontUrl;
-              } else {
-                favorite.job.empresa.logo = await this.s3UploadService.getObjectUrl(
-                  favorite.job.empresa.logo,
-                  3600
-                );
-              }
+            if (this.gcpCdnService.isCdnConfigured()) {
+              favorite.job.empresa.logo = await this.gcpCdnService.getCdnUrl(
+                favorite.job.empresa.logo
+              );
             } else {
               favorite.job.empresa.logo = await this.s3UploadService.getObjectUrl(
                 favorite.job.empresa.logo,
@@ -74,23 +61,10 @@ export class FavoritesService {
       favorites.map(async (favorite) => {
         if (favorite.empresa?.logo && !favorite.empresa.logo.startsWith("http")) {
           try {
-            if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-              const logoPath = favorite.empresa.logo.startsWith("/")
-                ? favorite.empresa.logo
-                : `/${favorite.empresa.logo}`;
-              const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
-              if (
-                cloudFrontUrl &&
-                cloudFrontUrl.startsWith("https://") &&
-                !cloudFrontUrl.includes("https:///")
-              ) {
-                favorite.empresa.logo = cloudFrontUrl;
-              } else {
-                favorite.empresa.logo = await this.s3UploadService.getObjectUrl(
-                  favorite.empresa.logo,
-                  3600
-                );
-              }
+            if (this.gcpCdnService.isCdnConfigured()) {
+              favorite.empresa.logo = await this.gcpCdnService.getCdnUrl(
+                favorite.empresa.logo
+              );
             } else {
               favorite.empresa.logo = await this.s3UploadService.getObjectUrl(
                 favorite.empresa.logo,

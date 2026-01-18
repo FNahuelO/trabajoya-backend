@@ -4,7 +4,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { S3UploadService } from "../upload/s3-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
@@ -12,7 +12,7 @@ import { S3UploadService } from "../upload/s3-upload.service";
 export class JobsService {
   constructor(
     private prisma: PrismaService,
-    private cloudFrontSigner: CloudFrontSignerService,
+    private gcpCdnService: GcpCdnService,
     private s3UploadService: S3UploadService
   ) {}
 
@@ -121,20 +121,8 @@ export class JobsService {
         ) {
           const logo: string = logoValue;
           try {
-            if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-              const logoPath = logo.startsWith("/") ? logo : `/${logo}`;
-              const cloudFrontUrl =
-                this.cloudFrontSigner.getCloudFrontUrl(logoPath);
-              if (
-                cloudFrontUrl &&
-                cloudFrontUrl.startsWith("https://") &&
-                !cloudFrontUrl.includes("https:///")
-              ) {
-                (job.empresa as any).logo = cloudFrontUrl;
-              } else {
-                (job.empresa as any).logo =
-                  await this.s3UploadService.getObjectUrl(logo, 3600);
-              }
+            if (this.gcpCdnService.isCdnConfigured()) {
+              (job.empresa as any).logo = await this.gcpCdnService.getCdnUrl(logo);
             } else {
               (job.empresa as any).logo =
                 await this.s3UploadService.getObjectUrl(logo, 3600);
@@ -190,28 +178,14 @@ export class JobsService {
     ) {
       const logo: string = logoValue;
       try {
-        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-          const logoPath = logo.startsWith("/") ? logo : `/${logo}`;
-          const cloudFrontUrl =
-            this.cloudFrontSigner.getCloudFrontUrl(logoPath);
-          if (
-            cloudFrontUrl &&
-            cloudFrontUrl.startsWith("https://") &&
-            !cloudFrontUrl.includes("https:///")
-          ) {
-            (job.empresa as any).logo = cloudFrontUrl;
-          } else {
-            (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
-              logo,
-              3600
-            );
-          }
-        } else {
-          (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
-            logo,
-            3600
-          );
-        }
+            if (this.gcpCdnService.isCdnConfigured()) {
+              (job.empresa as any).logo = await this.gcpCdnService.getCdnUrl(logo);
+            } else {
+              (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
+                logo,
+                3600
+              );
+            }
       } catch (error) {
         console.error("Error generando URL para logo en job detail:", error);
       }

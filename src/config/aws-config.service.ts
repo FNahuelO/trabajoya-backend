@@ -25,7 +25,13 @@ export class AwsConfigService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    // Solo cargar secrets de AWS en producción
+    // Solo cargar secrets de AWS en producción Y si no estamos usando GCP
+    const gcpProjectId = process.env.GCP_PROJECT_ID || this.configService.get<string>("GCP_PROJECT_ID");
+    if (gcpProjectId) {
+      this.logger.log("GCP_PROJECT_ID configurado - omitiendo carga de secrets de AWS");
+      return;
+    }
+
     if (process.env.NODE_ENV === "production") {
       await this.loadSecretsFromAWS();
     } else {

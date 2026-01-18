@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AtsService } from "./ats.service";
-import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { S3UploadService } from "../upload/s3-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
@@ -14,7 +14,7 @@ export class PostulantesService {
   constructor(
     private prisma: PrismaService,
     private atsService: AtsService,
-    private cloudFrontSigner: CloudFrontSignerService,
+    private gcpCdnService: GcpCdnService,
     private s3UploadService: S3UploadService
   ) {}
 
@@ -102,40 +102,14 @@ export class PostulantesService {
     const firstName = fullNameParts[0] || "";
     const lastName = fullNameParts.slice(1).join(" ") || "";
 
-    // Transformar el avatar key en una URL válida (CloudFront o S3 directo)
+    // Transformar el avatar key en una URL válida (GCP CDN o Storage directo)
     let avatarUrl = profile.profilePicture;
     if (avatarUrl && !avatarUrl.startsWith("http")) {
       try {
-        // Verificar si CloudFront está configurado
-        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-          const avatarPath = avatarUrl.startsWith("/")
-            ? avatarUrl
-            : `/${avatarUrl}`;
-          const cloudFrontUrl =
-            this.cloudFrontSigner.getCloudFrontUrl(avatarPath);
-          // Solo actualizar si se generó una URL válida (verificar que no sea malformada)
-          if (
-            cloudFrontUrl &&
-            cloudFrontUrl.startsWith("https://") &&
-            !cloudFrontUrl.includes("https:///")
-          ) {
-            avatarUrl = cloudFrontUrl;
-          } else {
-            // Si CloudFront falla o retorna URL malformada, usar S3 directo
-            console.warn(
-              `[PostulantesService] CloudFront configurado pero URL malformada: ${cloudFrontUrl}. ` +
-                `Usando S3 directo para avatar: ${profile.profilePicture}`
-            );
-            avatarUrl = await this.s3UploadService.getObjectUrl(
-              profile.profilePicture,
-              3600
-            );
-          }
+        // Usar GCP CDN si está configurado, si no usar URL firmada
+        if (this.gcpCdnService.isCdnConfigured()) {
+          avatarUrl = await this.gcpCdnService.getCdnUrl(profile.profilePicture);
         } else {
-          // Si CloudFront no está configurado, usar S3 directo
-          console.log(
-            `[PostulantesService] CloudFront no configurado. Usando S3 directo para avatar: ${profile.profilePicture}`
-          );
           avatarUrl = await this.s3UploadService.getObjectUrl(
             profile.profilePicture,
             3600
@@ -147,40 +121,14 @@ export class PostulantesService {
       }
     }
 
-    // Transformar el videoUrl key en una URL válida (CloudFront o S3 directo)
+    // Transformar el videoUrl key en una URL válida (GCP CDN o Storage directo)
     let videoUrl = profile.videoUrl;
     if (videoUrl && !videoUrl.startsWith("http")) {
       try {
-        // Verificar si CloudFront está configurado
-        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-          const videoPath = videoUrl.startsWith("/")
-            ? videoUrl
-            : `/${videoUrl}`;
-          const cloudFrontUrl =
-            this.cloudFrontSigner.getCloudFrontUrl(videoPath);
-          // Solo actualizar si se generó una URL válida (verificar que no sea malformada)
-          if (
-            cloudFrontUrl &&
-            cloudFrontUrl.startsWith("https://") &&
-            !cloudFrontUrl.includes("https:///")
-          ) {
-            videoUrl = cloudFrontUrl;
-          } else {
-            // Si CloudFront falla o retorna URL malformada, usar S3 directo
-            console.warn(
-              `[PostulantesService] CloudFront configurado pero URL malformada: ${cloudFrontUrl}. ` +
-                `Usando S3 directo para video: ${profile.videoUrl}`
-            );
-            videoUrl = await this.s3UploadService.getObjectUrl(
-              profile.videoUrl,
-              3600
-            );
-          }
+        // Usar GCP CDN si está configurado, si no usar URL firmada
+        if (this.gcpCdnService.isCdnConfigured()) {
+          videoUrl = await this.gcpCdnService.getCdnUrl(profile.videoUrl);
         } else {
-          // Si CloudFront no está configurado, usar S3 directo
-          console.log(
-            `[PostulantesService] CloudFront no configurado. Usando S3 directo para video: ${profile.videoUrl}`
-          );
           videoUrl = await this.s3UploadService.getObjectUrl(
             profile.videoUrl,
             3600

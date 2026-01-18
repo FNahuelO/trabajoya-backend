@@ -3,18 +3,32 @@ import {
   NotFoundException,
   ForbiddenException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
-import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { GcpCdnService } from "../upload/gcp-cdn.service";
+import { S3UploadService } from "../upload/s3-upload.service";
+import { GCSUploadService } from "../upload/gcs-upload.service";
 
 @Injectable()
 export class MediaService {
+  private uploadService: S3UploadService | GCSUploadService;
+  private useGCS: boolean;
+
   constructor(
     private prisma: PrismaService,
-    private cloudFrontSigner: CloudFrontSignerService
-  ) {}
+    private gcpCdnService: GcpCdnService,
+    private s3UploadService: S3UploadService,
+    private gcsUploadService: GCSUploadService,
+    private configService: ConfigService
+  ) {
+    // Detectar qué servicio usar basado en variables de entorno
+    const gcsBucketName = this.configService.get<string>("GCS_BUCKET_NAME");
+    this.useGCS = !!gcsBucketName;
+    this.uploadService = this.useGCS ? this.gcsUploadService : this.s3UploadService;
+  }
 
   /**
-   * Obtiene acceso a un archivo de media mediante CloudFront signed cookies
+   * Obtiene acceso a un archivo de media mediante URL firmada (GCP CDN o Storage)
    */
   async getMediaAccess(
     userId: string,
@@ -22,12 +36,7 @@ export class MediaService {
     userRole: string | undefined,
     mediaAssetId: string
   ): Promise<{
-    cloudFrontUrl: string;
-    cookies: {
-      "CloudFront-Policy": string;
-      "CloudFront-Signature": string;
-      "CloudFront-Key-Pair-Id": string;
-    };
+    url: string;
     expiresAt: Date;
   }> {
     // Buscar el MediaAsset
@@ -62,26 +71,20 @@ export class MediaService {
       );
     }
 
-    // Generar cookies firmadas
-    const resourcePath = `/${mediaAsset.key}`;
-    const signedCookies = await this.cloudFrontSigner.getSignedCookies(
-      resourcePath,
-      {
-        expiresIn: 900, // 15 minutos
-      }
-    );
-
-    // Generar URL de CloudFront
-    const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(resourcePath);
+    // Generar URL firmada (GCP CDN o Storage)
+    const expiresIn = 900; // 15 minutos
+    const expiresAt = new Date(Date.now() + expiresIn * 1000);
+    
+    let signedUrl: string;
+    if (this.gcpCdnService.isCdnConfigured()) {
+      signedUrl = await this.gcpCdnService.getCdnUrl(mediaAsset.key, expiresIn);
+    } else {
+      signedUrl = await this.uploadService.getObjectUrl(mediaAsset.key, expiresIn);
+    }
 
     return {
-      cloudFrontUrl,
-      cookies: {
-        "CloudFront-Policy": signedCookies["CloudFront-Policy"],
-        "CloudFront-Signature": signedCookies["CloudFront-Signature"],
-        "CloudFront-Key-Pair-Id": signedCookies["CloudFront-Key-Pair-Id"],
-      },
-      expiresAt: signedCookies.expiresAt,
+      url: signedUrl,
+      expiresAt,
     };
   }
 
@@ -126,12 +129,7 @@ export class MediaService {
     requesterRole: string | undefined,
     targetUserId: string
   ): Promise<{
-    cloudFrontUrl: string;
-    cookies: {
-      "CloudFront-Policy": string;
-      "CloudFront-Signature": string;
-      "CloudFront-Key-Pair-Id": string;
-    };
+    url: string;
     expiresAt: Date;
   }> {
     // Buscar el MediaAsset de tipo VIDEO del usuario objetivo

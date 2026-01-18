@@ -29,12 +29,9 @@
     "docker:down:prod": "docker-compose -f docker-compose.prod.yml down"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudfront": "^3.916.0",
     "@aws-sdk/client-s3": "^3.916.0",
-    "@aws-sdk/client-secrets-manager": "^3.916.0",
-    "@aws-sdk/client-sesv2": "^3.916.0",
-    "@aws-sdk/client-ssm": "^3.916.0",
     "@aws-sdk/s3-request-presigner": "^3.916.0",
+    "@google-cloud/secret-manager": "^5.6.0",
     "@google-cloud/storage": "^7.18.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.2.0",

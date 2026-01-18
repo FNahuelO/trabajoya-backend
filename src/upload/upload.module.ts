@@ -3,7 +3,8 @@ import { UploadController } from "./upload.controller";
 import { UploadService } from "./upload.service";
 import { CVParserService } from "./cv-parser.service";
 import { S3UploadService } from "./s3-upload.service";
-import { CloudFrontSignerService } from "./cloudfront-signer.service";
+import { GCSUploadService } from "./gcs-upload.service";
+import { GcpCdnService } from "./gcp-cdn.service";
 import { PrismaModule } from "../prisma/prisma.module";
 
 @Module({
@@ -13,8 +14,10 @@ import { PrismaModule } from "../prisma/prisma.module";
     UploadService,
     CVParserService,
     S3UploadService,
-    CloudFrontSignerService,
+    GCSUploadService,
+    GcpCdnService,
+    // CloudFrontSignerService eliminado - migrado a Google Cloud
   ],
-  exports: [CVParserService, CloudFrontSignerService, S3UploadService],
+  exports: [CVParserService, S3UploadService, GCSUploadService, GcpCdnService],
 })
 export class UploadModule {}

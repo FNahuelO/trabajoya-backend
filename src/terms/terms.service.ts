@@ -6,7 +6,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { TermsType, UserType } from "@prisma/client";
 import { S3UploadService } from "../upload/s3-upload.service";
-import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { GcpCdnService } from "../upload/gcp-cdn.service";
 
 interface MulterFile {
   fieldname: string;
@@ -22,7 +22,7 @@ export class TermsService {
   constructor(
     private prisma: PrismaService,
     private s3UploadService: S3UploadService,
-    private cloudFrontSigner: CloudFrontSignerService
+    private gcpCdnService: GcpCdnService
   ) {}
 
   /**
@@ -312,7 +312,7 @@ export class TermsService {
     );
 
     // Generar URL de CloudFront
-    const fileUrl = this.cloudFrontSigner.getCloudFrontUrl(key);
+    const fileUrl = await this.gcpCdnService.getCdnUrl(key);
 
     // Extraer texto del PDF y convertirlo a markdown
     let markdownContent: string | null = null;

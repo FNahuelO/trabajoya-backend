@@ -20,7 +20,7 @@ export class MediaController {
 
   @Get(":id/access")
   @ApiOperation({
-    summary: "Obtiene acceso a un archivo de media mediante CloudFront signed cookies",
+    summary: "Obtiene acceso a un archivo de media mediante URL firmada (GCP CDN o Storage)",
   })
   @ApiResponse({
     status: 200,
@@ -42,44 +42,12 @@ export class MediaController {
       mediaAssetId
     );
 
-    // Setear las cookies
-    res.cookie("CloudFront-Policy", access.cookies["CloudFront-Policy"], {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      expires: access.expiresAt,
-      domain: undefined, // CloudFront cookies no deben tener domain
-      path: "/",
-    });
-
-    res.cookie("CloudFront-Signature", access.cookies["CloudFront-Signature"], {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      expires: access.expiresAt,
-      domain: undefined,
-      path: "/",
-    });
-
-    res.cookie(
-      "CloudFront-Key-Pair-Id",
-      access.cookies["CloudFront-Key-Pair-Id"],
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        expires: access.expiresAt,
-        domain: undefined,
-        path: "/",
-      }
-    );
-
-    // Devolver la URL de CloudFront
+    // Devolver la URL firmada (GCP CDN o Storage)
     return res.json({
       success: true,
       message: "Acceso otorgado correctamente",
       data: {
-        url: access.cloudFrontUrl,
+        url: access.url,
         expiresAt: access.expiresAt,
       },
     });
@@ -95,7 +63,7 @@ export class UserMediaController {
 
   @Get(":id/video/access")
   @ApiOperation({
-    summary: "Obtiene acceso al video de presentación de un usuario",
+    summary: "Obtiene acceso al video de presentación de un usuario mediante URL firmada",
   })
   @ApiResponse({
     status: 200,
@@ -117,44 +85,12 @@ export class UserMediaController {
       targetUserId
     );
 
-    // Setear las cookies
-    res.cookie("CloudFront-Policy", access.cookies["CloudFront-Policy"], {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      expires: access.expiresAt,
-      domain: undefined,
-      path: "/",
-    });
-
-    res.cookie("CloudFront-Signature", access.cookies["CloudFront-Signature"], {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      expires: access.expiresAt,
-      domain: undefined,
-      path: "/",
-    });
-
-    res.cookie(
-      "CloudFront-Key-Pair-Id",
-      access.cookies["CloudFront-Key-Pair-Id"],
-      {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        expires: access.expiresAt,
-        domain: undefined,
-        path: "/",
-      }
-    );
-
-    // Devolver la URL de CloudFront
+    // Devolver la URL firmada (GCP CDN o Storage)
     return res.json({
       success: true,
       message: "Acceso otorgado correctamente",
       data: {
-        url: access.cloudFrontUrl,
+        url: access.url,
         expiresAt: access.expiresAt,
       },
     });

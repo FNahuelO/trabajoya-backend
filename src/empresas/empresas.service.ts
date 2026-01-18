@@ -8,7 +8,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ContentModerationService } from "../common/services/content-moderation.service";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PaymentsService } from "../payments/payments.service";
-import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
+import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { S3UploadService } from "../upload/s3-upload.service";
 import { PromotionsService } from "../promotions/promotions.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
@@ -20,7 +20,7 @@ export class EmpresasService {
     private contentModeration: ContentModerationService,
     private subscriptionsService: SubscriptionsService,
     private paymentsService: PaymentsService,
-    private cloudFrontSigner: CloudFrontSignerService,
+    private gcpCdnService: GcpCdnService,
     private s3UploadService: S3UploadService,
     private configService: ConfigService,
     private promotionsService: PromotionsService
@@ -47,36 +47,10 @@ export class EmpresasService {
     // Transformar el logo key en una URL válida (CloudFront o S3 directo)
     if (profile.logo && !profile.logo.startsWith("http")) {
       try {
-        // Verificar si CloudFront está configurado
-        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-          const logoPath = profile.logo.startsWith("/")
-            ? profile.logo
-            : `/${profile.logo}`;
-          const cloudFrontUrl =
-            this.cloudFrontSigner.getCloudFrontUrl(logoPath);
-          // Solo actualizar si se generó una URL válida (verificar que no sea malformada)
-          if (
-            cloudFrontUrl &&
-            cloudFrontUrl.startsWith("https://") &&
-            !cloudFrontUrl.includes("https:///")
-          ) {
-            profile.logo = cloudFrontUrl;
-          } else {
-            // Si CloudFront falla o retorna URL malformada, usar S3 directo
-            console.warn(
-              `[EmpresasService] CloudFront configurado pero URL malformada: ${cloudFrontUrl}. ` +
-                `Usando S3 directo para logo: ${profile.logo}`
-            );
-            profile.logo = await this.s3UploadService.getObjectUrl(
-              profile.logo,
-              3600
-            );
-          }
+        // Usar GCP CDN si está configurado, si no usar URL firmada
+        if (this.gcpCdnService.isCdnConfigured()) {
+          profile.logo = await this.gcpCdnService.getCdnUrl(profile.logo);
         } else {
-          // Si CloudFront no está configurado, usar S3 directo
-          console.log(
-            `[EmpresasService] CloudFront no configurado. Usando S3 directo para logo: ${profile.logo}`
-          );
           profile.logo = await this.s3UploadService.getObjectUrl(
             profile.logo,
             3600
@@ -148,20 +122,8 @@ export class EmpresasService {
       empresas.map(async (empresa) => {
         if (empresa.logo && !empresa.logo.startsWith("http")) {
           try {
-            if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-              const logoPath = empresa.logo.startsWith("/")
-                ? empresa.logo
-                : `/${empresa.logo}`;
-              const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
-              if (
-                cloudFrontUrl &&
-                cloudFrontUrl.startsWith("https://") &&
-                !cloudFrontUrl.includes("https:///")
-              ) {
-                empresa.logo = cloudFrontUrl;
-              } else {
-                empresa.logo = await this.s3UploadService.getObjectUrl(empresa.logo, 3600);
-              }
+            if (this.gcpCdnService.isCdnConfigured()) {
+              empresa.logo = await this.gcpCdnService.getCdnUrl(empresa.logo);
             } else {
               empresa.logo = await this.s3UploadService.getObjectUrl(empresa.logo, 3600);
             }
@@ -541,20 +503,8 @@ export class EmpresasService {
           
           if (!profilePicture.startsWith("http")) {
             try {
-              if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-                const avatarPath = profilePicture.startsWith("/")
-                  ? profilePicture
-                  : `/${profilePicture}`;
-                const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(avatarPath);
-                if (
-                  cloudFrontUrl &&
-                  cloudFrontUrl.startsWith("https://") &&
-                  !cloudFrontUrl.includes("https:///")
-                ) {
-                  avatarUrl = cloudFrontUrl;
-                } else {
-                  avatarUrl = await this.s3UploadService.getObjectUrl(profilePicture, 3600);
-                }
+              if (this.gcpCdnService.isCdnConfigured()) {
+                avatarUrl = await this.gcpCdnService.getCdnUrl(profilePicture);
               } else {
                 avatarUrl = await this.s3UploadService.getObjectUrl(profilePicture, 3600);
               }

@@ -10,15 +10,15 @@ import {
   MessageResponseDto,
   ConversationResponseDto,
 } from "./dto";
-import { CloudFrontSignerService } from "../upload/cloudfront-signer.service";
 import { S3UploadService } from "../upload/s3-upload.service";
+import { GcpCdnService } from "../upload/gcp-cdn.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
 export class MessagesService {
   constructor(
     private prisma: PrismaService,
-    private cloudFrontSigner: CloudFrontSignerService,
+    private gcpCdnService: GcpCdnService,
     private s3UploadService: S3UploadService
   ) {}
 
@@ -486,23 +486,11 @@ export class MessagesService {
     let profilePicture = user.postulante?.profilePicture;
     if (profilePicture && !profilePicture.startsWith("http")) {
       try {
-        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-          const picturePath = profilePicture.startsWith("/")
-            ? profilePicture
-            : `/${profilePicture}`;
-          const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(picturePath);
-          if (
-            cloudFrontUrl &&
-            cloudFrontUrl.startsWith("https://") &&
-            !cloudFrontUrl.includes("https:///")
-          ) {
-            profilePicture = cloudFrontUrl;
-          } else {
-            profilePicture = await this.s3UploadService.getObjectUrl(
-              user.postulante.profilePicture,
-              3600
-            );
-          }
+        // Usar GCP CDN si está configurado, si no usar URL firmada
+        if (this.gcpCdnService.isCdnConfigured()) {
+          profilePicture = await this.gcpCdnService.getCdnUrl(
+            user.postulante.profilePicture
+          );
         } else {
           profilePicture = await this.s3UploadService.getObjectUrl(
             user.postulante.profilePicture,
@@ -519,18 +507,9 @@ export class MessagesService {
     let logo = user.empresa?.logo;
     if (logo && !logo.startsWith("http")) {
       try {
-        if (this.cloudFrontSigner.isCloudFrontConfigured()) {
-          const logoPath = logo.startsWith("/") ? logo : `/${logo}`;
-          const cloudFrontUrl = this.cloudFrontSigner.getCloudFrontUrl(logoPath);
-          if (
-            cloudFrontUrl &&
-            cloudFrontUrl.startsWith("https://") &&
-            !cloudFrontUrl.includes("https:///")
-          ) {
-            logo = cloudFrontUrl;
-          } else {
-            logo = await this.s3UploadService.getObjectUrl(user.empresa.logo, 3600);
-          }
+        // Usar GCP CDN si está configurado, si no usar URL firmada
+        if (this.gcpCdnService.isCdnConfigured()) {
+          logo = await this.gcpCdnService.getCdnUrl(user.empresa.logo);
         } else {
           logo = await this.s3UploadService.getObjectUrl(user.empresa.logo, 3600);
         }
