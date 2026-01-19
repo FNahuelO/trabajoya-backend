@@ -304,10 +304,12 @@ NODE_SCRIPT
         echo "❌ ERROR: DATABASE_URL no tiene parámetro host"
         exit 1
       fi
-      if ! echo "$DATABASE_URL" | grep -q "/cloudsql/"; then
+      # Verificación robusta del socket de Cloud SQL
+      if ! echo "$DATABASE_URL" | grep -qE "host=(/|%2F)?cloudsql/"; then
         echo "❌ ERROR: DATABASE_URL no usa socket Unix de Cloud SQL"
         exit 1
       fi
+
     fi
   else
     echo "🔍 No se detectó Cloud SQL de Cloud Run, esperando proxy TCP..."
