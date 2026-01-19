@@ -105,9 +105,57 @@ fi
 # Ejecutar el comando pasado como argumentos
 echo "🚀 Ejecutando comando: $@"
 
+# Función para verificar si Cloud SQL proxy está listo
+wait_for_cloud_sql_proxy() {
+  local max_wait=60
+  local wait_interval=2
+  local elapsed=0
+  
+  echo "🔍 Esperando a que Cloud SQL proxy esté disponible en 127.0.0.1:5432..."
+  
+  while [ $elapsed -lt $max_wait ]; do
+    # Intentar conectar al puerto usando nc (netcat) si está disponible, o con timeout/telnet
+    if command -v nc >/dev/null 2>&1; then
+      if nc -z 127.0.0.1 5432 >/dev/null 2>&1; then
+        echo "✅ Cloud SQL proxy está disponible"
+        return 0
+      fi
+    elif command -v timeout >/dev/null 2>&1 && command -v bash >/dev/null 2>&1; then
+      # Usar timeout con bash para verificar conexión
+      if timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/5432" >/dev/null 2>&1; then
+        echo "✅ Cloud SQL proxy está disponible"
+        return 0
+      fi
+    fi
+    
+    echo "⏳ Esperando Cloud SQL proxy... (${elapsed}s/${max_wait}s)"
+    sleep $wait_interval
+    elapsed=$((elapsed + wait_interval))
+  done
+  
+  echo "⚠️  Cloud SQL proxy no está disponible después de ${max_wait}s, pero continuando..."
+  return 1
+}
+
 # Si el comando es prisma migrate deploy, agregar reintentos para errores de conexión
 if echo "$@" | grep -q "prisma.*migrate"; then
   echo "📦 Detectado comando de migración..."
+  
+  # Esperar a que Cloud SQL proxy esté listo antes de intentar
+  # Esto es especialmente importante en Cloud Run Jobs donde el proxy necesita inicializarse
+  wait_for_cloud_sql_proxy
+  
+  # Verificar que DATABASE_URL esté configurado
+  if [ -z "$DATABASE_URL" ]; then
+    echo "❌ ERROR: DATABASE_URL no está configurado"
+    exit 1
+  fi
+  
+  # Mostrar información de depuración (sin mostrar credenciales)
+  DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+  if [ -n "$DB_HOST" ]; then
+    echo "🔗 DATABASE_URL configurado para host: $DB_HOST"
+  fi
   
   # Intentar con reintentos en caso de error de conexión
   MAX_RETRIES=5
