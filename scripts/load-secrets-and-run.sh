@@ -105,7 +105,32 @@ fi
 # Ejecutar el comando pasado como argumentos
 echo "🚀 Ejecutando comando: $@"
 
-# Función para verificar si Cloud SQL proxy está listo
+# Función para verificar si estamos usando Cloud SQL a través de Cloud Run
+# En Cloud Run Jobs con --add-cloudsql-instances, Cloud Run monta automáticamente
+# un socket Unix en /cloudsql/[INSTANCE_CONNECTION_NAME] y NO usa proxy TCP
+is_cloud_run_cloud_sql() {
+  # Verificar si existe el directorio /cloudsql (montado por Cloud Run)
+  if [ -d "/cloudsql" ] && [ -n "$(ls -A /cloudsql 2>/dev/null)" ]; then
+    echo "✅ Detectado Cloud SQL a través de Cloud Run (socket Unix)"
+    return 0
+  fi
+  
+  # Verificar si DATABASE_URL usa socket Unix
+  if echo "$DATABASE_URL" | grep -q "/cloudsql/"; then
+    echo "✅ DATABASE_URL configurado para usar socket Unix de Cloud SQL"
+    return 0
+  fi
+  
+  # Verificar si la variable CLOUD_SQL_CONNECTION_NAME está configurada
+  if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
+    echo "✅ Variable CLOUD_SQL_CONNECTION_NAME detectada (Cloud Run Cloud SQL)"
+    return 0
+  fi
+  
+  return 1
+}
+
+# Función para verificar si Cloud SQL proxy está listo (solo para entornos locales)
 wait_for_cloud_sql_proxy() {
   local max_wait=60
   local wait_interval=2
@@ -141,9 +166,57 @@ wait_for_cloud_sql_proxy() {
 if echo "$@" | grep -q "prisma.*migrate"; then
   echo "📦 Detectado comando de migración..."
   
-  # Esperar a que Cloud SQL proxy esté listo antes de intentar
-  # Esto es especialmente importante en Cloud Run Jobs donde el proxy necesita inicializarse
-  wait_for_cloud_sql_proxy
+  # Verificar si estamos usando Cloud SQL a través de Cloud Run (socket Unix)
+  # En ese caso, NO esperar proxy TCP ya que Cloud Run maneja la conexión automáticamente
+  if is_cloud_run_cloud_sql; then
+    echo "✅ Usando Cloud SQL a través de Cloud Run, no se requiere proxy TCP"
+    # Opcional: Verificar que el socket esté disponible
+    if [ -d "/cloudsql" ]; then
+      echo "📁 Sockets disponibles en /cloudsql:"
+      ls -la /cloudsql/ 2>/dev/null || echo "   (directorio vacío o no accesible)"
+    fi
+    
+    # Ajustar DATABASE_URL para usar socket Unix si está configurada para TCP local
+    if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "127.0.0.1\|localhost"; then
+      echo "🔧 Ajustando DATABASE_URL para usar socket Unix de Cloud SQL..."
+      
+      # Buscar el directorio del socket de Cloud SQL
+      # Cloud Run monta el socket en /cloudsql/[INSTANCE_CONNECTION_NAME]
+      CLOUD_SQL_DIR=""
+      if [ -d "/cloudsql" ]; then
+        # Obtener el primer directorio disponible (normalmente hay uno)
+        CLOUD_SQL_DIR=$(ls -d /cloudsql/* 2>/dev/null | head -1)
+      fi
+      
+      if [ -n "$CLOUD_SQL_DIR" ] && [ -d "$CLOUD_SQL_DIR" ]; then
+        # Extraer componentes de la URL original
+        # Formato: postgresql://user:password@host:port/database?params
+        DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
+        DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
+        DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+        DB_PARAMS=$(echo "$DATABASE_URL" | sed -n 's|.*?\(.*\)|\1|p')
+        
+        # Construir nueva URL con socket Unix
+        # Formato para Prisma: postgresql://user:password@/database?host=/cloudsql/INSTANCE
+        if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
+          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_DIR}&${DB_PARAMS}"
+        elif [ -n "$DB_PARAMS" ]; then
+          # Si ya tiene host=, reemplazarlo
+          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_DIR}|g")"
+        else
+          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_DIR}"
+        fi
+        echo "✅ DATABASE_URL ajustada para usar socket Unix: ${CLOUD_SQL_DIR}"
+      else
+        echo "⚠️  No se encontró directorio de socket de Cloud SQL, usando DATABASE_URL original"
+        echo "⚠️  Asegúrate de que DATABASE_URL en los secrets use el formato correcto para Cloud SQL"
+      fi
+    fi
+  else
+    # Solo esperar proxy TCP si NO estamos en Cloud Run con Cloud SQL
+    echo "🔍 No se detectó Cloud SQL de Cloud Run, esperando proxy TCP..."
+    wait_for_cloud_sql_proxy
+  fi
   
   # Verificar que DATABASE_URL esté configurado
   if [ -z "$DATABASE_URL" ]; then
