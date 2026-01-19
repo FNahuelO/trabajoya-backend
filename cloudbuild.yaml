@@ -55,14 +55,14 @@ steps:
         echo "📦 Configurando Cloud Run Job para migraciones..."
         
         # Crear o actualizar el job de migraciones
-        CLOUD_SQL_INSTANCE="$PROJECT_ID:${_REGION}:trabajoya-db"
+        CLOUD_SQL_INSTANCE="$PROJECT_ID:us-central1:trabajoya-db"
         
         # Intentar crear el job primero
-        if ! gcloud run jobs describe trabajoya-migrate --region=${_REGION} >/dev/null 2>&1; then
+        if ! gcloud run jobs describe trabajoya-migrate --region=us-central1 >/dev/null 2>&1; then
           echo "📦 Creando nuevo job trabajoya-migrate..."
           gcloud run jobs create trabajoya-migrate \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-            --region=${_REGION} \
+            --region=us-central1 \
             --command="sh" \
             --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
@@ -77,7 +77,7 @@ steps:
           # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
           gcloud run jobs update trabajoya-migrate \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-            --region=${_REGION} \
+            --region=us-central1 \
             --command="sh" \
             --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
@@ -91,7 +91,7 @@ steps:
         
         echo "🚀 Ejecutando migraciones..."
         gcloud run jobs execute trabajoya-migrate \
-          --region=${_REGION} \
+          --region=us-central1 \
           --wait || echo "⚠️  Error en migraciones, pero continuando..."
 
   # Crear/actualizar Cloud Run Job para seed
@@ -103,14 +103,14 @@ steps:
         echo "🌱 Configurando Cloud Run Job para seed..."
         
         # Crear o actualizar el job de seed
-        CLOUD_SQL_INSTANCE="$PROJECT_ID:${_REGION}:trabajoya-db"
+        CLOUD_SQL_INSTANCE="$PROJECT_ID:us-central1:trabajoya-db"
         
         # Intentar crear el job primero
-        if ! gcloud run jobs describe trabajoya-seed --region=${_REGION} >/dev/null 2>&1; then
+        if ! gcloud run jobs describe trabajoya-seed --region=us-central1 >/dev/null 2>&1; then
           echo "📦 Creando nuevo job trabajoya-seed..."
           gcloud run jobs create trabajoya-seed \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-            --region=${_REGION} \
+            --region=us-central1 \
             --command="sh" \
             --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
@@ -125,7 +125,7 @@ steps:
           # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
           gcloud run jobs update trabajoya-seed \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-            --region=${_REGION} \
+            --region=us-central1 \
             --command="sh" \
             --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
@@ -139,7 +139,7 @@ steps:
         
         echo "🚀 Ejecutando seed (solo si la DB está vacía)..."
         gcloud run jobs execute trabajoya-seed \
-          --region=${_REGION} \
+          --region=us-central1 \
           --wait || echo "⚠️  Error en seed, pero continuando..."
 
 options:
