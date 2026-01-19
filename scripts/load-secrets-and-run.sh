@@ -182,7 +182,25 @@ if echo "$@" | grep -q "prisma.*migrate"; then
     if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "/cloudsql/"; then
       echo "✅ DATABASE_URL ya está configurada para usar socket Unix de Cloud SQL"
       # Extraer la ruta del socket para verificación
-      SOCKET_PATH=$(echo "$DATABASE_URL" | sed -n 's|.*host=\([^&]*\).*|\1|p')
+      # Usar Node.js para extraer el socket path de manera segura
+      SOCKET_PATH=$(node <<NODE_SCRIPT
+        const url = require('url');
+        try {
+          const parsed = new url.URL('${DATABASE_URL}');
+          const hostParam = parsed.searchParams.get('host');
+          if (hostParam) {
+            console.log(hostParam);
+          }
+        } catch (e) {
+          // Fallback: usar regex simple
+          const match = '${DATABASE_URL}'.match(/host=([^&]*)/);
+          if (match) {
+            console.log(match[1]);
+          }
+        }
+NODE_SCRIPT
+      )
+      
       if [ -n "$SOCKET_PATH" ]; then
         echo "📁 Socket configurado en: ${SOCKET_PATH}"
         # Verificar que el nombre de conexión sea correcto
@@ -197,12 +215,30 @@ if echo "$@" | grep -q "prisma.*migrate"; then
             const originalUrl = '${DATABASE_URL}';
             const correctSocket = '${CORRECT_SOCKET}';
             try {
+              // Parsear la URL original
               const parsed = new url.URL(originalUrl);
-              parsed.searchParams.set('host', correctSocket);
-              console.log(parsed.toString());
+              
+              // Extraer componentes
+              const protocol = parsed.protocol; // postgresql:
+              const username = parsed.username;
+              const password = parsed.password;
+              const pathname = parsed.pathname; // /database
+              const searchParams = new URLSearchParams(parsed.search);
+              
+              // Actualizar el parámetro host
+              searchParams.set('host', correctSocket);
+              
+              // Construir la nueva URL manualmente para asegurar formato correcto
+              // Formato: postgresql://user:password@/database?host=...&other_params
+              const auth = password ? \`\${username}:\${password}\` : username;
+              const queryString = searchParams.toString();
+              const newUrl = \`\${protocol}//\${auth}@\${pathname}?\${queryString}\`;
+              
+              console.log(newUrl);
             } catch (e) {
-              // Fallback: reemplazo simple
-              console.log(originalUrl.replace(/host=[^&]*/, \`host=\${correctSocket}\`));
+              // Fallback: reemplazo simple con regex
+              const corrected = originalUrl.replace(/host=[^&]*/, \`host=\${correctSocket}\`);
+              console.log(corrected);
             }
 NODE_SCRIPT
           )
@@ -264,24 +300,23 @@ NODE_SCRIPT
             const parsed = new url.URL(originalUrl);
             const socketPath = '${CLOUD_SQL_PATH}';
             
-            // Construir nueva URL con socket Unix
+            // Extraer componentes de la URL original
+            const protocol = parsed.protocol; // postgresql:
+            const username = parsed.username;
+            const password = parsed.password;
+            const pathname = parsed.pathname || '/trabajoya'; // /database o /trabajoya
+            const searchParams = new URLSearchParams(parsed.search);
+            
+            // Actualizar el parámetro host con el socket Unix
+            searchParams.set('host', socketPath);
+            
+            // Construir la nueva URL manualmente para asegurar formato correcto
             // Formato: postgresql://user:password@/database?host=/cloudsql/INSTANCE&other_params
-            const newUrl = new url.URL(originalUrl);
-            newUrl.hostname = ''; // Vaciar hostname para usar socket
-            newUrl.port = '';     // Vaciar puerto
+            const auth = password ? \`\${username}:\${password}\` : username;
+            const queryString = searchParams.toString();
+            const newUrl = \`\${protocol}//\${auth}@\${pathname}?\${queryString}\`;
             
-            // Actualizar parámetros de consulta
-            newUrl.searchParams.set('host', socketPath);
-            
-            // Mantener otros parámetros existentes (excepto host si existía)
-            const originalParams = new url.URL(originalUrl).searchParams;
-            originalParams.forEach((value, key) => {
-              if (key !== 'host') {
-                newUrl.searchParams.set(key, value);
-              }
-            });
-            
-            console.log(newUrl.toString());
+            console.log(newUrl);
           } catch (e) {
             // Si falla el parsing, intentar método simple
             const match = originalUrl.match(/^postgresql:\/\/([^:]+):([^@]+)@([^\/]+)?\/([^?]+)(\?.*)?$/);
@@ -313,17 +348,23 @@ NODE_SCRIPT
             const socketPath = '${CLOUD_SQL_PATH}';
             try {
               const parsed = new url.URL(originalUrl);
-              const newUrl = new url.URL(originalUrl);
-              newUrl.hostname = '';
-              newUrl.port = '';
-              newUrl.searchParams.set('host', socketPath);
-              const originalParams = new url.URL(originalUrl).searchParams;
-              originalParams.forEach((value, key) => {
-                if (key !== 'host') {
-                  newUrl.searchParams.set(key, value);
-                }
-              });
-              console.log(newUrl.toString());
+              
+              // Extraer componentes
+              const protocol = parsed.protocol;
+              const username = parsed.username;
+              const password = parsed.password;
+              const pathname = parsed.pathname || '/trabajoya';
+              const searchParams = new URLSearchParams(parsed.search);
+              
+              // Actualizar host
+              searchParams.set('host', socketPath);
+              
+              // Construir URL manualmente
+              const auth = password ? \`\${username}:\${password}\` : username;
+              const queryString = searchParams.toString();
+              const newUrl = \`\${protocol}//\${auth}@\${pathname}?\${queryString}\`;
+              
+              console.log(newUrl);
             } catch (e) {
               const match = originalUrl.match(/^postgresql:\/\/([^:]+):([^@]+)@([^\/]+)?\/([^?]+)(\?.*)?$/);
               if (match) {
