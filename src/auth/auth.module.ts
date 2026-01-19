@@ -15,7 +15,10 @@ import { TermsModule } from "../terms/terms.module";
     MailModule,
     TermsModule,
     JwtModule.register({
-      secret: process.env.JWT_ACCESS_SECRET,
+      // En Cloud Run, el secreto puede ser inyectado por Secret Manager luego del bootstrap.
+      // JwtStrategy valida el token con secretOrKeyProvider (runtime), así que acá ponemos
+      // un fallback para evitar crash al iniciar.
+      secret: process.env.JWT_ACCESS_SECRET || "temporary-startup-secret",
       signOptions: { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m" },
     }),
   ],
