@@ -12,5 +12,5 @@ import { UploadModule } from "../upload/upload.module";
 })
 export class MediaModule {}
 
-// MediaService tiene acceso a GcpCdnService, S3UploadService y GCSUploadService
+// MediaService tiene acceso a GcpCdnService y GCSUploadService
 // a través de UploadModule que los exporta

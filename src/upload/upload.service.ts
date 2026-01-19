@@ -1,7 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
-import { S3UploadService } from "./s3-upload.service";
 import { GCSUploadService } from "./gcs-upload.service";
 import { CVParserService } from "./cv-parser.service";
 import { ExtractedCVData } from "../cv/types/extracted-cv-data.type";
@@ -40,27 +38,14 @@ export class UploadService {
     logo: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
   };
 
-  private uploadService: S3UploadService | GCSUploadService;
-  private useGCS: boolean;
-
   constructor(
     private prisma: PrismaService,
-    private s3UploadService: S3UploadService,
     private gcsUploadService: GCSUploadService,
-    private cvParser: CVParserService,
-    private configService: ConfigService
-  ) {
-    // Detectar qué servicio usar basado en variables de entorno
-    // Si GCS_BUCKET_NAME está configurado, usar GCS, si no usar S3
-    const gcsBucketName = this.configService.get<string>("GCS_BUCKET_NAME");
-    this.useGCS = !!gcsBucketName;
-    this.uploadService = this.useGCS ? this.gcsUploadService : this.s3UploadService;
-    
-    console.log(`[UploadService] Usando: ${this.useGCS ? 'Google Cloud Storage' : 'AWS S3'}`);
-  }
+    private cvParser: CVParserService
+  ) {}
 
   /**
-   * Genera una presigned URL para subir un archivo a S3
+   * Genera una presigned URL para subir un archivo a Google Cloud Storage
    */
   async presignUpload(
     userId: string,
@@ -87,14 +72,14 @@ export class UploadService {
 
     // Generar key
     const fileExtension = this.getFileExtensionFromMimeType(dto.mimeType);
-    const key = this.uploadService.generateKey(
+    const key = this.gcsUploadService.generateKey(
       userId,
       dto.type,
       fileExtension
     );
 
     // Generar presigned URL
-    const { uploadUrl } = await this.uploadService.generatePresignedUrl(
+    const { uploadUrl } = await this.gcsUploadService.generatePresignedUrl(
       key,
       {
         contentType: dto.mimeType,
@@ -104,9 +89,7 @@ export class UploadService {
     );
 
     // Obtener el nombre del bucket desde el servicio
-    const bucketName = this.useGCS 
-      ? (this.uploadService as GCSUploadService).bucketName 
-      : (this.uploadService as S3UploadService).bucketName;
+    const bucketName = this.gcsUploadService.bucketName;
 
     // Crear registro en base de datos con status PENDING
     await this.prisma.mediaAsset.create({
@@ -125,7 +108,7 @@ export class UploadService {
   }
 
   /**
-   * Completa el proceso de upload verificando el archivo en S3
+   * Completa el proceso de upload verificando el archivo en Cloud Storage
    */
   async completeUpload(
     userId: string,
@@ -146,16 +129,16 @@ export class UploadService {
     }
 
     // Verificar que el archivo existe en el storage
-    const storageObject = await this.uploadService.headObject(dto.key);
+    const storageObject = await this.gcsUploadService.headObject(dto.key);
     if (!storageObject.exists) {
-      throw new NotFoundException(`El archivo no existe en ${this.useGCS ? 'Cloud Storage' : 'S3'}`);
+      throw new NotFoundException("El archivo no existe en Cloud Storage");
     }
 
     // Validar tamaño
     const maxSize = this.maxFileSizeByType[mediaAsset.type.toLowerCase() as MediaType];
     if (storageObject.contentLength && storageObject.contentLength > maxSize) {
       // Eliminar del storage
-      await this.uploadService.deleteObject(dto.key);
+      await this.gcsUploadService.deleteObject(dto.key);
       // Actualizar status a FAILED
       await this.prisma.mediaAsset.update({
         where: { id: mediaAsset.id },
@@ -180,7 +163,7 @@ export class UploadService {
     if (mediaAsset.type === "CV" && this.cvParser) {
       try {
         // Descargar el PDF desde el storage
-        const pdfBuffer = await this.uploadService.getObject(dto.key);
+        const pdfBuffer = await this.gcsUploadService.getObject(dto.key);
         
         // Extraer texto del PDF
         const text = await this.extractTextFromPdf(pdfBuffer);
@@ -341,7 +324,7 @@ export class UploadService {
     }
 
     // Descargar el PDF desde el storage
-    const pdfBuffer = await this.uploadService.getObject(key);
+    const pdfBuffer = await this.gcsUploadService.getObject(key);
     
     // Extraer texto del PDF
     const text = await this.extractTextFromPdf(pdfBuffer);

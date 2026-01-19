@@ -6,7 +6,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { AtsService } from "./ats.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
-import { S3UploadService } from "../upload/s3-upload.service";
+import { GCSUploadService } from "../upload/gcs-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -15,7 +15,7 @@ export class PostulantesService {
     private prisma: PrismaService,
     private atsService: AtsService,
     private gcpCdnService: GcpCdnService,
-    private s3UploadService: S3UploadService
+    private gcsUploadService: GCSUploadService
   ) {}
 
   async createByUser(userId: string, dto: any) {
@@ -110,7 +110,7 @@ export class PostulantesService {
         if (this.gcpCdnService.isCdnConfigured()) {
           avatarUrl = await this.gcpCdnService.getCdnUrl(profile.profilePicture);
         } else {
-          avatarUrl = await this.s3UploadService.getObjectUrl(
+          avatarUrl = await this.gcsUploadService.getObjectUrl(
             profile.profilePicture,
             3600
           );
@@ -129,7 +129,7 @@ export class PostulantesService {
         if (this.gcpCdnService.isCdnConfigured()) {
           videoUrl = await this.gcpCdnService.getCdnUrl(profile.videoUrl);
         } else {
-          videoUrl = await this.s3UploadService.getObjectUrl(
+          videoUrl = await this.gcsUploadService.getObjectUrl(
             profile.videoUrl,
             3600
           );
@@ -222,7 +222,7 @@ export class PostulantesService {
 
       // Eliminar el archivo de S3
       try {
-        await this.s3UploadService.deleteObject(s3Key);
+        await this.gcsUploadService.deleteObject(s3Key);
         console.log(`Video eliminado de S3: ${s3Key}`);
       } catch (s3Error: any) {
         // Si el archivo no existe en S3, continuar de todas formas

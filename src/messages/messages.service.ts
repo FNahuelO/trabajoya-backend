@@ -10,8 +10,8 @@ import {
   MessageResponseDto,
   ConversationResponseDto,
 } from "./dto";
-import { S3UploadService } from "../upload/s3-upload.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
+import { GCSUploadService } from "../upload/gcs-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -19,7 +19,7 @@ export class MessagesService {
   constructor(
     private prisma: PrismaService,
     private gcpCdnService: GcpCdnService,
-    private s3UploadService: S3UploadService
+    private gcsUploadService: GCSUploadService
   ) {}
 
   async sendMessage(
@@ -492,7 +492,7 @@ export class MessagesService {
             user.postulante.profilePicture
           );
         } else {
-          profilePicture = await this.s3UploadService.getObjectUrl(
+          profilePicture = await this.gcsUploadService.getObjectUrl(
             user.postulante.profilePicture,
             3600
           );
@@ -511,7 +511,7 @@ export class MessagesService {
         if (this.gcpCdnService.isCdnConfigured()) {
           logo = await this.gcpCdnService.getCdnUrl(user.empresa.logo);
         } else {
-          logo = await this.s3UploadService.getObjectUrl(user.empresa.logo, 3600);
+          logo = await this.gcsUploadService.getObjectUrl(user.empresa.logo, 3600);
         }
       } catch (error) {
         console.error("Error generando URL para logo:", error);

@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
-import { S3UploadService } from "../upload/s3-upload.service";
+import { GCSUploadService } from "../upload/gcs-upload.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -13,7 +13,7 @@ export class JobsService {
   constructor(
     private prisma: PrismaService,
     private gcpCdnService: GcpCdnService,
-    private s3UploadService: S3UploadService
+    private gcsUploadService: GCSUploadService
   ) {}
 
   async search(q: any) {
@@ -125,7 +125,7 @@ export class JobsService {
               (job.empresa as any).logo = await this.gcpCdnService.getCdnUrl(logo);
             } else {
               (job.empresa as any).logo =
-                await this.s3UploadService.getObjectUrl(logo, 3600);
+                await this.gcsUploadService.getObjectUrl(logo, 3600);
             }
           } catch (error) {
             console.error("Error generando URL para logo en jobs:", error);
@@ -181,7 +181,7 @@ export class JobsService {
             if (this.gcpCdnService.isCdnConfigured()) {
               (job.empresa as any).logo = await this.gcpCdnService.getCdnUrl(logo);
             } else {
-              (job.empresa as any).logo = await this.s3UploadService.getObjectUrl(
+              (job.empresa as any).logo = await this.gcsUploadService.getObjectUrl(
                 logo,
                 3600
               );

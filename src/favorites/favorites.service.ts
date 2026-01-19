@@ -1,14 +1,14 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
-import { S3UploadService } from "../upload/s3-upload.service";
+import { GCSUploadService } from "../upload/gcs-upload.service";
 
 @Injectable()
 export class FavoritesService {
   constructor(
     private prisma: PrismaService,
     private gcpCdnService: GcpCdnService,
-    private s3UploadService: S3UploadService
+    private gcsUploadService: GCSUploadService
   ) {}
 
   async listJobFavorites(userId: string) {
@@ -32,7 +32,7 @@ export class FavoritesService {
                 favorite.job.empresa.logo
               );
             } else {
-              favorite.job.empresa.logo = await this.s3UploadService.getObjectUrl(
+              favorite.job.empresa.logo = await this.gcsUploadService.getObjectUrl(
                 favorite.job.empresa.logo,
                 3600
               );
@@ -66,7 +66,7 @@ export class FavoritesService {
                 favorite.empresa.logo
               );
             } else {
-              favorite.empresa.logo = await this.s3UploadService.getObjectUrl(
+              favorite.empresa.logo = await this.gcsUploadService.getObjectUrl(
                 favorite.empresa.logo,
                 3600
               );

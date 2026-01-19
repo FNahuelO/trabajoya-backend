@@ -6,26 +6,16 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
-import { S3UploadService } from "../upload/s3-upload.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 
 @Injectable()
 export class MediaService {
-  private uploadService: S3UploadService | GCSUploadService;
-  private useGCS: boolean;
-
   constructor(
     private prisma: PrismaService,
     private gcpCdnService: GcpCdnService,
-    private s3UploadService: S3UploadService,
     private gcsUploadService: GCSUploadService,
     private configService: ConfigService
-  ) {
-    // Detectar qué servicio usar basado en variables de entorno
-    const gcsBucketName = this.configService.get<string>("GCS_BUCKET_NAME");
-    this.useGCS = !!gcsBucketName;
-    this.uploadService = this.useGCS ? this.gcsUploadService : this.s3UploadService;
-  }
+  ) {}
 
   /**
    * Obtiene acceso a un archivo de media mediante URL firmada (GCP CDN o Storage)
@@ -79,7 +69,7 @@ export class MediaService {
     if (this.gcpCdnService.isCdnConfigured()) {
       signedUrl = await this.gcpCdnService.getCdnUrl(mediaAsset.key, expiresIn);
     } else {
-      signedUrl = await this.uploadService.getObjectUrl(mediaAsset.key, expiresIn);
+      signedUrl = await this.gcsUploadService.getObjectUrl(mediaAsset.key, expiresIn);
     }
 
     return {

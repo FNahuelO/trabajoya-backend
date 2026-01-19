@@ -5,8 +5,8 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { TermsType, UserType } from "@prisma/client";
-import { S3UploadService } from "../upload/s3-upload.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
+import { GCSUploadService } from "../upload/gcs-upload.service";
 
 interface MulterFile {
   fieldname: string;
@@ -21,7 +21,7 @@ interface MulterFile {
 export class TermsService {
   constructor(
     private prisma: PrismaService,
-    private s3UploadService: S3UploadService,
+    private gcsUploadService: GCSUploadService,
     private gcpCdnService: GcpCdnService
   ) {}
 
@@ -300,12 +300,12 @@ export class TermsService {
       },
     });
 
-    // Generar key para S3
+    // Generar key para Cloud Storage
     const timestamp = Date.now();
     const key = `terms/${type.toLowerCase()}/${version}-${timestamp}.pdf`;
 
-    // Subir archivo a S3
-    await this.s3UploadService.uploadBuffer(
+    // Subir archivo a Cloud Storage
+    await this.gcsUploadService.uploadBuffer(
       key,
       file.buffer,
       file.mimetype

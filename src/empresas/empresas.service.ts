@@ -9,7 +9,7 @@ import { ContentModerationService } from "../common/services/content-moderation.
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PaymentsService } from "../payments/payments.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
-import { S3UploadService } from "../upload/s3-upload.service";
+import { GCSUploadService } from "../upload/gcs-upload.service";
 import { PromotionsService } from "../promotions/promotions.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
@@ -21,7 +21,7 @@ export class EmpresasService {
     private subscriptionsService: SubscriptionsService,
     private paymentsService: PaymentsService,
     private gcpCdnService: GcpCdnService,
-    private s3UploadService: S3UploadService,
+    private gcsUploadService: GCSUploadService,
     private configService: ConfigService,
     private promotionsService: PromotionsService
   ) {}
@@ -51,7 +51,7 @@ export class EmpresasService {
         if (this.gcpCdnService.isCdnConfigured()) {
           profile.logo = await this.gcpCdnService.getCdnUrl(profile.logo);
         } else {
-          profile.logo = await this.s3UploadService.getObjectUrl(
+          profile.logo = await this.gcsUploadService.getObjectUrl(
             profile.logo,
             3600
           );
@@ -125,7 +125,7 @@ export class EmpresasService {
             if (this.gcpCdnService.isCdnConfigured()) {
               empresa.logo = await this.gcpCdnService.getCdnUrl(empresa.logo);
             } else {
-              empresa.logo = await this.s3UploadService.getObjectUrl(empresa.logo, 3600);
+              empresa.logo = await this.gcsUploadService.getObjectUrl(empresa.logo, 3600);
             }
           } catch (error) {
             console.error("Error generando URL para logo:", error);
@@ -506,7 +506,7 @@ export class EmpresasService {
               if (this.gcpCdnService.isCdnConfigured()) {
                 avatarUrl = await this.gcpCdnService.getCdnUrl(profilePicture);
               } else {
-                avatarUrl = await this.s3UploadService.getObjectUrl(profilePicture, 3600);
+                avatarUrl = await this.gcsUploadService.getObjectUrl(profilePicture, 3600);
               }
             } catch (error) {
               console.error("Error generando URL para avatar de postulante:", error);
