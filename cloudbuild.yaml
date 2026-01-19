@@ -18,48 +18,7 @@ steps:
       - '--all-tags'
       - 'gcr.io/$PROJECT_ID/trabajoya-backend'
 
-  # Desplegar a Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "🧹 Limpiando secrets y conexiones Cloud SQL antiguas (si existen)..."
-        gcloud run services update trabajoya-backend \
-          --region=${_REGION} \
-          --clear-secrets \
-          --clear-cloudsql-instances \
-          --no-traffic || echo "⚠️  No se pudieron limpiar (puede ser normal si el servicio no existe)"
-        
-        echo "🚀 Desplegando servicio..."
-        gcloud run deploy trabajoya-backend \
-          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --region=${_REGION} \
-          --platform=managed \
-          --allow-unauthenticated \
-          --memory=${_MEMORY} \
-          --cpu=${_CPU} \
-          --min-instances=${_MIN_INSTANCES} \
-          --max-instances=${_MAX_INSTANCES} \
-          --port=8080 \
-          --timeout=300 \
-          --concurrency=${_CONCURRENCY} \
-          --set-env-vars="NODE_ENV=production" \
-          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
-          --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
-        
-        # Verificar que Cloud SQL esté configurado correctamente
-        echo "✅ Verificando configuración de Cloud SQL..."
-        CURR_SQL_INST=$$(gcloud run services describe trabajoya-backend --region=${_REGION} --format="value(spec.template.spec.containers[0].cloudSqlInstances)" 2>/dev/null || echo "")
-        if [ -z "$$CURR_SQL_INST" ] || [ "$$CURR_SQL_INST" != "${_CLOUD_SQL_INSTANCE}" ]; then
-          echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
-          gcloud run services update trabajoya-backend \
-            --region=${_REGION} \
-            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
-        else
-          echo "✅ Cloud SQL ya está configurado correctamente"
-        fi
-
+  # Paso 1: Configurar y ejecutar secrets primero (migraciones)
   # Crear/actualizar Cloud Run Job para migraciones
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
@@ -121,6 +80,7 @@ steps:
           --region=us-central1 \
           --wait || echo "⚠️  Error en migraciones, pero continuando..."
 
+  # Paso 2: Ejecutar seed después de migraciones
   # Crear/actualizar Cloud Run Job para seed
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
@@ -187,6 +147,49 @@ steps:
         gcloud run jobs execute trabajoya-seed \
           --region=us-central1 \
           --wait || echo "⚠️  Error en seed, pero continuando..."
+
+  # Paso 3: Desplegar servicio principal DESPUÉS de que los secrets estén configurados y la DB esté lista
+  # Desplegar a Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🧹 Limpiando secrets y conexiones Cloud SQL antiguas (si existen)..."
+        gcloud run services update trabajoya-backend \
+          --region=${_REGION} \
+          --clear-secrets \
+          --clear-cloudsql-instances \
+          --no-traffic || echo "⚠️  No se pudieron limpiar (puede ser normal si el servicio no existe)"
+        
+        echo "🚀 Desplegando servicio (secrets y DB ya configurados)..."
+        gcloud run deploy trabajoya-backend \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --region=${_REGION} \
+          --platform=managed \
+          --allow-unauthenticated \
+          --memory=${_MEMORY} \
+          --cpu=${_CPU} \
+          --min-instances=${_MIN_INSTANCES} \
+          --max-instances=${_MAX_INSTANCES} \
+          --port=8080 \
+          --timeout=300 \
+          --concurrency=${_CONCURRENCY} \
+          --set-env-vars="NODE_ENV=production" \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+        
+        # Verificar que Cloud SQL esté configurado correctamente
+        echo "✅ Verificando configuración de Cloud SQL..."
+        CURR_SQL_INST=$$(gcloud run services describe trabajoya-backend --region=${_REGION} --format="value(spec.template.spec.containers[0].cloudSqlInstances)" 2>/dev/null || echo "")
+        if [ -z "$$CURR_SQL_INST" ] || [ "$$CURR_SQL_INST" != "${_CLOUD_SQL_INSTANCE}" ]; then
+          echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
+          gcloud run services update trabajoya-backend \
+            --region=${_REGION} \
+            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+        else
+          echo "✅ Cloud SQL ya está configurado correctamente"
+        fi
 
 options:
   logging: CLOUD_LOGGING_ONLY
