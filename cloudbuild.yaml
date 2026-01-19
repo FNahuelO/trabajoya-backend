@@ -92,8 +92,7 @@ steps:
           
           # Verificar que Cloud SQL esté configurado (solo verificación, no bloquea)
           echo "✅ Verificando configuración de Cloud SQL..."
-          CLOUD_SQL_CONFIG=$(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(spec.template.spec.cloudSqlInstances)" 2>/dev/null || echo "")
-          if [ -z "$CLOUD_SQL_CONFIG" ] || [ "$CLOUD_SQL_CONFIG" != "${_CLOUD_SQL_INSTANCE}" ]; then
+          if [ -z "$_CLOUD_SQL_CONFIG" ] || [ "$_CLOUD_SQL_CONFIG" != "${_CLOUD_SQL_INSTANCE}" ]; then
             echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
             gcloud run jobs update trabajoya-migrate \
               --region=us-central1 \
@@ -153,8 +152,7 @@ steps:
           
           # Verificar que Cloud SQL esté configurado (solo verificación, no bloquea)
           echo "✅ Verificando configuración de Cloud SQL..."
-          CLOUD_SQL_CONFIG=$(gcloud run jobs describe trabajoya-seed --region=us-central1 --format="value(spec.template.spec.cloudSqlInstances)" 2>/dev/null || echo "")
-          if [ -z "$CLOUD_SQL_CONFIG" ] || [ "$CLOUD_SQL_CONFIG" != "${_CLOUD_SQL_INSTANCE}" ]; then
+          if [ -z "$_CLOUD_SQL_CONFIG" ] || [ "$_CLOUD_SQL_CONFIG" != "${_CLOUD_SQL_INSTANCE}" ]; then
             echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
             gcloud run jobs update trabajoya-seed \
               --region=us-central1 \
@@ -181,6 +179,7 @@ substitutions:
   _MAX_INSTANCES: '10'
   _CONCURRENCY: '80'
   _CLOUD_SQL_INSTANCE: "$PROJECT_ID:us-central1:trabajoya-db"
+  _CLOUD_SQL_CONFIG: $(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(spec.template.spec.cloudSqlInstances)" 2>/dev/null || echo "")
 
 
 timeout: '1200s'
