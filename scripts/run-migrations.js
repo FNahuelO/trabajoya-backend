@@ -503,7 +503,91 @@ async function main() {
       console.log('⚠️  Socket Unix no disponible, usando DATABASE_URL original');
     }
     
-    // 4. Ejecutar migraciones con reintentos
+    // 4. Resolver migraciones fallidas antes de ejecutar nuevas
+    console.log('🔍 Verificando migraciones fallidas...');
+    try {
+      // Verificar estado de migraciones (capturar stderr también porque Prisma puede escribir errores allí)
+      let migrateStatus = '';
+      let hasFailedMigrations = false;
+      
+      try {
+        migrateStatus = execSync('npx prisma migrate status', {
+          encoding: 'utf8',
+          env: process.env,
+          cwd: process.cwd(),
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+      } catch (statusError) {
+        // Prisma migrate status puede fallar con código 1 si hay migraciones fallidas
+        migrateStatus = statusError.stdout?.toString() || statusError.stderr?.toString() || statusError.message || '';
+        hasFailedMigrations = migrateStatus.includes('failed') || 
+                             migrateStatus.includes('P3009') ||
+                             statusError.message.includes('failed migrations');
+      }
+      
+      // Si hay migraciones fallidas, resolverlas
+      if (hasFailedMigrations || migrateStatus.includes('failed') || migrateStatus.includes('P3009')) {
+        console.log('⚠️  Se detectaron migraciones fallidas, resolviéndolas automáticamente...');
+        
+        // Intentar resolver migraciones fallidas específicas mencionadas en el error
+        const failedMigrationMatch = migrateStatus.match(/migration.*?(?:started|failed).*?(\d+_\w+)/i);
+        if (failedMigrationMatch) {
+          const failedMigrationName = failedMigrationMatch[1];
+          try {
+            console.log(`🔄 Resolviendo migración fallida específica: ${failedMigrationName}`);
+            execSync(`npx prisma migrate resolve --rolled-back ${failedMigrationName}`, {
+              encoding: 'utf8',
+              env: process.env,
+              cwd: process.cwd(),
+              stdio: 'pipe'
+            });
+            console.log(`✅ Migración ${failedMigrationName} marcada como rolled-back`);
+          } catch (resolveError) {
+            console.log(`⚠️  No se pudo resolver ${failedMigrationName}: ${resolveError.message}`);
+          }
+        }
+        
+        // También intentar resolver todas las migraciones antiguas (excepto 0_init) como rolled-back
+        // para que solo se ejecute la migración inicial consolidada
+        const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
+        if (existsSync(migrationsDir)) {
+          const fs = require('fs');
+          const migrations = fs.readdirSync(migrationsDir, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory() && dirent.name !== '0_init')
+            .map(dirent => dirent.name)
+            .sort();
+          
+          console.log(`🔄 Resolviendo migraciones antiguas (${migrations.length} encontradas)...`);
+          for (const migrationName of migrations) {
+            try {
+              execSync(`npx prisma migrate resolve --rolled-back ${migrationName}`, {
+                encoding: 'utf8',
+                env: process.env,
+                cwd: process.cwd(),
+                stdio: 'pipe'
+              });
+              console.log(`✅ Migración antigua ${migrationName} marcada como rolled-back`);
+            } catch (resolveError) {
+              // Si la migración no está fallida o no existe, ignorar el error
+              if (!resolveError.message.includes('not found') && 
+                  !resolveError.message.includes('does not exist') &&
+                  !resolveError.message.includes('is not in a failed state')) {
+                // Ignorar errores silenciosamente para migraciones que no están fallidas
+              }
+            }
+          }
+        }
+        
+        console.log('✅ Migraciones fallidas resueltas, continuando con migración inicial...');
+      } else {
+        console.log('✅ No se detectaron migraciones fallidas');
+      }
+    } catch (statusError) {
+      // Si hay un error al verificar el estado, continuar
+      console.log('⚠️  No se pudo verificar estado de migraciones, continuando...');
+    }
+    
+    // 5. Ejecutar migraciones con reintentos
     const maxRetries = 5;
     const retryDelay = 10000;
     let attempt = 1;

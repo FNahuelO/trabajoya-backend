@@ -49,6 +49,18 @@ CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLE
 -- CreateEnum
 CREATE TYPE "PaymentMethod" AS ENUM ('PAYPAL', 'MERCADOPAGO', 'STRIPE');
 
+-- CreateEnum
+CREATE TYPE "PromotionStatus" AS ENUM ('AVAILABLE', 'CLAIMED', 'USED', 'EXPIRED');
+
+-- CreateEnum
+CREATE TYPE "IapPlatform" AS ENUM ('IOS', 'ANDROID');
+
+-- CreateEnum
+CREATE TYPE "EntitlementSource" AS ENUM ('APPLE_IAP', 'GOOGLE_PLAY', 'PROMO', 'MANUAL');
+
+-- CreateEnum
+CREATE TYPE "EntitlementStatus" AS ENUM ('ACTIVE', 'EXPIRED', 'REVOKED', 'REFUNDED');
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
@@ -477,6 +489,57 @@ CREATE TABLE "PushToken" (
     CONSTRAINT "PushToken_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "UserPromotion" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "promoKey" TEXT NOT NULL,
+    "status" "PromotionStatus" NOT NULL DEFAULT 'AVAILABLE',
+    "claimedAt" TIMESTAMP(3),
+    "usedAt" TIMESTAMP(3),
+    "metadata" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "UserPromotion_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "JobPostEntitlement" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "jobPostId" TEXT NOT NULL,
+    "source" "EntitlementSource" NOT NULL,
+    "planKey" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "status" "EntitlementStatus" NOT NULL DEFAULT 'ACTIVE',
+    "maxEdits" INTEGER NOT NULL DEFAULT 0,
+    "editsUsed" INTEGER NOT NULL DEFAULT 0,
+    "allowCategoryChange" BOOLEAN NOT NULL DEFAULT false,
+    "maxCategoryChanges" INTEGER NOT NULL DEFAULT 0,
+    "categoryChangesUsed" INTEGER NOT NULL DEFAULT 0,
+    "transactionId" TEXT,
+    "originalTransactionId" TEXT,
+    "rawPayload" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "JobPostEntitlement_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "IapProduct" (
+    "id" TEXT NOT NULL,
+    "productId" TEXT NOT NULL,
+    "platform" "IapPlatform" NOT NULL,
+    "planKey" TEXT NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "IapProduct_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -651,6 +714,57 @@ CREATE INDEX "PushToken_token_idx" ON "PushToken"("token");
 -- CreateIndex
 CREATE INDEX "PushToken_isActive_idx" ON "PushToken"("isActive");
 
+-- CreateIndex
+CREATE INDEX "UserPromotion_userId_idx" ON "UserPromotion"("userId");
+
+-- CreateIndex
+CREATE INDEX "UserPromotion_promoKey_idx" ON "UserPromotion"("promoKey");
+
+-- CreateIndex
+CREATE INDEX "UserPromotion_status_idx" ON "UserPromotion"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserPromotion_userId_promoKey_key" ON "UserPromotion"("userId", "promoKey");
+
+-- CreateIndex
+CREATE INDEX "JobPostEntitlement_userId_idx" ON "JobPostEntitlement"("userId");
+
+-- CreateIndex
+CREATE INDEX "JobPostEntitlement_jobPostId_idx" ON "JobPostEntitlement"("jobPostId");
+
+-- CreateIndex
+CREATE INDEX "JobPostEntitlement_planKey_idx" ON "JobPostEntitlement"("planKey");
+
+-- CreateIndex
+CREATE INDEX "JobPostEntitlement_status_idx" ON "JobPostEntitlement"("status");
+
+-- CreateIndex
+CREATE INDEX "JobPostEntitlement_expiresAt_idx" ON "JobPostEntitlement"("expiresAt");
+
+-- CreateIndex
+CREATE INDEX "JobPostEntitlement_transactionId_idx" ON "JobPostEntitlement"("transactionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "JobPostEntitlement_jobPostId_key" ON "JobPostEntitlement"("jobPostId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "JobPostEntitlement_transactionId_key" ON "JobPostEntitlement"("transactionId");
+
+-- CreateIndex
+CREATE INDEX "IapProduct_platform_idx" ON "IapProduct"("platform");
+
+-- CreateIndex
+CREATE INDEX "IapProduct_planKey_idx" ON "IapProduct"("planKey");
+
+-- CreateIndex
+CREATE INDEX "IapProduct_active_idx" ON "IapProduct"("active");
+
+-- CreateIndex
+CREATE INDEX "IapProduct_productId_idx" ON "IapProduct"("productId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "IapProduct_productId_platform_key" ON "IapProduct"("productId", "platform");
+
 -- AddForeignKey
 ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -734,4 +848,16 @@ ALTER TABLE "PaymentTransaction" ADD CONSTRAINT "PaymentTransaction_empresaId_fk
 
 -- AddForeignKey
 ALTER TABLE "PushToken" ADD CONSTRAINT "PushToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserPromotion" ADD CONSTRAINT "UserPromotion_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "JobPostEntitlement" ADD CONSTRAINT "JobPostEntitlement_jobPostId_fkey" FOREIGN KEY ("jobPostId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "JobPostEntitlement" ADD CONSTRAINT "JobPostEntitlement_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "IapProduct" ADD CONSTRAINT "IapProduct_planKey_fkey" FOREIGN KEY ("planKey") REFERENCES "Plan"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
