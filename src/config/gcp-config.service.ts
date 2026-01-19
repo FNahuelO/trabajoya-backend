@@ -53,7 +53,29 @@ export class GcpConfigService implements OnModuleInit {
 
       this.logger.log(`Cargando configuración desde Google Cloud Secret Manager (proyecto: ${this.projectId})...`);
 
-      // Lista de secretos a cargar
+      // Primero intentar cargar TRABAJOYA_SECRETS si está disponible como variable de entorno
+      // (viene de Cloud Run cuando se configura como secret)
+      if (process.env.TRABAJOYA_SECRETS) {
+        try {
+          this.logger.log("📦 Cargando configuración desde TRABAJOYA_SECRETS (secret único)...");
+          const parsed = JSON.parse(process.env.TRABAJOYA_SECRETS);
+          if (typeof parsed === "object") {
+            Object.keys(parsed).forEach((key) => {
+              process.env[key] = parsed[key];
+              this.loadedSecrets[key] = parsed[key];
+            });
+            this.logger.log(`✅ TRABAJOYA_SECRETS cargado con ${Object.keys(parsed).length} propiedades`);
+            this.logger.log(
+              `✅ Configuración de Google Cloud cargada correctamente (${Object.keys(this.loadedSecrets).length} secretos)`
+            );
+            return; // Ya cargamos todo desde el secret único, no necesitamos cargar más
+          }
+        } catch (error) {
+          this.logger.warn("⚠️  Error parseando TRABAJOYA_SECRETS, intentando cargar secrets individuales...");
+        }
+      }
+
+      // Si no hay TRABAJOYA_SECRETS, cargar secrets individuales (compatibilidad hacia atrás)
       const secretsToLoad = [
         "DATABASE_URL",
         "JWT_ACCESS_SECRET",
@@ -76,6 +98,7 @@ export class GcpConfigService implements OnModuleInit {
         "GCP_PROJECT_ID",
         // Secretos adicionales que pueden estar como JSON
         "APP_CONFIG",
+        "trabajoya-secrets", // También intentar cargar directamente desde Secret Manager
       ];
 
       // Cargar secretos individuales
@@ -117,7 +140,26 @@ export class GcpConfigService implements OnModuleInit {
         }
       }
 
-      // Si hay un secreto APP_CONFIG con múltiples valores, cargarlo
+      // Si hay un secreto trabajoya-secrets o APP_CONFIG con múltiples valores, cargarlo
+      if (this.loadedSecrets["trabajoya-secrets"]) {
+        try {
+          const trabajoyaSecrets = JSON.parse(this.loadedSecrets["trabajoya-secrets"] as string);
+          if (typeof trabajoyaSecrets === "object") {
+            Object.keys(trabajoyaSecrets).forEach((key) => {
+              if (!process.env[key]) {
+                process.env[key] = trabajoyaSecrets[key];
+                this.loadedSecrets[key] = trabajoyaSecrets[key];
+              }
+            });
+            this.logger.log(
+              `✅ trabajoya-secrets cargado con ${Object.keys(trabajoyaSecrets).length} propiedades`
+            );
+          }
+        } catch (error) {
+          this.logger.warn("⚠️  Error parseando trabajoya-secrets");
+        }
+      }
+
       if (this.loadedSecrets.APP_CONFIG) {
         try {
           const appConfig = JSON.parse(this.loadedSecrets.APP_CONFIG as string);

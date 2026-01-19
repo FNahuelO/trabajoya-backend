@@ -49,7 +49,7 @@ steps:
       - '--set-env-vars'
       - 'NODE_ENV=production'
       - '--update-secrets'
-      - 'DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest'
+      - 'TRABAJOYA_SECRETS=trabajoya-secrets:latest'
 
   # Crear/actualizar Cloud Run Job para migraciones
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -65,7 +65,7 @@ steps:
           --region=${_REGION} \
           --command="npx" \
           --args="prisma,migrate,deploy" \
-          --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production" \
           --memory=1Gi \
           --cpu=1 \
@@ -74,7 +74,7 @@ steps:
           || gcloud run jobs update trabajoya-migrate \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \
-          --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production"
         
         echo "🚀 Ejecutando migraciones..."
@@ -96,7 +96,7 @@ steps:
           --region=${_REGION} \
           --command="node" \
           --args="scripts/seed-if-empty.js" \
-          --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production" \
           --memory=1Gi \
           --cpu=1 \
@@ -105,7 +105,7 @@ steps:
           || gcloud run jobs update trabajoya-seed \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \
-          --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production"
         
         echo "🚀 Ejecutando seed (solo si la DB está vacía)..."
