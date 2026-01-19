@@ -178,9 +178,6 @@ function configureDatabaseURL() {
       // El driver usará el puerto por defecto de PostgreSQL (5432) o el especificado en PGPORT
       process.env.DATABASE_URL = newUrl;
       console.log('✅ DATABASE_URL configurada para socket Unix');
-      console.log(`🔍 URL: postgresql://***:***@localhost/${db}`);
-      console.log(`🔍 PGHOST=${socketPath} (node-postgres usará esto en lugar de localhost)`);
-      console.log(`🔍 PGDATABASE=${db}, PGUSER=${username}, PGPASSWORD=***`);
       
     } catch (error) {
       console.error('❌ ERROR al configurar DATABASE_URL:', error.message);
@@ -489,7 +486,6 @@ async function main() {
           delete process.env.PGPASSWORD;
           
           console.log('✅ DATABASE_URL configurada para usar Cloud SQL Proxy');
-          console.log(`🔍 URL: postgresql://***:***@127.0.0.1:5432/${db}`);
         } else {
           throw new Error('No se pudo parsear DATABASE_URL');
         }
@@ -642,7 +638,6 @@ async function main() {
               delete process.env.PGPASSWORD;
               
               console.log('✅ Cloud SQL Proxy activo, usando TCP localhost:5432');
-              console.log(`🔍 URL: postgresql://***:***@127.0.0.1:5432/${db}`);
               
               // Reintentar inmediatamente con el proxy (sin incrementar attempt)
               attempt = 0; // Resetear para que siga en intento 1 pero con proxy

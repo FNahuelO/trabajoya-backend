@@ -1,68 +1,152 @@
 -- CreateEnum
-CREATE TYPE "UserType" AS ENUM ('POSTULANTE', 'EMPRESA', 'ADMIN');
+DO $$ BEGIN
+    CREATE TYPE "UserType" AS ENUM ('POSTULANTE', 'EMPRESA', 'ADMIN');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "ApplicationStatus" AS ENUM ('PENDING', 'REVIEWED', 'ACCEPTED', 'REJECTED', 'INTERVIEW');
+DO $$ BEGIN
+    CREATE TYPE "ApplicationStatus" AS ENUM ('PENDING', 'REVIEWED', 'ACCEPTED', 'REJECTED', 'INTERVIEW');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "JobType" AS ENUM ('TIEMPO_COMPLETO', 'MEDIO_TIEMPO', 'REMOTO', 'HIBRIDO', 'FREELANCE');
+DO $$ BEGIN
+    CREATE TYPE "JobType" AS ENUM ('TIEMPO_COMPLETO', 'MEDIO_TIEMPO', 'REMOTO', 'HIBRIDO', 'FREELANCE');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "ExperienceLevel" AS ENUM ('JUNIOR', 'SEMISENIOR', 'SENIOR');
+DO $$ BEGIN
+    CREATE TYPE "ExperienceLevel" AS ENUM ('JUNIOR', 'SEMISENIOR', 'SENIOR');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "ModerationStatus" AS ENUM ('PENDING_PAYMENT', 'PENDING', 'APPROVED', 'REJECTED', 'AUTO_REJECTED');
+DO $$ BEGIN
+    CREATE TYPE "ModerationStatus" AS ENUM ('PENDING_PAYMENT', 'PENDING', 'APPROVED', 'REJECTED', 'AUTO_REJECTED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "CallType" AS ENUM ('VOICE', 'VIDEO');
+DO $$ BEGIN
+    CREATE TYPE "CallType" AS ENUM ('VOICE', 'VIDEO');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "CallStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'MISSED', 'ENDED', 'CANCELLED');
+DO $$ BEGIN
+    CREATE TYPE "CallStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'MISSED', 'ENDED', 'CANCELLED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "VideoMeetingStatus" AS ENUM ('SCHEDULED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'MISSED');
+DO $$ BEGIN
+    CREATE TYPE "VideoMeetingStatus" AS ENUM ('SCHEDULED', 'ACCEPTED', 'REJECTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'MISSED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "SubscriptionPlan" AS ENUM ('BASIC', 'PREMIUM', 'ENTERPRISE');
+DO $$ BEGIN
+    CREATE TYPE "SubscriptionPlan" AS ENUM ('BASIC', 'PREMIUM', 'ENTERPRISE');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'CANCELED', 'EXPIRED', 'PENDING');
+DO $$ BEGIN
+    CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'CANCELED', 'EXPIRED', 'PENDING');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "TermsType" AS ENUM ('POSTULANTE', 'EMPRESA', 'PRIVACY', 'TERMS');
+DO $$ BEGIN
+    CREATE TYPE "TermsType" AS ENUM ('POSTULANTE', 'EMPRESA', 'PRIVACY', 'TERMS');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "MediaAssetType" AS ENUM ('CV', 'AVATAR', 'VIDEO', 'LOGO');
+DO $$ BEGIN
+    CREATE TYPE "MediaAssetType" AS ENUM ('CV', 'AVATAR', 'VIDEO', 'LOGO');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "MediaAssetStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED');
+DO $$ BEGIN
+    CREATE TYPE "MediaAssetStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "CatalogType" AS ENUM ('JOB_AREA', 'JOB_TYPE', 'JOB_LEVEL', 'JOB_TYPES', 'EXPERIENCE_LEVELS', 'APPLICATION_STATUSES', 'MODALITIES', 'LANGUAGE_LEVELS', 'COMPANY_SIZES', 'SECTORS', 'STUDY_TYPES', 'STUDY_STATUSES', 'MARITAL_STATUSES');
+DO $$ BEGIN
+    CREATE TYPE "CatalogType" AS ENUM ('JOB_AREA', 'JOB_TYPE', 'JOB_LEVEL', 'JOB_TYPES', 'EXPERIENCE_LEVELS', 'APPLICATION_STATUSES', 'MODALITIES', 'LANGUAGE_LEVELS', 'COMPANY_SIZES', 'SECTORS', 'STUDY_TYPES', 'STUDY_STATUSES', 'MARITAL_STATUSES');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "CatalogLanguage" AS ENUM ('ES', 'EN', 'PT');
+DO $$ BEGIN
+    CREATE TYPE "CatalogLanguage" AS ENUM ('ES', 'EN', 'PT');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLED', 'REFUNDED');
+DO $$ BEGIN
+    CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLED', 'REFUNDED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "PaymentMethod" AS ENUM ('PAYPAL', 'MERCADOPAGO', 'STRIPE');
+DO $$ BEGIN
+    CREATE TYPE "PaymentMethod" AS ENUM ('PAYPAL', 'MERCADOPAGO', 'STRIPE');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "PromotionStatus" AS ENUM ('AVAILABLE', 'CLAIMED', 'USED', 'EXPIRED');
+DO $$ BEGIN
+    CREATE TYPE "PromotionStatus" AS ENUM ('AVAILABLE', 'CLAIMED', 'USED', 'EXPIRED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "IapPlatform" AS ENUM ('IOS', 'ANDROID');
+DO $$ BEGIN
+    CREATE TYPE "IapPlatform" AS ENUM ('IOS', 'ANDROID');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "EntitlementSource" AS ENUM ('APPLE_IAP', 'GOOGLE_PLAY', 'PROMO', 'MANUAL');
+DO $$ BEGIN
+    CREATE TYPE "EntitlementSource" AS ENUM ('APPLE_IAP', 'GOOGLE_PLAY', 'PROMO', 'MANUAL');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "EntitlementStatus" AS ENUM ('ACTIVE', 'EXPIRED', 'REVOKED', 'REFUNDED');
+DO $$ BEGIN
+    CREATE TYPE "EntitlementStatus" AS ENUM ('ACTIVE', 'EXPIRED', 'REVOKED', 'REFUNDED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateTable
-CREATE TABLE "User" (
+CREATE TABLE IF NOT EXISTS "User" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
@@ -83,7 +167,7 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
-CREATE TABLE "RefreshToken" (
+CREATE TABLE IF NOT EXISTS "RefreshToken" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "token" TEXT NOT NULL,
@@ -95,7 +179,7 @@ CREATE TABLE "RefreshToken" (
 );
 
 -- CreateTable
-CREATE TABLE "PostulanteProfile" (
+CREATE TABLE IF NOT EXISTS "PostulanteProfile" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "fullName" TEXT NOT NULL,
@@ -141,7 +225,7 @@ CREATE TABLE "PostulanteProfile" (
 );
 
 -- CreateTable
-CREATE TABLE "Experience" (
+CREATE TABLE IF NOT EXISTS "Experience" (
     "id" TEXT NOT NULL,
     "postulanteId" TEXT NOT NULL,
     "position" TEXT NOT NULL,
@@ -160,7 +244,7 @@ CREATE TABLE "Experience" (
 );
 
 -- CreateTable
-CREATE TABLE "Education" (
+CREATE TABLE IF NOT EXISTS "Education" (
     "id" TEXT NOT NULL,
     "postulanteId" TEXT NOT NULL,
     "degree" TEXT NOT NULL,
@@ -180,7 +264,7 @@ CREATE TABLE "Education" (
 );
 
 -- CreateTable
-CREATE TABLE "Certification" (
+CREATE TABLE IF NOT EXISTS "Certification" (
     "id" TEXT NOT NULL,
     "postulanteId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -197,7 +281,7 @@ CREATE TABLE "Certification" (
 );
 
 -- CreateTable
-CREATE TABLE "EmpresaProfile" (
+CREATE TABLE IF NOT EXISTS "EmpresaProfile" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "companyName" TEXT NOT NULL,
@@ -235,7 +319,7 @@ CREATE TABLE "EmpresaProfile" (
 );
 
 -- CreateTable
-CREATE TABLE "Job" (
+CREATE TABLE IF NOT EXISTS "Job" (
     "id" TEXT NOT NULL,
     "empresaId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -266,7 +350,7 @@ CREATE TABLE "Job" (
 );
 
 -- CreateTable
-CREATE TABLE "Application" (
+CREATE TABLE IF NOT EXISTS "Application" (
     "id" TEXT NOT NULL,
     "postulanteId" TEXT NOT NULL,
     "jobId" TEXT NOT NULL,
@@ -279,7 +363,7 @@ CREATE TABLE "Application" (
 );
 
 -- CreateTable
-CREATE TABLE "JobFavorite" (
+CREATE TABLE IF NOT EXISTS "JobFavorite" (
     "id" TEXT NOT NULL,
     "postulanteId" TEXT NOT NULL,
     "jobId" TEXT NOT NULL,
@@ -289,7 +373,7 @@ CREATE TABLE "JobFavorite" (
 );
 
 -- CreateTable
-CREATE TABLE "CompanyFavorite" (
+CREATE TABLE IF NOT EXISTS "CompanyFavorite" (
     "id" TEXT NOT NULL,
     "postulanteId" TEXT NOT NULL,
     "empresaId" TEXT NOT NULL,
@@ -299,7 +383,7 @@ CREATE TABLE "CompanyFavorite" (
 );
 
 -- CreateTable
-CREATE TABLE "Message" (
+CREATE TABLE IF NOT EXISTS "Message" (
     "id" TEXT NOT NULL,
     "fromUserId" TEXT NOT NULL,
     "toUserId" TEXT NOT NULL,
@@ -311,7 +395,7 @@ CREATE TABLE "Message" (
 );
 
 -- CreateTable
-CREATE TABLE "Call" (
+CREATE TABLE IF NOT EXISTS "Call" (
     "id" TEXT NOT NULL,
     "fromUserId" TEXT NOT NULL,
     "toUserId" TEXT NOT NULL,
@@ -326,7 +410,7 @@ CREATE TABLE "Call" (
 );
 
 -- CreateTable
-CREATE TABLE "VideoMeeting" (
+CREATE TABLE IF NOT EXISTS "VideoMeeting" (
     "id" TEXT NOT NULL,
     "createdById" TEXT NOT NULL,
     "invitedUserId" TEXT NOT NULL,
@@ -346,7 +430,7 @@ CREATE TABLE "VideoMeeting" (
 );
 
 -- CreateTable
-CREATE TABLE "Subscription" (
+CREATE TABLE IF NOT EXISTS "Subscription" (
     "id" TEXT NOT NULL,
     "empresaId" TEXT NOT NULL,
     "planType" "SubscriptionPlan" NOT NULL DEFAULT 'BASIC',
@@ -364,7 +448,7 @@ CREATE TABLE "Subscription" (
 );
 
 -- CreateTable
-CREATE TABLE "TermsAndConditions" (
+CREATE TABLE IF NOT EXISTS "TermsAndConditions" (
     "id" TEXT NOT NULL,
     "type" "TermsType" NOT NULL,
     "version" TEXT NOT NULL,
@@ -379,7 +463,7 @@ CREATE TABLE "TermsAndConditions" (
 );
 
 -- CreateTable
-CREATE TABLE "UserTermsAcceptance" (
+CREATE TABLE IF NOT EXISTS "UserTermsAcceptance" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "termsId" TEXT NOT NULL,
@@ -389,7 +473,7 @@ CREATE TABLE "UserTermsAcceptance" (
 );
 
 -- CreateTable
-CREATE TABLE "MediaAsset" (
+CREATE TABLE IF NOT EXISTS "MediaAsset" (
     "id" TEXT NOT NULL,
     "ownerUserId" TEXT NOT NULL,
     "type" "MediaAssetType" NOT NULL,
@@ -406,7 +490,7 @@ CREATE TABLE "MediaAsset" (
 );
 
 -- CreateTable
-CREATE TABLE "Catalog" (
+CREATE TABLE IF NOT EXISTS "Catalog" (
     "id" TEXT NOT NULL,
     "type" "CatalogType" NOT NULL,
     "code" TEXT NOT NULL,
@@ -419,7 +503,7 @@ CREATE TABLE "Catalog" (
 );
 
 -- CreateTable
-CREATE TABLE "CatalogTranslation" (
+CREATE TABLE IF NOT EXISTS "CatalogTranslation" (
     "id" TEXT NOT NULL,
     "catalogId" TEXT NOT NULL,
     "lang" "CatalogLanguage" NOT NULL,
@@ -429,7 +513,7 @@ CREATE TABLE "CatalogTranslation" (
 );
 
 -- CreateTable
-CREATE TABLE "Plan" (
+CREATE TABLE IF NOT EXISTS "Plan" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "code" TEXT NOT NULL,
@@ -455,7 +539,7 @@ CREATE TABLE "Plan" (
 );
 
 -- CreateTable
-CREATE TABLE "PaymentTransaction" (
+CREATE TABLE IF NOT EXISTS "PaymentTransaction" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "empresaId" TEXT,
@@ -476,7 +560,7 @@ CREATE TABLE "PaymentTransaction" (
 );
 
 -- CreateTable
-CREATE TABLE "PushToken" (
+CREATE TABLE IF NOT EXISTS "PushToken" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "token" TEXT NOT NULL,
@@ -490,7 +574,7 @@ CREATE TABLE "PushToken" (
 );
 
 -- CreateTable
-CREATE TABLE "UserPromotion" (
+CREATE TABLE IF NOT EXISTS "UserPromotion" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "promoKey" TEXT NOT NULL,
@@ -505,7 +589,7 @@ CREATE TABLE "UserPromotion" (
 );
 
 -- CreateTable
-CREATE TABLE "JobPostEntitlement" (
+CREATE TABLE IF NOT EXISTS "JobPostEntitlement" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "jobPostId" TEXT NOT NULL,
@@ -528,7 +612,7 @@ CREATE TABLE "JobPostEntitlement" (
 );
 
 -- CreateTable
-CREATE TABLE "IapProduct" (
+CREATE TABLE IF NOT EXISTS "IapProduct" (
     "id" TEXT NOT NULL,
     "productId" TEXT NOT NULL,
     "platform" "IapPlatform" NOT NULL,
@@ -541,323 +625,713 @@ CREATE TABLE "IapProduct" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_googleId_key" ON "User"("googleId");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_googleId_key" ON "User"("googleId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_appleId_key" ON "User"("appleId");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_appleId_key" ON "User"("appleId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_resetToken_key" ON "User"("resetToken");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_resetToken_key" ON "User"("resetToken");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_verificationToken_key" ON "User"("verificationToken");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_verificationToken_key" ON "User"("verificationToken");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "RefreshToken_token_key" ON "RefreshToken"("token");
+CREATE UNIQUE INDEX IF NOT EXISTS "RefreshToken_token_key" ON "RefreshToken"("token");
 
 -- CreateIndex
-CREATE INDEX "RefreshToken_userId_idx" ON "RefreshToken"("userId");
+CREATE INDEX IF NOT EXISTS "RefreshToken_userId_idx" ON "RefreshToken"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "PostulanteProfile_userId_key" ON "PostulanteProfile"("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "PostulanteProfile_userId_key" ON "PostulanteProfile"("userId");
 
 -- CreateIndex
-CREATE INDEX "Certification_postulanteId_idx" ON "Certification"("postulanteId");
+CREATE INDEX IF NOT EXISTS "Certification_postulanteId_idx" ON "Certification"("postulanteId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "EmpresaProfile_userId_key" ON "EmpresaProfile"("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "EmpresaProfile_userId_key" ON "EmpresaProfile"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "EmpresaProfile_cuit_key" ON "EmpresaProfile"("cuit");
+CREATE UNIQUE INDEX IF NOT EXISTS "EmpresaProfile_cuit_key" ON "EmpresaProfile"("cuit");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Application_postulanteId_jobId_key" ON "Application"("postulanteId", "jobId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Application_postulanteId_jobId_key" ON "Application"("postulanteId", "jobId");
 
 -- CreateIndex
-CREATE INDEX "JobFavorite_postulanteId_idx" ON "JobFavorite"("postulanteId");
+CREATE INDEX IF NOT EXISTS "JobFavorite_postulanteId_idx" ON "JobFavorite"("postulanteId");
 
 -- CreateIndex
-CREATE INDEX "JobFavorite_jobId_idx" ON "JobFavorite"("jobId");
+CREATE INDEX IF NOT EXISTS "JobFavorite_jobId_idx" ON "JobFavorite"("jobId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "JobFavorite_postulanteId_jobId_key" ON "JobFavorite"("postulanteId", "jobId");
+CREATE UNIQUE INDEX IF NOT EXISTS "JobFavorite_postulanteId_jobId_key" ON "JobFavorite"("postulanteId", "jobId");
 
 -- CreateIndex
-CREATE INDEX "CompanyFavorite_postulanteId_idx" ON "CompanyFavorite"("postulanteId");
+CREATE INDEX IF NOT EXISTS "CompanyFavorite_postulanteId_idx" ON "CompanyFavorite"("postulanteId");
 
 -- CreateIndex
-CREATE INDEX "CompanyFavorite_empresaId_idx" ON "CompanyFavorite"("empresaId");
+CREATE INDEX IF NOT EXISTS "CompanyFavorite_empresaId_idx" ON "CompanyFavorite"("empresaId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CompanyFavorite_postulanteId_empresaId_key" ON "CompanyFavorite"("postulanteId", "empresaId");
+CREATE UNIQUE INDEX IF NOT EXISTS "CompanyFavorite_postulanteId_empresaId_key" ON "CompanyFavorite"("postulanteId", "empresaId");
 
 -- CreateIndex
-CREATE INDEX "Call_fromUserId_idx" ON "Call"("fromUserId");
+CREATE INDEX IF NOT EXISTS "Call_fromUserId_idx" ON "Call"("fromUserId");
 
 -- CreateIndex
-CREATE INDEX "Call_toUserId_idx" ON "Call"("toUserId");
+CREATE INDEX IF NOT EXISTS "Call_toUserId_idx" ON "Call"("toUserId");
 
 -- CreateIndex
-CREATE INDEX "VideoMeeting_createdById_idx" ON "VideoMeeting"("createdById");
+CREATE INDEX IF NOT EXISTS "VideoMeeting_createdById_idx" ON "VideoMeeting"("createdById");
 
 -- CreateIndex
-CREATE INDEX "VideoMeeting_invitedUserId_idx" ON "VideoMeeting"("invitedUserId");
+CREATE INDEX IF NOT EXISTS "VideoMeeting_invitedUserId_idx" ON "VideoMeeting"("invitedUserId");
 
 -- CreateIndex
-CREATE INDEX "VideoMeeting_scheduledAt_idx" ON "VideoMeeting"("scheduledAt");
+CREATE INDEX IF NOT EXISTS "VideoMeeting_scheduledAt_idx" ON "VideoMeeting"("scheduledAt");
 
 -- CreateIndex
-CREATE INDEX "VideoMeeting_status_idx" ON "VideoMeeting"("status");
+CREATE INDEX IF NOT EXISTS "VideoMeeting_status_idx" ON "VideoMeeting"("status");
 
 -- CreateIndex
-CREATE INDEX "Subscription_empresaId_idx" ON "Subscription"("empresaId");
+CREATE INDEX IF NOT EXISTS "Subscription_empresaId_idx" ON "Subscription"("empresaId");
 
 -- CreateIndex
-CREATE INDEX "Subscription_status_idx" ON "Subscription"("status");
+CREATE INDEX IF NOT EXISTS "Subscription_status_idx" ON "Subscription"("status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Subscription_empresaId_status_key" ON "Subscription"("empresaId", "status");
+CREATE UNIQUE INDEX IF NOT EXISTS "Subscription_empresaId_status_key" ON "Subscription"("empresaId", "status");
 
 -- CreateIndex
-CREATE INDEX "TermsAndConditions_type_isActive_idx" ON "TermsAndConditions"("type", "isActive");
+CREATE INDEX IF NOT EXISTS "TermsAndConditions_type_isActive_idx" ON "TermsAndConditions"("type", "isActive");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "TermsAndConditions_type_version_key" ON "TermsAndConditions"("type", "version");
+CREATE UNIQUE INDEX IF NOT EXISTS "TermsAndConditions_type_version_key" ON "TermsAndConditions"("type", "version");
 
 -- CreateIndex
-CREATE INDEX "UserTermsAcceptance_userId_idx" ON "UserTermsAcceptance"("userId");
+CREATE INDEX IF NOT EXISTS "UserTermsAcceptance_userId_idx" ON "UserTermsAcceptance"("userId");
 
 -- CreateIndex
-CREATE INDEX "UserTermsAcceptance_termsId_idx" ON "UserTermsAcceptance"("termsId");
+CREATE INDEX IF NOT EXISTS "UserTermsAcceptance_termsId_idx" ON "UserTermsAcceptance"("termsId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UserTermsAcceptance_userId_termsId_key" ON "UserTermsAcceptance"("userId", "termsId");
+CREATE UNIQUE INDEX IF NOT EXISTS "UserTermsAcceptance_userId_termsId_key" ON "UserTermsAcceptance"("userId", "termsId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "MediaAsset_key_key" ON "MediaAsset"("key");
+CREATE UNIQUE INDEX IF NOT EXISTS "MediaAsset_key_key" ON "MediaAsset"("key");
 
 -- CreateIndex
-CREATE INDEX "MediaAsset_ownerUserId_idx" ON "MediaAsset"("ownerUserId");
+CREATE INDEX IF NOT EXISTS "MediaAsset_ownerUserId_idx" ON "MediaAsset"("ownerUserId");
 
 -- CreateIndex
-CREATE INDEX "MediaAsset_type_idx" ON "MediaAsset"("type");
+CREATE INDEX IF NOT EXISTS "MediaAsset_type_idx" ON "MediaAsset"("type");
 
 -- CreateIndex
-CREATE INDEX "MediaAsset_status_idx" ON "MediaAsset"("status");
+CREATE INDEX IF NOT EXISTS "MediaAsset_status_idx" ON "MediaAsset"("status");
 
 -- CreateIndex
-CREATE INDEX "MediaAsset_key_idx" ON "MediaAsset"("key");
+CREATE INDEX IF NOT EXISTS "MediaAsset_key_idx" ON "MediaAsset"("key");
 
 -- CreateIndex
-CREATE INDEX "Catalog_type_order_idx" ON "Catalog"("type", "order");
+CREATE INDEX IF NOT EXISTS "Catalog_type_order_idx" ON "Catalog"("type", "order");
 
 -- CreateIndex
-CREATE INDEX "Catalog_type_isActive_idx" ON "Catalog"("type", "isActive");
+CREATE INDEX IF NOT EXISTS "Catalog_type_isActive_idx" ON "Catalog"("type", "isActive");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Catalog_type_code_key" ON "Catalog"("type", "code");
+CREATE UNIQUE INDEX IF NOT EXISTS "Catalog_type_code_key" ON "Catalog"("type", "code");
 
 -- CreateIndex
-CREATE INDEX "CatalogTranslation_catalogId_idx" ON "CatalogTranslation"("catalogId");
+CREATE INDEX IF NOT EXISTS "CatalogTranslation_catalogId_idx" ON "CatalogTranslation"("catalogId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CatalogTranslation_catalogId_lang_key" ON "CatalogTranslation"("catalogId", "lang");
+CREATE UNIQUE INDEX IF NOT EXISTS "CatalogTranslation_catalogId_lang_key" ON "CatalogTranslation"("catalogId", "lang");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Plan_name_key" ON "Plan"("name");
+CREATE UNIQUE INDEX IF NOT EXISTS "Plan_name_key" ON "Plan"("name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Plan_code_key" ON "Plan"("code");
+CREATE UNIQUE INDEX IF NOT EXISTS "Plan_code_key" ON "Plan"("code");
 
 -- CreateIndex
-CREATE INDEX "Plan_code_idx" ON "Plan"("code");
+CREATE INDEX IF NOT EXISTS "Plan_code_idx" ON "Plan"("code");
 
 -- CreateIndex
-CREATE INDEX "Plan_isActive_idx" ON "Plan"("isActive");
+CREATE INDEX IF NOT EXISTS "Plan_isActive_idx" ON "Plan"("isActive");
 
 -- CreateIndex
-CREATE INDEX "Plan_order_idx" ON "Plan"("order");
+CREATE INDEX IF NOT EXISTS "Plan_order_idx" ON "Plan"("order");
 
 -- CreateIndex
-CREATE INDEX "Plan_subscriptionPlan_idx" ON "Plan"("subscriptionPlan");
+CREATE INDEX IF NOT EXISTS "Plan_subscriptionPlan_idx" ON "Plan"("subscriptionPlan");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "PaymentTransaction_orderId_key" ON "PaymentTransaction"("orderId");
+CREATE UNIQUE INDEX IF NOT EXISTS "PaymentTransaction_orderId_key" ON "PaymentTransaction"("orderId");
 
 -- CreateIndex
-CREATE INDEX "PaymentTransaction_userId_idx" ON "PaymentTransaction"("userId");
+CREATE INDEX IF NOT EXISTS "PaymentTransaction_userId_idx" ON "PaymentTransaction"("userId");
 
 -- CreateIndex
-CREATE INDEX "PaymentTransaction_empresaId_idx" ON "PaymentTransaction"("empresaId");
+CREATE INDEX IF NOT EXISTS "PaymentTransaction_empresaId_idx" ON "PaymentTransaction"("empresaId");
 
 -- CreateIndex
-CREATE INDEX "PaymentTransaction_orderId_idx" ON "PaymentTransaction"("orderId");
+CREATE INDEX IF NOT EXISTS "PaymentTransaction_orderId_idx" ON "PaymentTransaction"("orderId");
 
 -- CreateIndex
-CREATE INDEX "PaymentTransaction_status_idx" ON "PaymentTransaction"("status");
+CREATE INDEX IF NOT EXISTS "PaymentTransaction_status_idx" ON "PaymentTransaction"("status");
 
 -- CreateIndex
-CREATE INDEX "PaymentTransaction_createdAt_idx" ON "PaymentTransaction"("createdAt");
+CREATE INDEX IF NOT EXISTS "PaymentTransaction_createdAt_idx" ON "PaymentTransaction"("createdAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "PushToken_token_key" ON "PushToken"("token");
+CREATE UNIQUE INDEX IF NOT EXISTS "PushToken_token_key" ON "PushToken"("token");
 
 -- CreateIndex
-CREATE INDEX "PushToken_userId_idx" ON "PushToken"("userId");
+CREATE INDEX IF NOT EXISTS "PushToken_userId_idx" ON "PushToken"("userId");
 
 -- CreateIndex
-CREATE INDEX "PushToken_token_idx" ON "PushToken"("token");
+CREATE INDEX IF NOT EXISTS "PushToken_token_idx" ON "PushToken"("token");
 
 -- CreateIndex
-CREATE INDEX "PushToken_isActive_idx" ON "PushToken"("isActive");
+CREATE INDEX IF NOT EXISTS "PushToken_isActive_idx" ON "PushToken"("isActive");
 
 -- CreateIndex
-CREATE INDEX "UserPromotion_userId_idx" ON "UserPromotion"("userId");
+CREATE INDEX IF NOT EXISTS "UserPromotion_userId_idx" ON "UserPromotion"("userId");
 
 -- CreateIndex
-CREATE INDEX "UserPromotion_promoKey_idx" ON "UserPromotion"("promoKey");
+CREATE INDEX IF NOT EXISTS "UserPromotion_promoKey_idx" ON "UserPromotion"("promoKey");
 
 -- CreateIndex
-CREATE INDEX "UserPromotion_status_idx" ON "UserPromotion"("status");
+CREATE INDEX IF NOT EXISTS "UserPromotion_status_idx" ON "UserPromotion"("status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UserPromotion_userId_promoKey_key" ON "UserPromotion"("userId", "promoKey");
+CREATE UNIQUE INDEX IF NOT EXISTS "UserPromotion_userId_promoKey_key" ON "UserPromotion"("userId", "promoKey");
 
 -- CreateIndex
-CREATE INDEX "JobPostEntitlement_userId_idx" ON "JobPostEntitlement"("userId");
+CREATE INDEX IF NOT EXISTS "JobPostEntitlement_userId_idx" ON "JobPostEntitlement"("userId");
 
 -- CreateIndex
-CREATE INDEX "JobPostEntitlement_jobPostId_idx" ON "JobPostEntitlement"("jobPostId");
+CREATE INDEX IF NOT EXISTS "JobPostEntitlement_jobPostId_idx" ON "JobPostEntitlement"("jobPostId");
 
 -- CreateIndex
-CREATE INDEX "JobPostEntitlement_planKey_idx" ON "JobPostEntitlement"("planKey");
+CREATE INDEX IF NOT EXISTS "JobPostEntitlement_planKey_idx" ON "JobPostEntitlement"("planKey");
 
 -- CreateIndex
-CREATE INDEX "JobPostEntitlement_status_idx" ON "JobPostEntitlement"("status");
+CREATE INDEX IF NOT EXISTS "JobPostEntitlement_status_idx" ON "JobPostEntitlement"("status");
 
 -- CreateIndex
-CREATE INDEX "JobPostEntitlement_expiresAt_idx" ON "JobPostEntitlement"("expiresAt");
+CREATE INDEX IF NOT EXISTS "JobPostEntitlement_expiresAt_idx" ON "JobPostEntitlement"("expiresAt");
 
 -- CreateIndex
-CREATE INDEX "JobPostEntitlement_transactionId_idx" ON "JobPostEntitlement"("transactionId");
+CREATE INDEX IF NOT EXISTS "JobPostEntitlement_transactionId_idx" ON "JobPostEntitlement"("transactionId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "JobPostEntitlement_jobPostId_key" ON "JobPostEntitlement"("jobPostId");
+CREATE UNIQUE INDEX IF NOT EXISTS "JobPostEntitlement_jobPostId_key" ON "JobPostEntitlement"("jobPostId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "JobPostEntitlement_transactionId_key" ON "JobPostEntitlement"("transactionId");
+CREATE UNIQUE INDEX IF NOT EXISTS "JobPostEntitlement_transactionId_key" ON "JobPostEntitlement"("transactionId");
 
 -- CreateIndex
-CREATE INDEX "IapProduct_platform_idx" ON "IapProduct"("platform");
+CREATE INDEX IF NOT EXISTS "IapProduct_platform_idx" ON "IapProduct"("platform");
 
 -- CreateIndex
-CREATE INDEX "IapProduct_planKey_idx" ON "IapProduct"("planKey");
+CREATE INDEX IF NOT EXISTS "IapProduct_planKey_idx" ON "IapProduct"("planKey");
 
 -- CreateIndex
-CREATE INDEX "IapProduct_active_idx" ON "IapProduct"("active");
+CREATE INDEX IF NOT EXISTS "IapProduct_active_idx" ON "IapProduct"("active");
 
 -- CreateIndex
-CREATE INDEX "IapProduct_productId_idx" ON "IapProduct"("productId");
+CREATE INDEX IF NOT EXISTS "IapProduct_productId_idx" ON "IapProduct"("productId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "IapProduct_productId_platform_key" ON "IapProduct"("productId", "platform");
+CREATE UNIQUE INDEX IF NOT EXISTS "IapProduct_productId_platform_key" ON "IapProduct"("productId", "platform");
 
 -- AddForeignKey
-ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'RefreshToken_userId_fkey'
+    ) THEN
+        ALTER TABLE "RefreshToken" 
+        ADD CONSTRAINT "RefreshToken_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "PostulanteProfile" ADD CONSTRAINT "PostulanteProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'PostulanteProfile_userId_fkey'
+    ) THEN
+        ALTER TABLE "PostulanteProfile" 
+        ADD CONSTRAINT "PostulanteProfile_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Experience" ADD CONSTRAINT "Experience_postulanteId_fkey" FOREIGN KEY ("postulanteId") REFERENCES "PostulanteProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Experience_postulanteId_fkey'
+    ) THEN
+        ALTER TABLE "Experience" 
+        ADD CONSTRAINT "Experience_postulanteId_fkey" 
+        FOREIGN KEY ("postulanteId") 
+        REFERENCES "PostulanteProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Education" ADD CONSTRAINT "Education_postulanteId_fkey" FOREIGN KEY ("postulanteId") REFERENCES "PostulanteProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Education_postulanteId_fkey'
+    ) THEN
+        ALTER TABLE "Education" 
+        ADD CONSTRAINT "Education_postulanteId_fkey" 
+        FOREIGN KEY ("postulanteId") 
+        REFERENCES "PostulanteProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Certification" ADD CONSTRAINT "Certification_postulanteId_fkey" FOREIGN KEY ("postulanteId") REFERENCES "PostulanteProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Certification_postulanteId_fkey'
+    ) THEN
+        ALTER TABLE "Certification" 
+        ADD CONSTRAINT "Certification_postulanteId_fkey" 
+        FOREIGN KEY ("postulanteId") 
+        REFERENCES "PostulanteProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "EmpresaProfile" ADD CONSTRAINT "EmpresaProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'EmpresaProfile_userId_fkey'
+    ) THEN
+        ALTER TABLE "EmpresaProfile" 
+        ADD CONSTRAINT "EmpresaProfile_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Job" ADD CONSTRAINT "Job_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EmpresaProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Job_empresaId_fkey'
+    ) THEN
+        ALTER TABLE "Job" 
+        ADD CONSTRAINT "Job_empresaId_fkey" 
+        FOREIGN KEY ("empresaId") 
+        REFERENCES "EmpresaProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Application" ADD CONSTRAINT "Application_jobId_fkey" FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Application_jobId_fkey'
+    ) THEN
+        ALTER TABLE "Application" 
+        ADD CONSTRAINT "Application_jobId_fkey" 
+        FOREIGN KEY ("jobId") 
+        REFERENCES "Job"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Application" ADD CONSTRAINT "Application_postulanteId_fkey" FOREIGN KEY ("postulanteId") REFERENCES "PostulanteProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Application_postulanteId_fkey'
+    ) THEN
+        ALTER TABLE "Application" 
+        ADD CONSTRAINT "Application_postulanteId_fkey" 
+        FOREIGN KEY ("postulanteId") 
+        REFERENCES "PostulanteProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "JobFavorite" ADD CONSTRAINT "JobFavorite_postulanteId_fkey" FOREIGN KEY ("postulanteId") REFERENCES "PostulanteProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'JobFavorite_postulanteId_fkey'
+    ) THEN
+        ALTER TABLE "JobFavorite" 
+        ADD CONSTRAINT "JobFavorite_postulanteId_fkey" 
+        FOREIGN KEY ("postulanteId") 
+        REFERENCES "PostulanteProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "JobFavorite" ADD CONSTRAINT "JobFavorite_jobId_fkey" FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'JobFavorite_jobId_fkey'
+    ) THEN
+        ALTER TABLE "JobFavorite" 
+        ADD CONSTRAINT "JobFavorite_jobId_fkey" 
+        FOREIGN KEY ("jobId") 
+        REFERENCES "Job"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "CompanyFavorite" ADD CONSTRAINT "CompanyFavorite_postulanteId_fkey" FOREIGN KEY ("postulanteId") REFERENCES "PostulanteProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'CompanyFavorite_postulanteId_fkey'
+    ) THEN
+        ALTER TABLE "CompanyFavorite" 
+        ADD CONSTRAINT "CompanyFavorite_postulanteId_fkey" 
+        FOREIGN KEY ("postulanteId") 
+        REFERENCES "PostulanteProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "CompanyFavorite" ADD CONSTRAINT "CompanyFavorite_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EmpresaProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'CompanyFavorite_empresaId_fkey'
+    ) THEN
+        ALTER TABLE "CompanyFavorite" 
+        ADD CONSTRAINT "CompanyFavorite_empresaId_fkey" 
+        FOREIGN KEY ("empresaId") 
+        REFERENCES "EmpresaProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Message" ADD CONSTRAINT "Message_fromUserId_fkey" FOREIGN KEY ("fromUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Message_fromUserId_fkey'
+    ) THEN
+        ALTER TABLE "Message" 
+        ADD CONSTRAINT "Message_fromUserId_fkey" 
+        FOREIGN KEY ("fromUserId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Message" ADD CONSTRAINT "Message_toUserId_fkey" FOREIGN KEY ("toUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Message_toUserId_fkey'
+    ) THEN
+        ALTER TABLE "Message" 
+        ADD CONSTRAINT "Message_toUserId_fkey" 
+        FOREIGN KEY ("toUserId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Call" ADD CONSTRAINT "Call_fromUserId_fkey" FOREIGN KEY ("fromUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Call_fromUserId_fkey'
+    ) THEN
+        ALTER TABLE "Call" 
+        ADD CONSTRAINT "Call_fromUserId_fkey" 
+        FOREIGN KEY ("fromUserId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Call" ADD CONSTRAINT "Call_toUserId_fkey" FOREIGN KEY ("toUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Call_toUserId_fkey'
+    ) THEN
+        ALTER TABLE "Call" 
+        ADD CONSTRAINT "Call_toUserId_fkey" 
+        FOREIGN KEY ("toUserId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "VideoMeeting" ADD CONSTRAINT "VideoMeeting_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'VideoMeeting_createdById_fkey'
+    ) THEN
+        ALTER TABLE "VideoMeeting" 
+        ADD CONSTRAINT "VideoMeeting_createdById_fkey" 
+        FOREIGN KEY ("createdById") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "VideoMeeting" ADD CONSTRAINT "VideoMeeting_invitedUserId_fkey" FOREIGN KEY ("invitedUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'VideoMeeting_invitedUserId_fkey'
+    ) THEN
+        ALTER TABLE "VideoMeeting" 
+        ADD CONSTRAINT "VideoMeeting_invitedUserId_fkey" 
+        FOREIGN KEY ("invitedUserId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EmpresaProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'Subscription_empresaId_fkey'
+    ) THEN
+        ALTER TABLE "Subscription" 
+        ADD CONSTRAINT "Subscription_empresaId_fkey" 
+        FOREIGN KEY ("empresaId") 
+        REFERENCES "EmpresaProfile"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "UserTermsAcceptance" ADD CONSTRAINT "UserTermsAcceptance_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'UserTermsAcceptance_userId_fkey'
+    ) THEN
+        ALTER TABLE "UserTermsAcceptance" 
+        ADD CONSTRAINT "UserTermsAcceptance_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "UserTermsAcceptance" ADD CONSTRAINT "UserTermsAcceptance_termsId_fkey" FOREIGN KEY ("termsId") REFERENCES "TermsAndConditions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'UserTermsAcceptance_termsId_fkey'
+    ) THEN
+        ALTER TABLE "UserTermsAcceptance" 
+        ADD CONSTRAINT "UserTermsAcceptance_termsId_fkey" 
+        FOREIGN KEY ("termsId") 
+        REFERENCES "TermsAndConditions"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "MediaAsset" ADD CONSTRAINT "MediaAsset_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'MediaAsset_ownerUserId_fkey'
+    ) THEN
+        ALTER TABLE "MediaAsset" 
+        ADD CONSTRAINT "MediaAsset_ownerUserId_fkey" 
+        FOREIGN KEY ("ownerUserId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "CatalogTranslation" ADD CONSTRAINT "CatalogTranslation_catalogId_fkey" FOREIGN KEY ("catalogId") REFERENCES "Catalog"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'CatalogTranslation_catalogId_fkey'
+    ) THEN
+        ALTER TABLE "CatalogTranslation" 
+        ADD CONSTRAINT "CatalogTranslation_catalogId_fkey" 
+        FOREIGN KEY ("catalogId") 
+        REFERENCES "Catalog"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
 ALTER TABLE "PaymentTransaction" ADD CONSTRAINT "PaymentTransaction_planId_fkey" FOREIGN KEY ("planId") REFERENCES "Plan"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PaymentTransaction" ADD CONSTRAINT "PaymentTransaction_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'PaymentTransaction_userId_fkey'
+    ) THEN
+        ALTER TABLE "PaymentTransaction" 
+        ADD CONSTRAINT "PaymentTransaction_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
 ALTER TABLE "PaymentTransaction" ADD CONSTRAINT "PaymentTransaction_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "EmpresaProfile"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PushToken" ADD CONSTRAINT "PushToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'PushToken_userId_fkey'
+    ) THEN
+        ALTER TABLE "PushToken" 
+        ADD CONSTRAINT "PushToken_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "UserPromotion" ADD CONSTRAINT "UserPromotion_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'UserPromotion_userId_fkey'
+    ) THEN
+        ALTER TABLE "UserPromotion" 
+        ADD CONSTRAINT "UserPromotion_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "JobPostEntitlement" ADD CONSTRAINT "JobPostEntitlement_jobPostId_fkey" FOREIGN KEY ("jobPostId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'JobPostEntitlement_jobPostId_fkey'
+    ) THEN
+        ALTER TABLE "JobPostEntitlement" 
+        ADD CONSTRAINT "JobPostEntitlement_jobPostId_fkey" 
+        FOREIGN KEY ("jobPostId") 
+        REFERENCES "Job"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "JobPostEntitlement" ADD CONSTRAINT "JobPostEntitlement_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'JobPostEntitlement_userId_fkey'
+    ) THEN
+        ALTER TABLE "JobPostEntitlement" 
+        ADD CONSTRAINT "JobPostEntitlement_userId_fkey" 
+        FOREIGN KEY ("userId") 
+        REFERENCES "User"("id") 
+        ON DELETE CASCADE 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "IapProduct" ADD CONSTRAINT "IapProduct_planKey_fkey" FOREIGN KEY ("planKey") REFERENCES "Plan"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'IapProduct_planKey_fkey'
+    ) THEN
+        ALTER TABLE "IapProduct" 
+        ADD CONSTRAINT "IapProduct_planKey_fkey" 
+        FOREIGN KEY ("planKey") 
+        REFERENCES "Plan"("code") 
+        ON DELETE RESTRICT 
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
 
