@@ -9,7 +9,7 @@ async function bootstrap() {
   console.log("🚀 Iniciando aplicación TrabajoYa...");
   console.log(`📅 Fecha: ${new Date().toISOString()}`);
   console.log(`🌍 Entorno: ${process.env.NODE_ENV || "development"}`);
-  console.log(`🔌 Puerto configurado: ${process.env.PORT || 4000}`);
+  console.log(`🔌 Puerto configurado: ${process.env.PORT || 8080}`);
 
   try {
     console.log("📦 Creando aplicación NestJS...");
@@ -127,7 +127,7 @@ async function bootstrap() {
       SwaggerModule.setup("api", app, document);
     }
 
-    const port = parseInt(process.env.PORT || "4000", 10);
+    const port = parseInt(process.env.PORT || "8080", 10);
     
     // Cloud Run usa WebSocket upgrade automáticamente, pero necesitamos configurarlo
     // NestJS con Socket.IO funciona correctamente en Cloud Run sin cambios adicionales
