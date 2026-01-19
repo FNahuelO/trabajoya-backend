@@ -4,19 +4,36 @@ import { Logger } from "@nestjs/common";
 
 export class ResendProvider implements MailProvider {
   private readonly logger = new Logger(ResendProvider.name);
-  private client: Resend;
+  private client: Resend | null = null;
+  private apiKey: string | undefined;
 
   constructor() {
-    const apiKey = process.env.RESEND_API_KEY;
+    this.apiKey = process.env.RESEND_API_KEY;
     
-    if (!apiKey) {
+    if (!this.apiKey) {
       this.logger.warn(
         "RESEND_API_KEY no está configurado. El servicio de email no funcionará correctamente."
       );
+    } else {
+      // Solo inicializar el cliente si hay API key válida
+      try {
+        this.client = new Resend(this.apiKey);
+        this.logger.log("Resend Provider inicializado correctamente");
+      } catch (error: any) {
+        this.logger.error(`Error inicializando Resend: ${error.message}`);
+        this.client = null;
+      }
     }
+  }
 
-    this.client = new Resend(apiKey);
-    this.logger.log("Resend Provider inicializado");
+  private getClient(): Resend {
+    if (!this.client) {
+      if (!this.apiKey) {
+        throw new Error("RESEND_API_KEY no está configurado");
+      }
+      this.client = new Resend(this.apiKey);
+    }
+    return this.client;
   }
 
   async send({
@@ -32,6 +49,16 @@ export class ResendProvider implements MailProvider {
     text?: string;
     from?: string;
   }): Promise<void> {
+    // Verificar que la API key esté configurada antes de intentar enviar
+    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === "dummy-key-for-initialization") {
+      this.logger.error(
+        "RESEND_API_KEY no está configurado. No se puede enviar el email."
+      );
+      throw new Error(
+        "RESEND_API_KEY no está configurado. Configure la variable de entorno o use otro proveedor de email."
+      );
+    }
+
     try {
       const fromEmail = from || process.env.MAIL_FROM;
       
@@ -47,7 +74,8 @@ export class ResendProvider implements MailProvider {
       }
 
       // Resend acepta un string o array de strings para 'to'
-      const { data, error } = await this.client.emails.send({
+      const client = this.getClient();
+      const { data, error } = await client.emails.send({
         from: fromEmail,
         to: to, // Resend acepta string o array directamente
         subject,
