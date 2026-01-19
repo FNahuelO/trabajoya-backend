@@ -291,7 +291,7 @@ if echo "$@" | grep -q "prisma.*migrate"; then
           // postgresql://user:password@/database?host=/cloudsql/INSTANCE
           // NO usar localhost ni puerto cuando se usa socket Unix - dejar hostname vacío
           // Esto evita que Prisma agregue :5432 al final de la ruta del socket
-          const newUrl = \`postgresql://\${encodedUser}:\${encodedPass}@/\${db}?\${paramsStr}\`;
+          const newUrl = \`postgresql://${encodedUser}:${encodedPass}@localhost/${db}?${paramsStr}\`;
           
           console.log(newUrl);
         } catch (e) {
