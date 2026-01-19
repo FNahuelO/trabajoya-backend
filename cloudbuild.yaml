@@ -55,7 +55,6 @@ steps:
         echo "📦 Configurando Cloud Run Job para migraciones..."
         
         # Crear o actualizar el job de migraciones
-        CLOUD_SQL_INSTANCE="$PROJECT_ID:us-central1:trabajoya-db"
         
         # Intentar crear el job primero
         if ! gcloud run jobs describe trabajoya-migrate --region=us-central1 >/dev/null 2>&1; then
@@ -67,7 +66,7 @@ steps:
             --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
-            --add-cloudsql-instances=${CLOUD_SQL_INSTANCE} \
+            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
             --cpu=1 \
             --max-retries=1 \
@@ -82,7 +81,7 @@ steps:
             --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
-            --set-cloudsql-instances=${CLOUD_SQL_INSTANCE} \
+            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
             --cpu=1 \
             --max-retries=1 \
@@ -103,7 +102,6 @@ steps:
         echo "🌱 Configurando Cloud Run Job para seed..."
         
         # Crear o actualizar el job de seed
-        CLOUD_SQL_INSTANCE="$PROJECT_ID:us-central1:trabajoya-db"
         
         # Intentar crear el job primero
         if ! gcloud run jobs describe trabajoya-seed --region=us-central1 >/dev/null 2>&1; then
@@ -115,7 +113,7 @@ steps:
             --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
-            --add-cloudsql-instances=${CLOUD_SQL_INSTANCE}\
+            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
             --cpu=1 \
             --max-retries=1 \
@@ -130,7 +128,7 @@ steps:
             --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
-            --set-cloudsql-instances=${CLOUD_SQL_INSTANCE} \
+            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
             --cpu=1 \
             --max-retries=1 \
@@ -153,6 +151,8 @@ substitutions:
   _MIN_INSTANCES: '1'
   _MAX_INSTANCES: '10'
   _CONCURRENCY: '80'
+  _CLOUD_SQL_INSTANCE: "$PROJECT_ID:us-central1:trabajoya-db"
+
 
 timeout: '1200s'
 
