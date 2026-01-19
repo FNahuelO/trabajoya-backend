@@ -163,6 +163,8 @@ steps:
           --no-traffic || echo "⚠️  No se pudieron limpiar (puede ser normal si el servicio no existe)"
         
         echo "🚀 Desplegando servicio (secrets y DB ya configurados)..."
+        # --set-secrets monta el secret como variable de entorno TRABAJOYA_SECRETS
+        # El script start-gcp.sh carga estos secrets antes de iniciar Node.js
         gcloud run deploy trabajoya-backend \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \

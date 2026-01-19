@@ -252,28 +252,48 @@ NODE_SCRIPT
 }
 
 # Cargar secrets primero si están disponibles
-if [ -n "$TRABAJOYA_SECRETS" ] || [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
+echo "🔍 Verificando disponibilidad de TRABAJOYA_SECRETS..."
+if [ -n "$TRABAJOYA_SECRETS" ]; then
+  echo "✅ TRABAJOYA_SECRETS encontrado como variable de entorno (longitud: ${#TRABAJOYA_SECRETS})"
   load_secrets
+elif [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
+  echo "✅ TRABAJOYA_SECRETS encontrado como archivo en /etc/secrets/TRABAJOYA_SECRETS"
+  load_secrets
+else
+  echo "⚠️  TRABAJOYA_SECRETS no encontrado ni como variable ni como archivo"
+  # Listar archivos en /etc/secrets para debug
+  if [ -d "/etc/secrets" ]; then
+    echo "📁 Contenido de /etc/secrets:"
+    ls -la /etc/secrets/ || echo "   (no se pudo listar)"
+  fi
 fi
 
 # Configurar DATABASE_URL para Cloud SQL si es necesario
 configure_database_url
 
 # Establecer PRISMA_DATABASE_URL como copia de DATABASE_URL (Prisma usa PRISMA_DATABASE_URL)
+# CRÍTICO: Prisma schema usa PRISMA_DATABASE_URL, pero algunos clientes generados pueden buscar DATABASE_URL
+# Por lo tanto, establecemos AMBAS variables para máxima compatibilidad
 if [ -n "$DATABASE_URL" ]; then
   export PRISMA_DATABASE_URL="$DATABASE_URL"
-  echo "✅ PRISMA_DATABASE_URL configurado"
-  # También establecer como DATABASE_URL para compatibilidad (por si Prisma busca esta variable)
   export DATABASE_URL="$DATABASE_URL"
-  echo "✅ DATABASE_URL también configurada (compatibilidad)"
+  echo "✅ PRISMA_DATABASE_URL configurado desde DATABASE_URL"
+  echo "✅ DATABASE_URL configurada (ambas variables están disponibles)"
 else
   echo "❌ ERROR: DATABASE_URL no está configurada después de cargar secrets"
   echo "🔍 Verificando si TRABAJOYA_SECRETS está disponible..."
   if [ -n "$TRABAJOYA_SECRETS" ]; then
     echo "⚠️  TRABAJOYA_SECRETS existe pero DATABASE_URL no se cargó correctamente"
+    echo "💡 Primeros 100 caracteres de TRABAJOYA_SECRETS para debug:"
+    echo "${TRABAJOYA_SECRETS:0:100}..."
     echo "💡 Verifica que el secret contenga DATABASE_URL en formato KEY=VALUE o JSON"
+  elif [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
+    echo "⚠️  TRABAJOYA_SECRETS existe como archivo pero DATABASE_URL no se cargó correctamente"
+    echo "💡 Primeros 100 caracteres del archivo para debug:"
+    head -c 100 /etc/secrets/TRABAJOYA_SECRETS || echo "   (no se pudo leer)"
+    echo "..."
   else
-    echo "⚠️  TRABAJOYA_SECRETS no está disponible como variable de entorno"
+    echo "⚠️  TRABAJOYA_SECRETS no está disponible como variable de entorno ni como archivo"
   fi
   exit 1
 fi
@@ -347,9 +367,31 @@ echo "⏱️  El servidor iniciará inmediatamente, las migraciones continúan e
 echo "🏥 Health check disponible en: http://0.0.0.0:${PORT:-8080}/api/public/health"
 
 # Exportar variables de entorno explícitamente para que Node.js las tenga disponibles
+# CRÍTICO: Asegurar que ambas variables estén disponibles antes de iniciar Node.js
+# porque Prisma Client puede buscar cualquiera de las dos
 export PRISMA_DATABASE_URL
 export DATABASE_URL
 
+# Verificación final antes de ejecutar Node.js
+echo "🔍 Verificación final antes de iniciar Node.js:"
+echo "   - PRISMA_DATABASE_URL está ${PRISMA_DATABASE_URL:+✅ configurado}"
+echo "   - DATABASE_URL está ${DATABASE_URL:+✅ configurado}"
+echo "   - TRABAJOYA_SECRETS está ${TRABAJOYA_SECRETS:+✅ disponible}"
+
+# Verificar que las variables están realmente disponibles en el entorno
+if [ -z "$PRISMA_DATABASE_URL" ] || [ -z "$DATABASE_URL" ]; then
+  echo "❌ ERROR CRÍTICO: Las variables de base de datos no están disponibles antes de iniciar Node.js"
+  echo "🔍 Variables de entorno relacionadas con DATABASE:"
+  env | grep -i "DATABASE\|PRISMA" || echo "   (ninguna encontrada)"
+  exit 1
+fi
+
+# Establecer las variables como variables de entorno globales para Node.js
+# Usar NODE_OPTIONS para pasar variables si es necesario (pero export debería ser suficiente)
+# Forzar que Node.js tenga acceso a estas variables
+NODE_OPTIONS="${NODE_OPTIONS:-} -r dotenv/config" || true
+
 # Iniciar el servidor Node.js - usar exec para que reciba señales correctamente
+# Las variables exportadas estarán disponibles en process.env
 exec node dist/main.js
 
