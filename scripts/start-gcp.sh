@@ -271,14 +271,14 @@ fi
 # Configurar DATABASE_URL para Cloud SQL si es necesario
 configure_database_url
 
-# Establecer PRISMA_DATABASE_URL como copia de DATABASE_URL (Prisma usa PRISMA_DATABASE_URL)
-# CRÍTICO: Prisma schema usa PRISMA_DATABASE_URL, pero algunos clientes generados pueden buscar DATABASE_URL
-# Por lo tanto, establecemos AMBAS variables para máxima compatibilidad
+# Establecer DATABASE_URL como variable principal (Prisma schema usa DATABASE_URL)
+# También establecer PRISMA_DATABASE_URL para compatibilidad futura
 if [ -n "$DATABASE_URL" ]; then
-  export PRISMA_DATABASE_URL="$DATABASE_URL"
   export DATABASE_URL="$DATABASE_URL"
-  echo "✅ PRISMA_DATABASE_URL configurado desde DATABASE_URL"
-  echo "✅ DATABASE_URL configurada (ambas variables están disponibles)"
+  # También establecer PRISMA_DATABASE_URL como copia para compatibilidad
+  export PRISMA_DATABASE_URL="$DATABASE_URL"
+  echo "✅ DATABASE_URL configurada (variable principal para Prisma)"
+  echo "✅ PRISMA_DATABASE_URL configurada (compatibilidad)"
 else
   echo "❌ ERROR: DATABASE_URL no está configurada después de cargar secrets"
   echo "🔍 Verificando si TRABAJOYA_SECRETS está disponible..."
@@ -298,9 +298,9 @@ else
   exit 1
 fi
 
-# Verificar que PRISMA_DATABASE_URL esté realmente configurada antes de iniciar
-if [ -z "$PRISMA_DATABASE_URL" ]; then
-  echo "❌ ERROR CRÍTICO: PRISMA_DATABASE_URL no está configurada después de todos los intentos"
+# Verificar que DATABASE_URL esté realmente configurada antes de iniciar
+if [ -z "$DATABASE_URL" ]; then
+  echo "❌ ERROR CRÍTICO: DATABASE_URL no está configurada después de todos los intentos"
   exit 1
 fi
 
@@ -318,32 +318,26 @@ if [ ! -f "dist/main.js" ]; then
   exit 1
 fi
 
-# Verificar una vez más que las variables críticas estén disponibles
-if [ -z "$PRISMA_DATABASE_URL" ] && [ -z "$DATABASE_URL" ]; then
-  echo "❌ ERROR CRÍTICO: Ni PRISMA_DATABASE_URL ni DATABASE_URL están configuradas"
+# Verificar una vez más que la variable crítica esté disponible
+if [ -z "$DATABASE_URL" ]; then
+  echo "❌ ERROR CRÍTICO: DATABASE_URL no está configurada"
   echo "🔍 Variables de entorno disponibles:"
   env | grep -i "DATABASE\|PRISMA" || echo "   (ninguna encontrada)"
   exit 1
 fi
 
-# Asegurar que PRISMA_DATABASE_URL esté configurada (Prisma Client la necesita al inicializarse)
+# Asegurar que PRISMA_DATABASE_URL también esté disponible para compatibilidad
 if [ -z "$PRISMA_DATABASE_URL" ] && [ -n "$DATABASE_URL" ]; then
   export PRISMA_DATABASE_URL="$DATABASE_URL"
-  echo "✅ PRISMA_DATABASE_URL configurada desde DATABASE_URL"
-fi
-
-# Asegurar que DATABASE_URL también esté disponible (por si Prisma Client lo busca)
-if [ -z "$DATABASE_URL" ] && [ -n "$PRISMA_DATABASE_URL" ]; then
-  export DATABASE_URL="$PRISMA_DATABASE_URL"
-  echo "✅ DATABASE_URL configurada desde PRISMA_DATABASE_URL"
+  echo "✅ PRISMA_DATABASE_URL configurada desde DATABASE_URL (compatibilidad)"
 fi
 
 # Verificación final antes de iniciar Node.js
 echo "🔍 Verificación final de variables críticas:"
-echo "   - PRISMA_DATABASE_URL: ${PRISMA_DATABASE_URL:+✅ configurado (oculto por seguridad)}"
 echo "   - DATABASE_URL: ${DATABASE_URL:+✅ configurado (oculto por seguridad)}"
-if [ -z "$PRISMA_DATABASE_URL" ] || [ -z "$DATABASE_URL" ]; then
-  echo "❌ ERROR: Variables críticas no están configuradas correctamente"
+echo "   - PRISMA_DATABASE_URL: ${PRISMA_DATABASE_URL:+✅ configurado (oculto por seguridad)}"
+if [ -z "$DATABASE_URL" ]; then
+  echo "❌ ERROR: DATABASE_URL no está configurada correctamente"
   exit 1
 fi
 
@@ -367,29 +361,23 @@ echo "⏱️  El servidor iniciará inmediatamente, las migraciones continúan e
 echo "🏥 Health check disponible en: http://0.0.0.0:${PORT:-8080}/api/public/health"
 
 # Exportar variables de entorno explícitamente para que Node.js las tenga disponibles
-# CRÍTICO: Asegurar que ambas variables estén disponibles antes de iniciar Node.js
-# porque Prisma Client puede buscar cualquiera de las dos
-export PRISMA_DATABASE_URL
+# CRÍTICO: Asegurar que DATABASE_URL esté disponible antes de iniciar Node.js
 export DATABASE_URL
+export PRISMA_DATABASE_URL
 
 # Verificación final antes de ejecutar Node.js
 echo "🔍 Verificación final antes de iniciar Node.js:"
-echo "   - PRISMA_DATABASE_URL está ${PRISMA_DATABASE_URL:+✅ configurado}"
 echo "   - DATABASE_URL está ${DATABASE_URL:+✅ configurado}"
+echo "   - PRISMA_DATABASE_URL está ${PRISMA_DATABASE_URL:+✅ configurado}"
 echo "   - TRABAJOYA_SECRETS está ${TRABAJOYA_SECRETS:+✅ disponible}"
 
-# Verificar que las variables están realmente disponibles en el entorno
-if [ -z "$PRISMA_DATABASE_URL" ] || [ -z "$DATABASE_URL" ]; then
-  echo "❌ ERROR CRÍTICO: Las variables de base de datos no están disponibles antes de iniciar Node.js"
+# Verificar que DATABASE_URL está realmente disponible en el entorno
+if [ -z "$DATABASE_URL" ]; then
+  echo "❌ ERROR CRÍTICO: DATABASE_URL no está disponible antes de iniciar Node.js"
   echo "🔍 Variables de entorno relacionadas con DATABASE:"
   env | grep -i "DATABASE\|PRISMA" || echo "   (ninguna encontrada)"
   exit 1
 fi
-
-# Establecer las variables como variables de entorno globales para Node.js
-# Usar NODE_OPTIONS para pasar variables si es necesario (pero export debería ser suficiente)
-# Forzar que Node.js tenga acceso a estas variables
-NODE_OPTIONS="${NODE_OPTIONS:-} -r dotenv/config" || true
 
 # Iniciar el servidor Node.js - usar exec para que reciba señales correctamente
 # Las variables exportadas estarán disponibles en process.env
