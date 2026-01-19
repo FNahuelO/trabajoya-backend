@@ -260,60 +260,101 @@ if echo "$@" | grep -q "prisma.*migrate"; then
           fi
           echo "✅ DATABASE_URL ajustada usando CLOUD_SQL_CONNECTION_NAME: ${CLOUD_SQL_PATH}"
         else
-          # Último intento: buscar cualquier cosa en /cloudsql que no sea README
-          echo "🔍 Buscando socket de Cloud SQL en /cloudsql..."
-          if [ -d "/cloudsql" ]; then
-            # Listar todo y encontrar el primer elemento que no sea README
-            for item in /cloudsql/*; do
-              if [ -e "$item" ]; then
-                ITEM_NAME=$(basename "$item")
-                if [ "$ITEM_NAME" != "README" ]; then
-                  # Si es un directorio, usarlo directamente
-                  if [ -d "$item" ]; then
-                    CLOUD_SQL_PATH="$item"
-                    echo "✅ Encontrado directorio de socket: ${CLOUD_SQL_PATH}"
-                    break
-                  # Si parece ser un nombre de instancia (contiene :), construir la ruta
-                  elif echo "$ITEM_NAME" | grep -q ":"; then
-                    CLOUD_SQL_PATH="/cloudsql/${ITEM_NAME}"
-                    echo "✅ Construyendo ruta desde nombre de instancia: ${CLOUD_SQL_PATH}"
-                    break
-                  fi
-                fi
+          # Intentar obtener el nombre de la instancia desde los metadatos de Cloud Run
+          echo "🔍 Intentando obtener información de la instancia de Cloud SQL..."
+          
+          # Cloud Run puede exponer información en variables de entorno o metadatos
+          # Intentar obtener desde metadatos de la instancia
+          INSTANCE_CONNECTION_NAME=""
+          
+          # Método 1: Intentar desde metadatos de Cloud Run (si están disponibles)
+          if command -v curl >/dev/null 2>&1; then
+            METADATA_INSTANCE=$(curl -s -H "Metadata-Flavor: Google" \
+              "http://metadata.google.internal/computeMetadata/v1/instance/attributes/cloud-sql-instance" 2>/dev/null || echo "")
+            if [ -n "$METADATA_INSTANCE" ]; then
+              INSTANCE_CONNECTION_NAME="$METADATA_INSTANCE"
+              echo "✅ Obtenido desde metadatos: ${INSTANCE_CONNECTION_NAME}"
+            fi
+          fi
+          
+          # Método 2: Intentar construir desde variables de entorno comunes
+          if [ -z "$INSTANCE_CONNECTION_NAME" ]; then
+            # Buscar variables que contengan información de la instancia
+            for var in $(env | grep -i "cloud.*sql\|instance" | cut -d= -f1); do
+              VALUE=$(eval echo \$$var)
+              if echo "$VALUE" | grep -qE "^[^:]+:[^:]+:[^:]+$"; then
+                INSTANCE_CONNECTION_NAME="$VALUE"
+                echo "✅ Encontrado en variable $var: ${INSTANCE_CONNECTION_NAME}"
+                break
               fi
             done
-            
-            # Si aún no tenemos la ruta, intentar construirla desde cualquier elemento
-            if [ -z "$CLOUD_SQL_PATH" ]; then
-              # Buscar cualquier directorio o archivo que no sea README
-              FIRST_ITEM=$(ls -1 /cloudsql/ 2>/dev/null | grep -v "^README$" | head -1)
-              if [ -n "$FIRST_ITEM" ]; then
-                CLOUD_SQL_PATH="/cloudsql/${FIRST_ITEM}"
-                echo "✅ Usando primer elemento encontrado: ${CLOUD_SQL_PATH}"
-              fi
-            fi
-            
-            # Si encontramos una ruta, construir la DATABASE_URL
-            if [ -n "$CLOUD_SQL_PATH" ]; then
-              DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
-              DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
-              DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
-              DB_PARAMS=$(echo "$DATABASE_URL" | sed -n 's|.*?\(.*\)|\1|p')
-              
-              if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
-                export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}&${DB_PARAMS}"
-              elif [ -n "$DB_PARAMS" ]; then
-                export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_PATH}|g")"
-              else
-                export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}"
-              fi
-              echo "✅ DATABASE_URL ajustada usando ruta encontrada: ${CLOUD_SQL_PATH}"
+          fi
+          
+          # Método 3: Construir desde el patrón común de Cloud SQL
+          # Formato: PROJECT_ID:REGION:INSTANCE_NAME
+          # Según cloudbuild.yaml: $PROJECT_ID:us-central1:trabajoya-db
+          # Pero según la imagen del usuario: trabajo-ya-483316:us-central1:trabajoya-db
+          if [ -z "$INSTANCE_CONNECTION_NAME" ]; then
+            # Intentar obtener PROJECT_ID desde variables de entorno
+            if [ -n "$GOOGLE_CLOUD_PROJECT" ]; then
+              PROJECT_ID="$GOOGLE_CLOUD_PROJECT"
+            elif [ -n "$GCP_PROJECT" ]; then
+              PROJECT_ID="$GCP_PROJECT"
+            elif [ -n "$PROJECT_ID" ]; then
+              PROJECT_ID="$PROJECT_ID"
             else
-              echo "❌ No se pudo encontrar o construir la ruta del socket de Cloud SQL"
-              echo "⚠️  Intentando usar DATABASE_URL original, pero puede fallar si usa 127.0.0.1"
-              echo "💡 Solución: Asegúrate de que DATABASE_URL en los secrets use el formato:"
-              echo "   postgresql://user:pass@/db?host=/cloudsql/PROJECT:REGION:INSTANCE"
+              # Intentar desde metadatos
+              if command -v curl >/dev/null 2>&1; then
+                PROJECT_ID=$(curl -s -H "Metadata-Flavor: Google" \
+                  "http://metadata.google.internal/computeMetadata/v1/project/project-id" 2>/dev/null || echo "")
+              fi
             fi
+            
+            if [ -n "$PROJECT_ID" ]; then
+              # Construir nombre de conexión con formato estándar
+              # Asumir región us-central1 e instancia trabajoya-db (según cloudbuild.yaml)
+              INSTANCE_CONNECTION_NAME="${PROJECT_ID}:us-central1:trabajoya-db"
+              echo "🔧 Construyendo nombre de conexión: ${INSTANCE_CONNECTION_NAME}"
+            else
+              # Fallback: usar el nombre de conexión conocido según la configuración
+              # trabajo-ya-483316:us-central1:trabajoya-db (según la imagen del usuario)
+              # Intentar con el nombre conocido
+              INSTANCE_CONNECTION_NAME="trabajo-ya-483316:us-central1:trabajoya-db"
+              echo "🔧 Usando nombre de conexión conocido (fallback): ${INSTANCE_CONNECTION_NAME}"
+            fi
+          fi
+          
+          # Si tenemos el nombre de conexión, construir la ruta del socket
+          if [ -n "$INSTANCE_CONNECTION_NAME" ]; then
+            CLOUD_SQL_PATH="/cloudsql/${INSTANCE_CONNECTION_NAME}"
+            echo "✅ Construyendo ruta del socket: ${CLOUD_SQL_PATH}"
+            
+            # Verificar si el socket existe (puede que no esté montado aún)
+            if [ ! -e "$CLOUD_SQL_PATH" ] && [ ! -d "$CLOUD_SQL_PATH" ]; then
+              echo "⚠️  El socket no existe aún en ${CLOUD_SQL_PATH}"
+              echo "⚠️  Esto puede ser normal si Cloud Run aún está montando el socket"
+              echo "⚠️  Intentando usar la ruta de todas formas..."
+            fi
+            
+            # Construir DATABASE_URL con el socket Unix
+            DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
+            DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
+            DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+            DB_PARAMS=$(echo "$DATABASE_URL" | sed -n 's|.*?\(.*\)|\1|p')
+            
+            if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
+              export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}&${DB_PARAMS}"
+            elif [ -n "$DB_PARAMS" ]; then
+              export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_PATH}|g")"
+            else
+              export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}"
+            fi
+            echo "✅ DATABASE_URL ajustada para usar socket Unix: ${CLOUD_SQL_PATH}"
+          else
+            echo "❌ No se pudo determinar el nombre de conexión de Cloud SQL"
+            echo "⚠️  Intentando usar DATABASE_URL original, pero puede fallar si usa 127.0.0.1"
+            echo "💡 Solución: Actualiza DATABASE_URL en los secrets con el formato:"
+            echo "   postgresql://user:pass@/db?host=/cloudsql/trabajo-ya-483316:us-central1:trabajoya-db"
           fi
         fi
       fi
