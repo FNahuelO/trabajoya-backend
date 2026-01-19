@@ -177,6 +177,8 @@ function configureDatabaseURL() {
       // NO incluir el puerto en la URL - esto evita que Prisma agregue :5432 incorrectamente
       // El driver usará el puerto por defecto de PostgreSQL (5432) o el especificado en PGPORT
       process.env.DATABASE_URL = newUrl;
+      // Establecer PRISMA_DATABASE_URL (Prisma usa esta variable)
+      process.env.PRISMA_DATABASE_URL = newUrl;
       console.log('✅ DATABASE_URL configurada para socket Unix');
       
     } catch (error) {
@@ -185,6 +187,10 @@ function configureDatabaseURL() {
     }
   } else {
     console.log('⚠️  Socket Unix no disponible, usando DATABASE_URL original');
+    // Asegurar que PRISMA_DATABASE_URL también esté configurada
+    if (process.env.DATABASE_URL && !process.env.PRISMA_DATABASE_URL) {
+      process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
+    }
   }
 }
 
@@ -445,6 +451,11 @@ async function main() {
       process.exit(1);
     }
     
+    // Asegurar que PRISMA_DATABASE_URL esté configurada (Prisma usa esta variable)
+    if (!process.env.PRISMA_DATABASE_URL && process.env.DATABASE_URL) {
+      process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
+    }
+    
     // 3. Configurar conexión: Como Prisma CLI no respeta PGHOST con sockets Unix,
     // debemos usar Cloud SQL Proxy desde el inicio si hay socket Unix disponible
     const socketAvailable = existsSync('/cloudsql');
@@ -477,7 +488,10 @@ async function main() {
           const encodedPass = encodeURIComponent(pass);
           
           // Usar TCP a través del proxy local
-          process.env.DATABASE_URL = `postgresql://${encodedUser}:${encodedPass}@127.0.0.1:5432/${db}`;
+          const proxyUrl = `postgresql://${encodedUser}:${encodedPass}@127.0.0.1:5432/${db}`;
+          process.env.DATABASE_URL = proxyUrl;
+          // Establecer PRISMA_DATABASE_URL (Prisma usa esta variable)
+          process.env.PRISMA_DATABASE_URL = proxyUrl;
           
           // Limpiar variables de PostgreSQL para que use la URL directamente
           delete process.env.PGHOST;
@@ -629,7 +643,10 @@ async function main() {
               const encodedPass = encodeURIComponent(pass);
               
               // Usar TCP a través del proxy local
-              process.env.DATABASE_URL = `postgresql://${encodedUser}:${encodedPass}@127.0.0.1:5432/${db}`;
+              const proxyUrl = `postgresql://${encodedUser}:${encodedPass}@127.0.0.1:5432/${db}`;
+              process.env.DATABASE_URL = proxyUrl;
+              // Establecer PRISMA_DATABASE_URL (Prisma usa esta variable)
+              process.env.PRISMA_DATABASE_URL = proxyUrl;
               
               // Limpiar variables de PostgreSQL para que use la URL directamente
               delete process.env.PGHOST;

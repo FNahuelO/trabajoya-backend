@@ -64,6 +64,10 @@ export class GcpConfigService implements OnModuleInit {
               process.env[key] = parsed[key];
               this.loadedSecrets[key] = parsed[key];
             });
+            // Establecer PRISMA_DATABASE_URL si DATABASE_URL está disponible (Prisma usa esta variable)
+            if (process.env.DATABASE_URL && !process.env.PRISMA_DATABASE_URL) {
+              process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
+            }
             this.logger.log(`✅ TRABAJOYA_SECRETS cargado con ${Object.keys(parsed).length} propiedades`);
             this.logger.log(
               `✅ Configuración de Google Cloud cargada correctamente (${Object.keys(this.loadedSecrets).length} secretos)`
@@ -177,6 +181,12 @@ export class GcpConfigService implements OnModuleInit {
         }
       }
 
+      // Establecer PRISMA_DATABASE_URL si DATABASE_URL está disponible (Prisma usa esta variable)
+      if (process.env.DATABASE_URL && !process.env.PRISMA_DATABASE_URL) {
+        process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
+        this.logger.log("✅ PRISMA_DATABASE_URL configurada desde DATABASE_URL");
+      }
+      
       this.logger.log(
         `✅ Configuración de Google Cloud cargada correctamente (${Object.keys(this.loadedSecrets).length} secretos)`
       );

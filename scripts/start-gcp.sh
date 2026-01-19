@@ -259,11 +259,21 @@ fi
 # Configurar DATABASE_URL para Cloud SQL si es necesario
 configure_database_url
 
+# Establecer PRISMA_DATABASE_URL como copia de DATABASE_URL (Prisma usa PRISMA_DATABASE_URL)
+if [ -n "$DATABASE_URL" ]; then
+  export PRISMA_DATABASE_URL="$DATABASE_URL"
+  echo "✅ PRISMA_DATABASE_URL configurado"
+else
+  echo "❌ ERROR: DATABASE_URL no está configurada"
+  exit 1
+fi
+
 echo "🚀 Iniciando aplicación TrabajoYa en Cloud Run..."
 echo "📋 Variables de entorno:"
 echo "   - PORT: ${PORT:-8080}"
 echo "   - NODE_ENV: ${NODE_ENV:-production}"
 echo "   - DATABASE_URL: ${DATABASE_URL:+configurado (oculto por seguridad)}"
+echo "   - PRISMA_DATABASE_URL: ${PRISMA_DATABASE_URL:+configurado (oculto por seguridad)}"
 
 # Verificar que el archivo compilado existe
 if [ ! -f "dist/main.js" ]; then

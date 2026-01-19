@@ -149,6 +149,8 @@ function configureDatabaseURL() {
       const newUrl = `postgresql://${encodedUser}:${encodedPass}@localhost/${db}?${paramsStr}`;
       
       process.env.DATABASE_URL = newUrl;
+      // Establecer PRISMA_DATABASE_URL (Prisma usa esta variable)
+      process.env.PRISMA_DATABASE_URL = newUrl;
       console.log('✅ DATABASE_URL configurada');
       console.log(`🔍 Usando socket: ${socketPath}`);
       
@@ -158,6 +160,10 @@ function configureDatabaseURL() {
     }
   } else {
     console.log('⚠️  Socket Unix no disponible, usando DATABASE_URL original');
+    // Asegurar que PRISMA_DATABASE_URL también esté configurada
+    if (process.env.DATABASE_URL && !process.env.PRISMA_DATABASE_URL) {
+      process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
+    }
   }
 }
 
@@ -170,6 +176,11 @@ async function main() {
     if (!process.env.DATABASE_URL) {
       console.error('❌ ERROR: DATABASE_URL no está configurada');
       process.exit(1);
+    }
+    
+    // Asegurar que PRISMA_DATABASE_URL esté configurada (Prisma usa esta variable)
+    if (!process.env.PRISMA_DATABASE_URL && process.env.DATABASE_URL) {
+      process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
     }
     
     configureDatabaseURL();
