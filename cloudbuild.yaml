@@ -58,8 +58,8 @@ steps:
         gcloud run jobs create trabajoya-migrate \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \
-          --command="npx" \
-          --args="prisma,migrate,deploy" \
+          --command="sh" \
+          --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production" \
           --memory=1Gi \
@@ -69,6 +69,8 @@ steps:
           || gcloud run jobs update trabajoya-migrate \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \
+          --command="sh" \
+          --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production"
         
@@ -89,8 +91,8 @@ steps:
         gcloud run jobs create trabajoya-seed \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \
-          --command="node" \
-          --args="scripts/seed-if-empty.js" \
+          --command="sh" \
+          --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production" \
           --memory=1Gi \
@@ -100,6 +102,8 @@ steps:
           || gcloud run jobs update trabajoya-seed \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \
+          --command="sh" \
+          --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production"
         
