@@ -62,6 +62,7 @@ steps:
           --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production" \
+          --add-cloudsql-instances=$PROJECT_ID:${_REGION}:trabajoya-db \
           --memory=1Gi \
           --cpu=1 \
           --max-retries=1 \
@@ -72,7 +73,8 @@ steps:
           --command="sh" \
           --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
-          --set-env-vars="NODE_ENV=production"
+          --set-env-vars="NODE_ENV=production" \
+          --add-cloudsql-instances=${_PROJECT_ID}:${_REGION}:trabajoya-db
         
         echo "🚀 Ejecutando migraciones..."
         gcloud run jobs execute trabajoya-migrate \
@@ -95,6 +97,7 @@ steps:
           --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --set-env-vars="NODE_ENV=production" \
+          --add-cloudsql-instances=$PROJECT_ID:${_REGION}:trabajoya-db \
           --memory=1Gi \
           --cpu=1 \
           --max-retries=1 \
@@ -105,7 +108,8 @@ steps:
           --command="sh" \
           --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
-          --set-env-vars="NODE_ENV=production"
+          --set-env-vars="NODE_ENV=production" \
+          --add-cloudsql-instances=${_PROJECT_ID}:${_REGION}:trabajoya-db
         
         echo "🚀 Ejecutando seed (solo si la DB está vacía)..."
         gcloud run jobs execute trabajoya-seed \
