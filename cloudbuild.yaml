@@ -44,7 +44,8 @@ steps:
           --timeout=300 \
           --concurrency=${_CONCURRENCY} \
           --set-env-vars="NODE_ENV=production" \
-          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest"
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
 
   # Crear/actualizar Cloud Run Job para migraciones
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -74,6 +75,7 @@ steps:
         else
           echo "🔄 Actualizando job trabajoya-migrate existente..."
           # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
+          # Usar --add-cloudsql-instances para asegurar que la conexión esté configurada
           gcloud run jobs update trabajoya-migrate \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --region=us-central1 \
@@ -81,7 +83,7 @@ steps:
             --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
-            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
             --cpu=1 \
             --max-retries=1 \
@@ -121,6 +123,7 @@ steps:
         else
           echo "🔄 Actualizando job trabajoya-seed existente..."
           # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
+          # Usar --add-cloudsql-instances para asegurar que la conexión esté configurada
           gcloud run jobs update trabajoya-seed \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --region=us-central1 \
@@ -128,7 +131,7 @@ steps:
             --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
-            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
             --cpu=1 \
             --max-retries=1 \

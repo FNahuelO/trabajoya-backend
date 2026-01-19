@@ -230,15 +230,18 @@ if echo "$@" | grep -q "prisma.*migrate"; then
     fi
     
     # Construir la ruta del socket y exportarla
-    CLOUD_SQL_PATH="/cloudsql/${INSTANCE_CONNECTION_NAME}"
+    # PostgreSQL requiere el sufijo .s.PGSQL.5432 para sockets Unix
+    CLOUD_SQL_PATH="/cloudsql/${INSTANCE_CONNECTION_NAME}/.s.PGSQL.5432"
     export CLOUD_SQL_PATH
     echo "📁 Ruta del socket: ${CLOUD_SQL_PATH}"
     
-    # Verificar si el socket existe
-    if [ -e "$CLOUD_SQL_PATH" ] || [ -d "$CLOUD_SQL_PATH" ]; then
+    # Verificar si el socket existe (puede estar en el directorio padre)
+    SOCKET_DIR="/cloudsql/${INSTANCE_CONNECTION_NAME}"
+    if [ -e "$CLOUD_SQL_PATH" ] || [ -e "$SOCKET_DIR" ] || [ -d "$SOCKET_DIR" ]; then
       echo "✅ Socket encontrado"
     else
       echo "⚠️  Socket no encontrado aún, pero continuando (puede estar montándose)"
+      echo "⚠️  Cloud Run monta el socket en: ${SOCKET_DIR}"
     fi
     
     # Reconstruir DATABASE_URL con el formato correcto
