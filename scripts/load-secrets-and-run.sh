@@ -244,9 +244,11 @@ if echo "$@" | grep -q "prisma.*migrate"; then
     # Reconstruir DATABASE_URL con el formato correcto
     if [ -n "$DATABASE_URL" ]; then
       echo "🔧 Reconstruyendo DATABASE_URL para usar socket Unix..."
-      export DATABASE_URL=$(node <<'NODE_SCRIPT'
-        const originalUrl = process.env.ORIGINAL_DATABASE_URL || process.env.DATABASE_URL;
-        const socketPath = process.env.CLOUD_SQL_PATH;
+      # Exportar variables para que Node.js las pueda leer
+      export CLOUD_SQL_PATH
+      export DATABASE_URL=$(node <<NODE_SCRIPT
+        const originalUrl = process.env.ORIGINAL_DATABASE_URL || '${DATABASE_URL}';
+        const socketPath = process.env.CLOUD_SQL_PATH || '${CLOUD_SQL_PATH}';
         
         try {
           // Parsear URL manualmente para manejar caracteres especiales en password
@@ -260,16 +262,30 @@ if echo "$@" | grep -q "prisma.*migrate"; then
           const [, username, password, hostpart, database, params] = match;
           const db = database || 'trabajoya';
           
-          // Codificar username y password para URL
+          // Codificar username y password para URL (necesario para caracteres especiales)
           const encodedUser = encodeURIComponent(username);
           const encodedPass = encodeURIComponent(password);
           
-          // Parsear parámetros existentes y agregar/actualizar host
-          const searchParams = new URLSearchParams(params || '');
-          searchParams.set('host', socketPath);
+          // Parsear parámetros existentes (excluyendo host)
+          const otherParams = [];
+          if (params) {
+            const pairs = params.split('&');
+            for (const pair of pairs) {
+              const [key, value] = pair.split('=');
+              if (key && key !== 'host') {
+                otherParams.push(\`\${key}=\${value || ''}\`);
+              }
+            }
+          }
           
-          // Prisma requiere formato: postgresql://user:password@localhost/database?host=/path/to/socket
-          const newUrl = `postgresql://${encodedUser}:${encodedPass}@localhost/${db}?${searchParams.toString()}`;
+          // Construir parámetros: primero otros parámetros, luego host sin codificar
+          const paramsStr = otherParams.length > 0 
+            ? \`\${otherParams.join('&')}&host=\${socketPath}\`
+            : \`host=\${socketPath}\`;
+          
+          // Formato correcto: postgresql://user:password@/database?host=/cloudsql/INSTANCE
+          // NO usar localhost, dejar el host vacío para socket Unix
+          const newUrl = \`postgresql://\${encodedUser}:\${encodedPass}@/\${db}?\${paramsStr}\`;
           
           console.log(newUrl);
         } catch (e) {
@@ -304,9 +320,17 @@ NODE_SCRIPT
         echo "❌ ERROR: DATABASE_URL no tiene parámetro host"
         exit 1
       fi
-      # Verificación robusta del socket de Cloud SQL
-      if ! echo "$DATABASE_URL" | grep -qE "host=(/|%2F)?cloudsql/"; then
+      # Verificación robusta del socket de Cloud SQL (puede estar codificado o no)
+      if ! echo "$DATABASE_URL" | grep -qE "host=(/|%2F)cloudsql/"; then
         echo "❌ ERROR: DATABASE_URL no usa socket Unix de Cloud SQL"
+        echo "💡 La URL debe tener formato: postgresql://user:pass@/db?host=/cloudsql/INSTANCE"
+        exit 1
+      fi
+      
+      # Verificar que NO tenga localhost (debe estar vacío para socket Unix)
+      if echo "$DATABASE_URL" | grep -qE "@localhost/|@127\.0\.0\.1/"; then
+        echo "❌ ERROR: DATABASE_URL contiene localhost, debe estar vacío para socket Unix"
+        echo "💡 Formato correcto: postgresql://user:pass@/db?host=/cloudsql/INSTANCE"
         exit 1
       fi
 
