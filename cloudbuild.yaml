@@ -20,37 +20,31 @@ steps:
 
   # Desplegar a Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
+    entrypoint: 'bash'
     args:
-      - 'run'
-      - 'deploy'
-      - 'trabajoya-backend'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA'
-      - '--region'
-      - '${_REGION}'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--memory'
-      - '${_MEMORY}'
-      - '--cpu'
-      - '${_CPU}'
-      - '--min-instances'
-      - '${_MIN_INSTANCES}'
-      - '--max-instances'
-      - '${_MAX_INSTANCES}'
-      - '--port'
-      - '8080'
-      - '--timeout'
-      - '300'
-      - '--concurrency'
-      - '${_CONCURRENCY}'
-      - '--set-env-vars'
-      - 'NODE_ENV=production'
-      - '--clear-secrets'
-      - '--set-secrets'
-      - 'TRABAJOYA_SECRETS=trabajoya-secrets:latest'
+      - '-c'
+      - |
+        echo "🧹 Limpiando secrets antiguos (si existen)..."
+        gcloud run services update trabajoya-backend \
+          --region=${_REGION} \
+          --clear-secrets \
+          --no-traffic || echo "⚠️  No se pudieron limpiar secrets (puede ser normal si el servicio no existe)"
+        
+        echo "🚀 Desplegando servicio..."
+        gcloud run deploy trabajoya-backend \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --region=${_REGION} \
+          --platform=managed \
+          --allow-unauthenticated \
+          --memory=${_MEMORY} \
+          --cpu=${_CPU} \
+          --min-instances=${_MIN_INSTANCES} \
+          --max-instances=${_MAX_INSTANCES} \
+          --port=8080 \
+          --timeout=300 \
+          --concurrency=${_CONCURRENCY} \
+          --set-env-vars="NODE_ENV=production" \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest"
 
   # Crear/actualizar Cloud Run Job para migraciones
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
