@@ -230,18 +230,18 @@ if echo "$@" | grep -q "prisma.*migrate"; then
     fi
     
     # Construir la ruta del socket y exportarla
-    # PostgreSQL requiere el sufijo .s.PGSQL.5432 para sockets Unix
-    CLOUD_SQL_PATH="/cloudsql/${INSTANCE_CONNECTION_NAME}/.s.PGSQL.5432"
+    # Cloud SQL monta el socket en /cloudsql/INSTANCE_CONNECTION_NAME
+    # No necesitamos el sufijo .s.PGSQL.5432 porque Prisma lo maneja automáticamente
+    CLOUD_SQL_PATH="/cloudsql/${INSTANCE_CONNECTION_NAME}"
     export CLOUD_SQL_PATH
     echo "📁 Ruta del socket: ${CLOUD_SQL_PATH}"
     
-    # Verificar si el socket existe (puede estar en el directorio padre)
-    SOCKET_DIR="/cloudsql/${INSTANCE_CONNECTION_NAME}"
-    if [ -e "$CLOUD_SQL_PATH" ] || [ -e "$SOCKET_DIR" ] || [ -d "$SOCKET_DIR" ]; then
+    # Verificar si el socket existe
+    if [ -e "$CLOUD_SQL_PATH" ] || [ -d "$CLOUD_SQL_PATH" ]; then
       echo "✅ Socket encontrado"
     else
       echo "⚠️  Socket no encontrado aún, pero continuando (puede estar montándose)"
-      echo "⚠️  Cloud Run monta el socket en: ${SOCKET_DIR}"
+      echo "⚠️  Cloud Run monta el socket en: ${CLOUD_SQL_PATH}"
     fi
     
     # Reconstruir DATABASE_URL con el formato correcto
@@ -282,14 +282,16 @@ if echo "$@" | grep -q "prisma.*migrate"; then
           }
           
           // Construir parámetros: primero otros parámetros, luego host sin codificar
+          // IMPORTANTE: No incluir el puerto en la URL cuando se usa socket Unix
           const paramsStr = otherParams.length > 0 
             ? \`\${otherParams.join('&')}&host=\${socketPath}\`
             : \`host=\${socketPath}\`;
           
           // Formato correcto para Prisma con socket Unix:
-          // postgresql://user:password@localhost/database?host=/cloudsql/INSTANCE
-          // Prisma requiere localhost como hostname cuando se usa el parámetro host para socket Unix
-          const newUrl = \`postgresql://\${encodedUser}:\${encodedPass}@localhost/\${db}?\${paramsStr}\`;
+          // postgresql://user:password@/database?host=/cloudsql/INSTANCE
+          // NO usar localhost ni puerto cuando se usa socket Unix - dejar hostname vacío
+          // Esto evita que Prisma agregue :5432 al final de la ruta del socket
+          const newUrl = \`postgresql://\${encodedUser}:\${encodedPass}@/\${db}?\${paramsStr}\`;
           
           console.log(newUrl);
         } catch (e) {
@@ -327,14 +329,14 @@ NODE_SCRIPT
       # Verificación robusta del socket de Cloud SQL (puede estar codificado o no)
       if ! echo "$DATABASE_URL" | grep -qE "host=(/|%2F)cloudsql/"; then
         echo "❌ ERROR: DATABASE_URL no usa socket Unix de Cloud SQL"
-        echo "💡 La URL debe tener formato: postgresql://user:pass@localhost/db?host=/cloudsql/INSTANCE"
+        echo "💡 La URL debe tener formato: postgresql://user:pass@/db?host=/cloudsql/INSTANCE"
         exit 1
       fi
       
-      # Verificar que tenga localhost (Prisma requiere localhost cuando se usa socket Unix)
-      if ! echo "$DATABASE_URL" | grep -qE "@localhost/"; then
-        echo "⚠️  ADVERTENCIA: DATABASE_URL no contiene localhost"
-        echo "💡 Prisma requiere localhost cuando se usa socket Unix"
+      # Verificar que NO tenga localhost ni puerto (debe estar vacío para socket Unix)
+      if echo "$DATABASE_URL" | grep -qE "@localhost|:5432"; then
+        echo "⚠️  ADVERTENCIA: DATABASE_URL contiene localhost o puerto"
+        echo "💡 Para socket Unix, el hostname debe estar vacío: postgresql://user:pass@/db?host=/cloudsql/INSTANCE"
       fi
 
     fi
