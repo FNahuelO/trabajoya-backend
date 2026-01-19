@@ -48,7 +48,8 @@ steps:
       - '${_CONCURRENCY}'
       - '--set-env-vars'
       - 'NODE_ENV=production'
-      - '--update-secrets'
+      - '--clear-secrets'
+      - '--set-secrets'
       - 'TRABAJOYA_SECRETS=trabajoya-secrets:latest'
 
   # Crear/actualizar Cloud Run Job para migraciones
