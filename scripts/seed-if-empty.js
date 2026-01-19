@@ -54,12 +54,25 @@ async function runSeed() {
   const { execSync } = require("child_process");
 
   try {
-    // Usar el script configurado en package.json
-    execSync("npm run prisma:seed", {
-      stdio: "inherit",
-      env: process.env,
-      cwd: process.cwd(),
-    });
+    // En producción (Cloud Run), usar ts-node directamente ya que tenemos las dependencias
+    // En desarrollo, usar el script de npm
+    const isProduction = process.env.NODE_ENV === "production";
+    
+    if (isProduction) {
+      // En producción, ejecutar directamente con ts-node
+      execSync("npx ts-node --transpile-only prisma/seed.ts", {
+        stdio: "inherit",
+        env: process.env,
+        cwd: process.cwd(),
+      });
+    } else {
+      // En desarrollo, usar el script configurado en package.json
+      execSync("npm run prisma:seed", {
+        stdio: "inherit",
+        env: process.env,
+        cwd: process.cwd(),
+      });
+    }
     console.log("✅ Seed ejecutado exitosamente desde prisma/seed.ts");
   } catch (error) {
     console.error("❌ Error ejecutando seed:", error.message);

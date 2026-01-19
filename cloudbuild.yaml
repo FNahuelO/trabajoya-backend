@@ -51,6 +51,68 @@ steps:
       - '--update-secrets'
       - 'DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest'
 
+  # Crear/actualizar Cloud Run Job para migraciones
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "📦 Configurando Cloud Run Job para migraciones..."
+        
+        # Crear o actualizar el job de migraciones
+        gcloud run jobs create trabajoya-migrate \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --region=${_REGION} \
+          --command="npx" \
+          --args="prisma,migrate,deploy" \
+          --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+          --set-env-vars="NODE_ENV=production" \
+          --memory=1Gi \
+          --cpu=1 \
+          --max-retries=1 \
+          --task-timeout=600 \
+          || gcloud run jobs update trabajoya-migrate \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --region=${_REGION} \
+          --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+          --set-env-vars="NODE_ENV=production"
+        
+        echo "🚀 Ejecutando migraciones..."
+        gcloud run jobs execute trabajoya-migrate \
+          --region=${_REGION} \
+          --wait || echo "⚠️  Error en migraciones, pero continuando..."
+
+  # Crear/actualizar Cloud Run Job para seed
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🌱 Configurando Cloud Run Job para seed..."
+        
+        # Crear o actualizar el job de seed
+        gcloud run jobs create trabajoya-seed \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --region=${_REGION} \
+          --command="node" \
+          --args="scripts/seed-if-empty.js" \
+          --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+          --set-env-vars="NODE_ENV=production" \
+          --memory=1Gi \
+          --cpu=1 \
+          --max-retries=1 \
+          --task-timeout=600 \
+          || gcloud run jobs update trabajoya-seed \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --region=${_REGION} \
+          --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+          --set-env-vars="NODE_ENV=production"
+        
+        echo "🚀 Ejecutando seed (solo si la DB está vacía)..."
+        gcloud run jobs execute trabajoya-seed \
+          --region=${_REGION} \
+          --wait || echo "⚠️  Error en seed, pero continuando..."
+
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
