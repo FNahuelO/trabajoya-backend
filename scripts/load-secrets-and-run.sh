@@ -3,7 +3,8 @@
 # Este script es necesario porque Prisma CLI necesita las variables de entorno
 # antes de que NestJS las cargue
 
-set -e
+# NO usar set -e aquí para permitir manejo de errores personalizado
+set +e
 
 echo "🔐 Cargando secrets desde TRABAJOYA_SECRETS..."
 
@@ -103,5 +104,75 @@ fi
 
 # Ejecutar el comando pasado como argumentos
 echo "🚀 Ejecutando comando: $@"
-exec "$@"
+
+# Si el comando es prisma migrate deploy, agregar reintentos para errores de conexión
+if echo "$@" | grep -q "prisma.*migrate"; then
+  echo "📦 Detectado comando de migración..."
+  
+  # Intentar con reintentos en caso de error de conexión
+  MAX_RETRIES=5
+  RETRY_DELAY=10
+  ATTEMPT=1
+  
+  while [ $ATTEMPT -le $MAX_RETRIES ]; do
+    echo "🔄 Intento $ATTEMPT de $MAX_RETRIES..."
+    
+    # Capturar tanto el código de salida como la salida del comando
+    MIGRATE_OUTPUT=$(mktemp)
+    "$@" > "$MIGRATE_OUTPUT" 2>&1
+    MIGRATE_EXIT_CODE=$?
+    
+    # Mostrar la salida del comando
+    cat "$MIGRATE_OUTPUT"
+    
+    if [ $MIGRATE_EXIT_CODE -eq 0 ]; then
+      echo "✅ Migraciones ejecutadas exitosamente"
+      rm -f "$MIGRATE_OUTPUT"
+      exit 0
+    fi
+    
+    # Verificar si es un error de conexión (P1001, Can't reach, ECONNREFUSED, etc.)
+    CONNECTION_ERROR=$(grep -i "P1001\|Can't reach database\|ECONNREFUSED\|connection.*refused\|timeout" "$MIGRATE_OUTPUT" || true)
+    
+    if [ -n "$CONNECTION_ERROR" ]; then
+      echo "⚠️  Error de conexión a la base de datos detectado:"
+      echo "$CONNECTION_ERROR" | head -1
+      
+      if [ $ATTEMPT -lt $MAX_RETRIES ]; then
+        echo "⏳ Esperando ${RETRY_DELAY}s antes del siguiente intento..."
+        rm -f "$MIGRATE_OUTPUT"
+        sleep $RETRY_DELAY
+        ATTEMPT=$((ATTEMPT + 1))
+        continue
+      else
+        echo "❌ Se agotaron los ${MAX_RETRIES} intentos de conexión"
+      fi
+    else
+      # Error diferente a conexión
+      echo "❌ Error diferente a conexión detectado"
+    fi
+    
+    rm -f "$MIGRATE_OUTPUT"
+    
+    # Si llegamos aquí, fue un error diferente o se agotaron los reintentos
+    echo "❌ Las migraciones fallaron con código $MIGRATE_EXIT_CODE después de $ATTEMPT intentos"
+    
+    # Para Jobs de Cloud Run, queremos que falle para que se reintente el Job completo
+    # Para el servicio principal (que no debería ejecutar migraciones), también fallar
+    # Cloud Run Jobs tienen estas variables de entorno
+    if [ -n "$CLOUD_RUN_JOB" ] || [ -n "$CLOUD_RUN_EXECUTION" ]; then
+      echo "📋 Ejecutándose en Cloud Run Job, saliendo con error para reintento del Job"
+      exit $MIGRATE_EXIT_CODE
+    else
+      echo "⚠️  No se detectó que es un Job de Cloud Run"
+      echo "⚠️  Esto no debería pasar si las migraciones se ejecutan como Job separado"
+      exit $MIGRATE_EXIT_CODE
+    fi
+  done
+  
+  exit $MIGRATE_EXIT_CODE
+else
+  # Para otros comandos (como iniciar el servidor), ejecutar normalmente
+  exec "$@"
+fi
 

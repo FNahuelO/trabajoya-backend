@@ -2,6 +2,14 @@
 # Script de inicio optimizado para Cloud Run
 # Inicia la aplicación inmediatamente sin esperar migraciones
 
+# Cargar secrets primero si están disponibles
+if [ -n "$TRABAJOYA_SECRETS" ] || [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
+  echo "🔐 Cargando secrets antes de iniciar..."
+  ./scripts/load-secrets-and-run.sh echo "✅ Secrets cargados" > /dev/null 2>&1 || {
+    echo "⚠️  No se pudieron cargar secrets, continuando con variables existentes..."
+  }
+fi
+
 echo "🚀 Iniciando aplicación TrabajoYa en Cloud Run..."
 echo "📋 Variables de entorno:"
 echo "   - PORT: ${PORT:-8080}"
@@ -17,9 +25,14 @@ fi
 # Ejecutar migraciones en background (completamente asíncrono, no bloquea)
 echo "📦 Iniciando migraciones en background (no bloqueante)..."
 nohup sh -c "
-  sleep 5
+  sleep 10
   echo '📦 Ejecutando migraciones de base de datos...'
-  npx prisma migrate deploy 2>&1 || echo '⚠️  No se pudieron aplicar todas las migraciones'
+  # Usar load-secrets-and-run.sh para asegurar que los secrets estén cargados
+  if [ -f './scripts/load-secrets-and-run.sh' ]; then
+    ./scripts/load-secrets-and-run.sh npx prisma migrate deploy 2>&1 || echo '⚠️  No se pudieron aplicar todas las migraciones'
+  else
+    npx prisma migrate deploy 2>&1 || echo '⚠️  No se pudieron aplicar todas las migraciones'
+  fi
   echo '✅ Migraciones completadas'
 " > /tmp/migrations.log 2>&1 &
 
