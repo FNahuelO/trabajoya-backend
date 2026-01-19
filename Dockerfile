@@ -24,13 +24,10 @@ RUN npm run build
 # Exponer puerto
 EXPOSE 4000
 
-# Copiar y hacer ejecutables los scripts
-COPY scripts/resolve-failed-migrations.sh ./scripts/
-COPY scripts/migrate-deploy.sh ./scripts/
+# Copiar scripts necesarios
 COPY scripts/start.sh ./scripts/
 COPY scripts/seed-if-empty.js ./scripts/
-COPY scripts/ensure-schema.js ./scripts/
-RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh ./scripts/start.sh
+RUN chmod +x ./scripts/start.sh
 
 # Instalar postgresql-client para usar psql
 RUN apk add --no-cache postgresql-client

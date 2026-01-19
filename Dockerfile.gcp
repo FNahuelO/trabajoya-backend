@@ -27,14 +27,10 @@ EXPOSE 8080
 # Instalar postgresql-client para usar psql
 RUN apk add --no-cache postgresql-client
 
-# Copiar y hacer ejecutables los scripts
-COPY scripts/resolve-failed-migrations.sh ./scripts/
-COPY scripts/migrate-deploy.sh ./scripts/
-COPY scripts/start.sh ./scripts/
+# Copiar scripts necesarios para Cloud Run
 COPY scripts/start-gcp.sh ./scripts/
 COPY scripts/seed-if-empty.js ./scripts/
-COPY scripts/ensure-schema.js ./scripts/
-RUN chmod +x ./scripts/resolve-failed-migrations.sh ./scripts/migrate-deploy.sh ./scripts/start.sh ./scripts/start-gcp.sh
+RUN chmod +x ./scripts/start-gcp.sh
 
 # Cloud Run usa PORT variable, ajustar start.sh para usarlo
 ENV PORT=8080
