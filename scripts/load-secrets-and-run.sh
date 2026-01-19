@@ -249,9 +249,22 @@ if echo "$@" | grep -q "prisma.*migrate"; then
       echo "🔧 Reconstruyendo DATABASE_URL para usar socket Unix..."
       # Exportar variables para que Node.js las pueda leer
       export CLOUD_SQL_PATH
-      export DATABASE_URL=$(node <<NODE_SCRIPT
-        const originalUrl = process.env.ORIGINAL_DATABASE_URL || '${DATABASE_URL}';
-        const socketPath = process.env.CLOUD_SQL_PATH || '${CLOUD_SQL_PATH}';
+      export ORIGINAL_DATABASE_URL="$DATABASE_URL"
+      
+      # Usar heredoc con comillas para evitar expansión de bash, pero pasar variables como env vars
+      export DATABASE_URL=$(ORIGINAL_DATABASE_URL="$DATABASE_URL" CLOUD_SQL_PATH="$CLOUD_SQL_PATH" node <<'NODE_SCRIPT'
+        const originalUrl = process.env.ORIGINAL_DATABASE_URL || '';
+        const socketPath = process.env.CLOUD_SQL_PATH || '';
+        
+        if (!originalUrl) {
+          console.error('Error: ORIGINAL_DATABASE_URL está vacío');
+          process.exit(1);
+        }
+        
+        if (!socketPath) {
+          console.error('Error: CLOUD_SQL_PATH está vacío');
+          process.exit(1);
+        }
         
         try {
           // Parsear URL manualmente para manejar caracteres especiales en password
@@ -276,7 +289,7 @@ if echo "$@" | grep -q "prisma.*migrate"; then
             for (const pair of pairs) {
               const [key, value] = pair.split('=');
               if (key && key !== 'host') {
-                otherParams.push(\`\${key}=\${value || ''}\`);
+                otherParams.push(`${key}=${value || ''}`);
               }
             }
           }
@@ -284,14 +297,14 @@ if echo "$@" | grep -q "prisma.*migrate"; then
           // Construir parámetros: primero otros parámetros, luego host sin codificar
           // IMPORTANTE: No incluir el puerto en la URL cuando se usa socket Unix
           const paramsStr = otherParams.length > 0 
-            ? \`\${otherParams.join('&')}&host=\${socketPath}\`
-            : \`host=\${socketPath}\`;
+            ? `${otherParams.join('&')}&host=${socketPath}`
+            : `host=${socketPath}`;
           
           // Formato correcto para Prisma con socket Unix:
           // postgresql://user:password@/database?host=/cloudsql/INSTANCE
           // NO usar localhost ni puerto cuando se usa socket Unix - dejar hostname vacío
           // Esto evita que Prisma agregue :5432 al final de la ruta del socket
-          const newUrl = \`postgresql://${encodedUser}:${encodedPass}@localhost/${db}?${paramsStr}\`;
+          const newUrl = `postgresql://${encodedUser}:${encodedPass}@/${db}?${paramsStr}`;
           
           console.log(newUrl);
         } catch (e) {
