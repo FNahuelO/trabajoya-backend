@@ -111,6 +111,11 @@ function configureDatabaseURL() {
     process.exit(1);
   }
   
+  // Guardar URL original para posibles reintentos con diferentes formatos
+  if (!process.env.ORIGINAL_DATABASE_URL) {
+    process.env.ORIGINAL_DATABASE_URL = originalUrl;
+  }
+  
   // Si hay socket Unix disponible, usarlo directamente
   const socketPath = `/cloudsql/${getInstanceConnectionName()}`;
   
@@ -143,22 +148,39 @@ function configureDatabaseURL() {
       
       // Usar formato que PostgreSQL acepta directamente: postgresql://user:pass@localhost/db?host=/path
       // Pero Prisma puede tener problemas. Intentar primero con hostname vacío y PGHOST
-      const paramsStr = otherParams.length > 0 
-        ? `${otherParams.join('&')}&host=${socketPath}`
-        : `host=${socketPath}`;
+      // Para Prisma con sockets Unix, necesitamos usar un formato especial
+      // Prisma no acepta hostname vacío, pero podemos usar un formato que funcione
+      // La mejor opción es usar solo las variables de PostgreSQL y una URL simple
       
-      // Exportar variables de PostgreSQL
+      // Configurar variables de PostgreSQL (estas tienen prioridad)
       process.env.PGHOST = socketPath;
       process.env.PGDATABASE = db;
       process.env.PGUSER = username;
       process.env.PGPASSWORD = password;
+      process.env.PGPORT = '5432';
       
-      // Usar formato con hostname vacío (PostgreSQL lo acepta con PGHOST)
-      const newUrl = `postgresql://${encodedUser}:${encodedPass}@localhost/${db}?${paramsStr}`;
+      // El problema es complejo: Prisma CLI parsea la URL antes de pasarla al driver
+      // y puede estar intentando usar el path del socket como hostname
+      // 
+      // Solución: Usar el formato correcto para sockets Unix que PostgreSQL acepta:
+      // postgresql://user:pass@/database?host=/path/to/socket
+      // Pero asegurarnos de que no haya puerto en la URL
       
+      // La solución más simple y robusta: usar solo las variables de PostgreSQL
+      // El driver node-postgres (que usa Prisma) respeta PGHOST cuando es un path absoluto
+      // y lo usa en lugar del hostname en la URL
+      //
+      // Construir una URL simple - el hostname será ignorado porque PGHOST está configurado
+      // Usamos localhost como placeholder, pero node-postgres usará PGHOST en su lugar
+      const newUrl = `postgresql://${encodedUser}:${encodedPass}@localhost/${db}`;
+      
+      // NO incluir el puerto en la URL - esto evita que Prisma agregue :5432 incorrectamente
+      // El driver usará el puerto por defecto de PostgreSQL (5432) o el especificado en PGPORT
       process.env.DATABASE_URL = newUrl;
-      console.log('✅ DATABASE_URL configurada');
-      console.log(`🔍 Usando socket: ${socketPath}`);
+      console.log('✅ DATABASE_URL configurada para socket Unix');
+      console.log(`🔍 URL: postgresql://***:***@localhost/${db}`);
+      console.log(`🔍 PGHOST=${socketPath} (node-postgres usará esto en lugar de localhost)`);
+      console.log(`🔍 PGDATABASE=${db}, PGUSER=${username}, PGPASSWORD=***`);
       
     } catch (error) {
       console.error('❌ ERROR al configurar DATABASE_URL:', error.message);
@@ -248,44 +270,66 @@ async function main() {
         const errorMessage = error.message || error.toString();
         const isConnectionError = /P1001|P1013|Can't reach database|ECONNREFUSED|connection.*refused|timeout|empty host/i.test(errorMessage);
         
-        // Si es error de "empty host", intentar con formato alternativo
-        if (/empty host|P1013/i.test(errorMessage) && process.env.DATABASE_URL.includes('localhost')) {
-          console.log('⚠️  Error de formato, intentando configuración alternativa...');
+        // Si es error relacionado con el formato de URL, intentar alternativas
+        if (/empty host|P1013|P1001|Can't reach database/i.test(errorMessage)) {
+          console.log('⚠️  Error de conexión/formato, intentando configuración alternativa...');
           
-          // Intentar usar la URL original si existe socket Unix
           const socketPath = `/cloudsql/${getInstanceConnectionName()}`;
-          if (existsSync(socketPath) || existsSync(socketPath + '/.s.PGSQL.5432')) {
-            // Usar PGHOST directamente sin modificar DATABASE_URL
-            const originalUrl = process.env.DATABASE_URL;
-            const urlMatch = originalUrl.match(/^postgresql:\/\/([^:]+):(.+?)@([^\/]*?)(?:\/([^?]+))?(?:\?(.*))?$/);
+          if (existsSync('/cloudsql')) {
+            const originalUrl = process.env.DATABASE_URL || process.env.ORIGINAL_DATABASE_URL;
             
-            if (urlMatch) {
-              const [, username, password, , database] = urlMatch;
-              const db = database || 'trabajoya';
-              
-              // Configurar variables de PostgreSQL directamente
-              process.env.PGHOST = socketPath;
-              process.env.PGDATABASE = db;
-              process.env.PGUSER = username;
-              process.env.PGPASSWORD = password;
-              
-              // Usar formato simple sin parámetros de host
-              process.env.DATABASE_URL = `postgresql://${username}:${password}@localhost/${db}`;
-              
-              console.log('🔄 Reintentando con PGHOST y DATABASE_URL simplificada...');
-              
+            // Intentar diferentes formatos
+            const formats = [
+              // Formato 1: Solo usar PGHOST con URL simple
+              () => {
+                const match = originalUrl?.match(/^postgresql:\/\/([^:]+):(.+?)@[^\/]*?\/([^?]+)/);
+                if (match) {
+                  const [, user, pass, db] = match;
+                  process.env.PGHOST = socketPath;
+                  process.env.PGDATABASE = db;
+                  process.env.PGUSER = user;
+                  process.env.PGPASSWORD = pass;
+                  return `postgresql://${user}:${pass}@127.0.0.1/${db}`;
+                }
+                return null;
+              },
+              // Formato 2: URL con hostname vacío pero sin parámetro host
+              () => {
+                const match = originalUrl?.match(/^postgresql:\/\/([^:]+):(.+?)@[^\/]*?\/([^?]+)/);
+                if (match) {
+                  const [, user, pass, db] = match;
+                  process.env.PGHOST = socketPath;
+                  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@/${db}`;
+                }
+                return null;
+              },
+              // Formato 3: Usar IP privada si está disponible (como último recurso)
+              () => {
+                // No intentar TCP si estamos en Cloud Run, usar solo socket
+                return null;
+              }
+            ];
+            
+            for (const formatFn of formats) {
               try {
-                execSync('npx prisma migrate deploy', {
-                  stdio: 'inherit',
-                  env: process.env,
-                  cwd: process.cwd()
-                });
-                
-                console.log('✅ Migraciones ejecutadas exitosamente');
-                process.exit(0);
-                
-              } catch (retryError) {
-                // Continuar con el ciclo de reintentos normal
+                const newUrl = formatFn();
+                if (newUrl) {
+                  console.log(`🔄 Intentando formato alternativo...`);
+                  process.env.DATABASE_URL = newUrl;
+                  
+                  execSync('npx prisma migrate deploy', {
+                    stdio: 'inherit',
+                    env: process.env,
+                    cwd: process.cwd(),
+                    timeout: 60000
+                  });
+                  
+                  console.log('✅ Migraciones ejecutadas exitosamente con formato alternativo');
+                  process.exit(0);
+                }
+              } catch (formatError) {
+                // Continuar con el siguiente formato
+                continue;
               }
             }
           }
