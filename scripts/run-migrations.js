@@ -206,8 +206,31 @@ function startCloudSQLProxy(instanceConnectionName, port = 5432) {
     
     // Verificar si ya existe
     if (fs.existsSync(proxyPath)) {
-      console.log('✅ Cloud SQL Proxy ya existe, usando versión existente');
-      runProxy();
+      console.log('✅ Cloud SQL Proxy ya existe, verificando permisos...');
+      try {
+        // Asegurar permisos de ejecución
+        fs.chmodSync(proxyPath, 0o755);
+        // Verificar que es un archivo válido
+        const stats = fs.statSync(proxyPath);
+        if (!stats.isFile()) {
+          console.log('⚠️  El archivo existente no es válido, descargando nuevamente...');
+          fs.unlinkSync(proxyPath);
+          downloadAndRunProxy();
+        } else {
+          // Pequeño delay para asegurar que el sistema de archivos está listo
+          setTimeout(() => {
+            runProxy();
+          }, 100);
+        }
+      } catch (error) {
+        console.log(`⚠️  Error verificando archivo existente: ${error.message}, descargando nuevamente...`);
+        try {
+          fs.unlinkSync(proxyPath);
+        } catch (e) {
+          // Ignorar si no se puede eliminar
+        }
+        downloadAndRunProxy();
+      }
     } else {
       console.log(`📥 Descargando Cloud SQL Proxy...`);
       downloadAndRunProxy();
@@ -224,10 +247,33 @@ function startCloudSQLProxy(instanceConnectionName, port = 5432) {
           if (response.statusCode === 200) {
             response.pipe(file);
             file.on('finish', () => {
-              file.close();
-              fs.chmodSync(proxyPath, 0o755);
-              console.log('✅ Cloud SQL Proxy descargado');
-              runProxy();
+              file.close(() => {
+                // Forzar sincronización del archivo al disco
+                try {
+                  const fd = fs.openSync(proxyPath, 'r+');
+                  fs.fsyncSync(fd);
+                  fs.closeSync(fd);
+                } catch (e) {
+                  // Ignorar si no se puede sincronizar
+                }
+                
+                // Establecer permisos de ejecución
+                fs.chmodSync(proxyPath, 0o755);
+                
+                // Verificar que el archivo existe y tiene permisos correctos
+                const stats = fs.statSync(proxyPath);
+                if (!stats.isFile()) {
+                  reject(new Error('El archivo descargado no es un archivo válido'));
+                  return;
+                }
+                
+                console.log('✅ Cloud SQL Proxy descargado');
+                
+                // Esperar un momento para asegurar que el sistema de archivos está sincronizado
+                setTimeout(() => {
+                  runProxy();
+                }, 500);
+              });
             });
           } else {
             reject(new Error(`Error descargando proxy: ${response.statusCode}`));
@@ -244,6 +290,27 @@ function startCloudSQLProxy(instanceConnectionName, port = 5432) {
     function runProxy() {
       console.log(`🚀 Iniciando Cloud SQL Proxy en localhost:${port}...`);
       
+      // Verificar que el archivo existe y es ejecutable antes de ejecutarlo
+      if (!fs.existsSync(proxyPath)) {
+        reject(new Error(`Cloud SQL Proxy no encontrado en ${proxyPath}`));
+        return;
+      }
+      
+      try {
+        // Verificar permisos
+        const stats = fs.statSync(proxyPath);
+        if (!stats.isFile()) {
+          reject(new Error(`La ruta ${proxyPath} no es un archivo válido`));
+          return;
+        }
+        
+        // Asegurar permisos de ejecución
+        fs.chmodSync(proxyPath, 0o755);
+      } catch (error) {
+        reject(new Error(`Error verificando Cloud SQL Proxy: ${error.message}`));
+        return;
+      }
+      
       // En Cloud Run, el socket Unix ya está montado, el proxy puede usarlo automáticamente
       // El formato para proxy v2 es: cloud-sql-proxy INSTANCE_CONNECTION_NAME --port=PORT
       const proxyArgs = [
@@ -252,13 +319,19 @@ function startCloudSQLProxy(instanceConnectionName, port = 5432) {
         '--address=127.0.0.1'
       ];
       
-      const proxy = spawn(proxyPath, proxyArgs, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          // El proxy detectará automáticamente el socket Unix en /cloudsql
-        }
-      });
+      let proxy;
+      try {
+        proxy = spawn(proxyPath, proxyArgs, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: {
+            ...process.env,
+            // El proxy detectará automáticamente el socket Unix en /cloudsql
+          }
+        });
+      } catch (error) {
+        reject(new Error(`Error ejecutando Cloud SQL Proxy: ${error.message}`));
+        return;
+      }
       
       let proxyReady = false;
       let outputBuffer = '';
