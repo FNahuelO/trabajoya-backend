@@ -198,92 +198,126 @@ function startCloudSQLProxy(instanceConnectionName, port = 5432) {
     const path = require('path');
     const fs = require('fs');
     
-    console.log('🔧 Instalando Cloud SQL Proxy...');
+    console.log('🔧 Configurando Cloud SQL Proxy...');
     
     // Determinar la arquitectura
     const arch = process.arch === 'x64' ? 'linux.amd64' : 'linux.386';
     const proxyPath = path.join(os.tmpdir(), 'cloud-sql-proxy');
     
-    try {
-      // Descargar Cloud SQL Proxy
-      const https = require('https');
-      const url = `https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.${arch}`;
+    // Verificar si ya existe
+    if (fs.existsSync(proxyPath)) {
+      console.log('✅ Cloud SQL Proxy ya existe, usando versión existente');
+      runProxy();
+    } else {
+      console.log(`📥 Descargando Cloud SQL Proxy...`);
+      downloadAndRunProxy();
+    }
+    
+    function downloadAndRunProxy() {
+      try {
+        // Descargar Cloud SQL Proxy
+        const https = require('https');
+        const url = `https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.${arch}`;
+        
+        const file = fs.createWriteStream(proxyPath);
+        https.get(url, (response) => {
+          if (response.statusCode === 200) {
+            response.pipe(file);
+            file.on('finish', () => {
+              file.close();
+              fs.chmodSync(proxyPath, 0o755);
+              console.log('✅ Cloud SQL Proxy descargado');
+              runProxy();
+            });
+          } else {
+            reject(new Error(`Error descargando proxy: ${response.statusCode}`));
+          }
+        }).on('error', (error) => {
+          reject(error);
+        });
+        
+      } catch (error) {
+        reject(error);
+      }
+    }
+    
+    function runProxy() {
+      console.log(`🚀 Iniciando Cloud SQL Proxy en localhost:${port}...`);
       
-      console.log(`📥 Descargando Cloud SQL Proxy desde ${url}...`);
+      // En Cloud Run, el socket Unix ya está montado, el proxy puede usarlo automáticamente
+      // El formato para proxy v2 es: cloud-sql-proxy INSTANCE_CONNECTION_NAME --port=PORT
+      const proxyArgs = [
+        instanceConnectionName,
+        `--port=${port}`,
+        '--address=127.0.0.1'
+      ];
       
-      const file = fs.createWriteStream(proxyPath);
-      https.get(url, (response) => {
-        if (response.statusCode === 200) {
-          response.pipe(file);
-          file.on('finish', () => {
-            file.close();
-            fs.chmodSync(proxyPath, 0o755);
-            
-            console.log('✅ Cloud SQL Proxy instalado');
-            console.log(`🚀 Iniciando Cloud SQL Proxy en localhost:${port}...`);
-            
-            // Ejecutar proxy
-            const proxy = spawn(proxyPath, [
-              `${instanceConnectionName}?port=${port}`
-            ], {
-              stdio: ['ignore', 'pipe', 'pipe']
-            });
-            
-            let proxyReady = false;
-            
-            proxy.stdout.on('data', (data) => {
-              const output = data.toString();
-              console.log(`[Cloud SQL Proxy] ${output}`);
-              if (output.includes('Ready for new connections')) {
-                proxyReady = true;
-                resolve(proxy);
-              }
-            });
-            
-            proxy.stderr.on('data', (data) => {
-              const output = data.toString();
-              console.log(`[Cloud SQL Proxy] ${output}`);
-              if (output.includes('Ready for new connections')) {
-                proxyReady = true;
-                if (!proxyReady) {
-                  resolve(proxy);
-                }
-              }
-            });
-            
-            proxy.on('error', (error) => {
-              console.error('❌ Error ejecutando Cloud SQL Proxy:', error);
-              reject(error);
-            });
-            
-            // Esperar a que el proxy esté listo
-            setTimeout(() => {
-              if (proxyReady) {
-                resolve(proxy);
-              } else {
-                // Asumir que está listo después de 3 segundos
-                console.log('⚠️  Proxy iniciado (asumiendo que está listo)');
-                resolve(proxy);
-              }
-            }, 3000);
-            
-            // Guardar referencia al proceso para poder matarlo después
-            process.on('exit', () => {
-              if (!proxy.killed) {
-                proxy.kill();
-              }
-            });
-            
-          });
-        } else {
-          reject(new Error(`Error descargando proxy: ${response.statusCode}`));
+      const proxy = spawn(proxyPath, proxyArgs, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          // El proxy detectará automáticamente el socket Unix en /cloudsql
         }
-      }).on('error', (error) => {
+      });
+      
+      let proxyReady = false;
+      let outputBuffer = '';
+      
+      proxy.stdout.on('data', (data) => {
+        const output = data.toString();
+        outputBuffer += output;
+        process.stdout.write(`[Cloud SQL Proxy] ${output}`);
+        if (output.includes('Ready for new connections') || output.includes('listening')) {
+          proxyReady = true;
+        }
+      });
+      
+      proxy.stderr.on('data', (data) => {
+        const output = data.toString();
+        outputBuffer += output;
+        process.stderr.write(`[Cloud SQL Proxy] ${output}`);
+        if (output.includes('Ready for new connections') || output.includes('listening')) {
+          proxyReady = true;
+        }
+      });
+      
+      proxy.on('error', (error) => {
+        console.error('❌ Error ejecutando Cloud SQL Proxy:', error);
         reject(error);
       });
       
-    } catch (error) {
-      reject(error);
+      proxy.on('exit', (code) => {
+        if (code !== 0 && code !== null) {
+          console.error(`❌ Cloud SQL Proxy terminó con código ${code}`);
+          console.error(`Output: ${outputBuffer}`);
+        }
+      });
+      
+      // Esperar a que el proxy esté listo
+      const checkReady = setInterval(() => {
+        if (proxyReady) {
+          clearInterval(checkReady);
+          console.log('✅ Cloud SQL Proxy está listo');
+          resolve(proxy);
+        }
+      }, 500);
+      
+      // Timeout después de 10 segundos
+      setTimeout(() => {
+        clearInterval(checkReady);
+        if (!proxyReady) {
+          console.log('⚠️  Proxy iniciado (asumiendo que está listo después de 10s)');
+          proxyReady = true;
+          resolve(proxy);
+        }
+      }, 10000);
+      
+      // Guardar referencia al proceso para poder matarlo después
+      process.on('exit', () => {
+        if (!proxy.killed) {
+          proxy.kill();
+        }
+      });
     }
   });
 }
@@ -341,8 +375,8 @@ async function main() {
       process.exit(1);
     }
     
-    // 3. Configurar DATABASE_URL para socket Unix si está disponible
-    // Si Prisma CLI no respeta PGHOST, usaremos Cloud SQL Proxy como fallback
+    // 3. Configurar conexión: Como Prisma CLI no respeta PGHOST con sockets Unix,
+    // debemos usar Cloud SQL Proxy desde el inicio si hay socket Unix disponible
     const socketAvailable = existsSync('/cloudsql');
     const instanceConnectionName = getInstanceConnectionName();
     
@@ -351,12 +385,47 @@ async function main() {
     
     if (socketAvailable) {
       console.log('✅ Socket Unix disponible');
+      console.log('⚠️  Prisma CLI no respeta PGHOST, usando Cloud SQL Proxy...');
       
-      // Intentar primero con socket Unix directo
-      configureDatabaseURL();
-      
-      // Intentar una conexión de prueba con el formato actual
-      // Si falla, usaremos Cloud SQL Proxy
+      try {
+        // Iniciar Cloud SQL Proxy inmediatamente
+        proxyProcess = await startCloudSQLProxy(instanceConnectionName);
+        global.proxyProcess = proxyProcess;
+        
+        // Esperar a que el proxy esté listo
+        console.log('⏳ Esperando a que Cloud SQL Proxy esté listo...');
+        await waitForPostgreSQL('127.0.0.1', 5432, 30000);
+        console.log('✅ Cloud SQL Proxy está listo');
+        
+        // Configurar DATABASE_URL para usar TCP a través del proxy
+        const originalUrl = process.env.DATABASE_URL;
+        const match = originalUrl.match(/^postgresql:\/\/([^:]+):(.+?)@[^\/]*?\/([^?]+)/);
+        
+        if (match) {
+          const [, user, pass, db] = match;
+          const encodedUser = encodeURIComponent(user);
+          const encodedPass = encodeURIComponent(pass);
+          
+          // Usar TCP a través del proxy local
+          process.env.DATABASE_URL = `postgresql://${encodedUser}:${encodedPass}@127.0.0.1:5432/${db}`;
+          
+          // Limpiar variables de PostgreSQL para que use la URL directamente
+          delete process.env.PGHOST;
+          delete process.env.PGDATABASE;
+          delete process.env.PGUSER;
+          delete process.env.PGPASSWORD;
+          
+          console.log('✅ DATABASE_URL configurada para usar Cloud SQL Proxy');
+          console.log(`🔍 URL: postgresql://***:***@127.0.0.1:5432/${db}`);
+        } else {
+          throw new Error('No se pudo parsear DATABASE_URL');
+        }
+        
+      } catch (proxyError) {
+        console.error('❌ Error iniciando Cloud SQL Proxy:', proxyError.message);
+        console.log('⚠️  Intentando con socket Unix directo...');
+        configureDatabaseURL();
+      }
     } else {
       console.log('⚠️  Socket Unix no disponible, usando DATABASE_URL original');
     }
