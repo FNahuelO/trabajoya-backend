@@ -298,6 +298,35 @@ if [ ! -f "dist/main.js" ]; then
   exit 1
 fi
 
+# Verificar una vez más que las variables críticas estén disponibles
+if [ -z "$PRISMA_DATABASE_URL" ] && [ -z "$DATABASE_URL" ]; then
+  echo "❌ ERROR CRÍTICO: Ni PRISMA_DATABASE_URL ni DATABASE_URL están configuradas"
+  echo "🔍 Variables de entorno disponibles:"
+  env | grep -i "DATABASE\|PRISMA" || echo "   (ninguna encontrada)"
+  exit 1
+fi
+
+# Asegurar que PRISMA_DATABASE_URL esté configurada (Prisma Client la necesita al inicializarse)
+if [ -z "$PRISMA_DATABASE_URL" ] && [ -n "$DATABASE_URL" ]; then
+  export PRISMA_DATABASE_URL="$DATABASE_URL"
+  echo "✅ PRISMA_DATABASE_URL configurada desde DATABASE_URL"
+fi
+
+# Asegurar que DATABASE_URL también esté disponible (por si Prisma Client lo busca)
+if [ -z "$DATABASE_URL" ] && [ -n "$PRISMA_DATABASE_URL" ]; then
+  export DATABASE_URL="$PRISMA_DATABASE_URL"
+  echo "✅ DATABASE_URL configurada desde PRISMA_DATABASE_URL"
+fi
+
+# Verificación final antes de iniciar Node.js
+echo "🔍 Verificación final de variables críticas:"
+echo "   - PRISMA_DATABASE_URL: ${PRISMA_DATABASE_URL:+✅ configurado (oculto por seguridad)}"
+echo "   - DATABASE_URL: ${DATABASE_URL:+✅ configurado (oculto por seguridad)}"
+if [ -z "$PRISMA_DATABASE_URL" ] || [ -z "$DATABASE_URL" ]; then
+  echo "❌ ERROR: Variables críticas no están configuradas correctamente"
+  exit 1
+fi
+
 # Ejecutar migraciones en background (completamente asíncrono, no bloquea)
 echo "📦 Iniciando migraciones en background (no bloqueante)..."
 nohup sh -c "
@@ -316,6 +345,10 @@ nohup sh -c "
 echo "🚀 Iniciando servidor Node.js en puerto ${PORT:-8080}..."
 echo "⏱️  El servidor iniciará inmediatamente, las migraciones continúan en background"
 echo "🏥 Health check disponible en: http://0.0.0.0:${PORT:-8080}/api/public/health"
+
+# Exportar variables de entorno explícitamente para que Node.js las tenga disponibles
+export PRISMA_DATABASE_URL
+export DATABASE_URL
 
 # Iniciar el servidor Node.js - usar exec para que reciba señales correctamente
 exec node dist/main.js
