@@ -178,8 +178,43 @@ if echo "$@" | grep -q "prisma.*migrate"; then
       env | grep -i "cloud.*sql\|database" | sed 's/\(.*=\)\(.*\)/\1***/' || echo "   (ninguna encontrada)"
     fi
     
+    # Verificar si DATABASE_URL ya está en formato socket Unix
+    if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "/cloudsql/"; then
+      echo "✅ DATABASE_URL ya está configurada para usar socket Unix de Cloud SQL"
+      # Extraer la ruta del socket para verificación
+      SOCKET_PATH=$(echo "$DATABASE_URL" | sed -n 's|.*host=\([^&]*\).*|\1|p')
+      if [ -n "$SOCKET_PATH" ]; then
+        echo "📁 Socket configurado en: ${SOCKET_PATH}"
+        # Verificar que el nombre de conexión sea correcto
+        if echo "$SOCKET_PATH" | grep -q "trabajo-ya-483316:us-central1:trabajo-ya-483316"; then
+          echo "⚠️  Detectado nombre de conexión incorrecto en DATABASE_URL"
+          echo "⚠️  Debería ser: trabajo-ya-483316:us-central1:trabajoya-db"
+          echo "🔧 Corrigiendo nombre de conexión usando Node.js..."
+          CORRECT_SOCKET="/cloudsql/trabajo-ya-483316:us-central1:trabajoya-db"
+          # Usar Node.js para reemplazar de manera segura
+          export DATABASE_URL=$(node <<NODE_SCRIPT
+            const url = require('url');
+            const originalUrl = '${DATABASE_URL}';
+            const correctSocket = '${CORRECT_SOCKET}';
+            try {
+              const parsed = new url.URL(originalUrl);
+              parsed.searchParams.set('host', correctSocket);
+              console.log(parsed.toString());
+            } catch (e) {
+              // Fallback: reemplazo simple
+              console.log(originalUrl.replace(/host=[^&]*/, \`host=\${correctSocket}\`));
+            }
+NODE_SCRIPT
+          )
+          echo "✅ DATABASE_URL corregida"
+        fi
+      fi
+    # Guardar la URL original antes de cualquier modificación
+    ORIGINAL_DATABASE_URL="$DATABASE_URL"
+    export ORIGINAL_DATABASE_URL
+    
     # Ajustar DATABASE_URL para usar socket Unix si está configurada para TCP local
-    if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "127.0.0.1\|localhost"; then
+    elif [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "127.0.0.1\|localhost"; then
       echo "🔧 Ajustando DATABASE_URL para usar socket Unix de Cloud SQL..."
       
       # Buscar la ruta del socket de Cloud SQL
@@ -219,23 +254,50 @@ if echo "$@" | grep -q "prisma.*migrate"; then
       fi
       
       if [ -n "$CLOUD_SQL_PATH" ]; then
-        # Extraer componentes de la URL original
-        # Formato: postgresql://user:password@host:port/database?params
-        DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
-        DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
-        DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
-        DB_PARAMS=$(echo "$DATABASE_URL" | sed -n 's|.*?\(.*\)|\1|p')
-        
-        # Construir nueva URL con socket Unix
-        # Formato para Prisma: postgresql://user:password@/database?host=/cloudsql/INSTANCE
-        if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
-          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}&${DB_PARAMS}"
-        elif [ -n "$DB_PARAMS" ]; then
-          # Si ya tiene host=, reemplazarlo
-          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_PATH}|g")"
-        else
-          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}"
-        fi
+        # Usar Node.js para parsear y reconstruir la URL de manera segura
+        # Esto maneja correctamente caracteres especiales en contraseñas
+        echo "🔧 Reconstruyendo DATABASE_URL con socket Unix usando Node.js..."
+        export DATABASE_URL=$(node <<NODE_SCRIPT
+          const url = require('url');
+          const originalUrl = process.env.ORIGINAL_DATABASE_URL || '${DATABASE_URL}';
+          try {
+            const parsed = new url.URL(originalUrl);
+            const socketPath = '${CLOUD_SQL_PATH}';
+            
+            // Construir nueva URL con socket Unix
+            // Formato: postgresql://user:password@/database?host=/cloudsql/INSTANCE&other_params
+            const newUrl = new url.URL(originalUrl);
+            newUrl.hostname = ''; // Vaciar hostname para usar socket
+            newUrl.port = '';     // Vaciar puerto
+            
+            // Actualizar parámetros de consulta
+            newUrl.searchParams.set('host', socketPath);
+            
+            // Mantener otros parámetros existentes (excepto host si existía)
+            const originalParams = new url.URL(originalUrl).searchParams;
+            originalParams.forEach((value, key) => {
+              if (key !== 'host') {
+                newUrl.searchParams.set(key, value);
+              }
+            });
+            
+            console.log(newUrl.toString());
+          } catch (e) {
+            // Si falla el parsing, intentar método simple
+            const match = originalUrl.match(/^postgresql:\/\/([^:]+):([^@]+)@([^\/]+)?\/([^?]+)(\?.*)?$/);
+            if (match) {
+              const [, user, pass, , db, params] = match;
+              const socketPath = '${CLOUD_SQL_PATH}';
+              const paramsStr = params ? params.replace(/host=[^&]*/, '') : '';
+              const newParams = paramsStr ? \`\${paramsStr}&host=\${socketPath}\` : \`host=\${socketPath}\`;
+              console.log(\`postgresql://\${user}:\${pass}@/\${db}?\${newParams}\`);
+            } else {
+              console.error('Error parsing URL:', e.message);
+              process.exit(1);
+            }
+          }
+NODE_SCRIPT
+        )
         echo "✅ DATABASE_URL ajustada para usar socket Unix: ${CLOUD_SQL_PATH}"
       else
         # Si no encontramos el socket, intentar construir la ruta desde variables de entorno
@@ -244,20 +306,38 @@ if echo "$@" | grep -q "prisma.*migrate"; then
           CLOUD_SQL_PATH="/cloudsql/${CLOUD_SQL_CONNECTION_NAME}"
           echo "🔧 Usando CLOUD_SQL_CONNECTION_NAME para construir ruta: ${CLOUD_SQL_PATH}"
           
-          # Extraer componentes de la URL original
-          DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
-          DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
-          DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
-          DB_PARAMS=$(echo "$DATABASE_URL" | sed -n 's|.*?\(.*\)|\1|p')
-          
-          # Construir nueva URL con socket Unix
-          if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
-            export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}&${DB_PARAMS}"
-          elif [ -n "$DB_PARAMS" ]; then
-            export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_PATH}|g")"
-          else
-            export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}"
-          fi
+          # Usar Node.js para parsear y reconstruir la URL de manera segura
+          export DATABASE_URL=$(node <<NODE_SCRIPT
+            const url = require('url');
+            const originalUrl = process.env.ORIGINAL_DATABASE_URL || '${DATABASE_URL}';
+            const socketPath = '${CLOUD_SQL_PATH}';
+            try {
+              const parsed = new url.URL(originalUrl);
+              const newUrl = new url.URL(originalUrl);
+              newUrl.hostname = '';
+              newUrl.port = '';
+              newUrl.searchParams.set('host', socketPath);
+              const originalParams = new url.URL(originalUrl).searchParams;
+              originalParams.forEach((value, key) => {
+                if (key !== 'host') {
+                  newUrl.searchParams.set(key, value);
+                }
+              });
+              console.log(newUrl.toString());
+            } catch (e) {
+              const match = originalUrl.match(/^postgresql:\/\/([^:]+):([^@]+)@([^\/]+)?\/([^?]+)(\?.*)?$/);
+              if (match) {
+                const [, user, pass, , db, params] = match;
+                const paramsStr = params ? params.replace(/host=[^&]*/, '') : '';
+                const newParams = paramsStr ? \`\${paramsStr}&host=\${socketPath}\` : \`host=\${socketPath}\`;
+                console.log(\`postgresql://\${user}:\${pass}@/\${db}?\${newParams}\`);
+              } else {
+                console.error('Error:', e.message);
+                process.exit(1);
+              }
+            }
+NODE_SCRIPT
+          )
           echo "✅ DATABASE_URL ajustada usando CLOUD_SQL_CONNECTION_NAME: ${CLOUD_SQL_PATH}"
         else
           # Intentar obtener el nombre de la instancia desde los metadatos de Cloud Run
@@ -317,8 +397,7 @@ if echo "$@" | grep -q "prisma.*migrate"; then
               echo "🔧 Construyendo nombre de conexión: ${INSTANCE_CONNECTION_NAME}"
             else
               # Fallback: usar el nombre de conexión conocido según la configuración
-              # trabajo-ya-483316:us-central1:trabajoya-db (según la imagen del usuario)
-              # Intentar con el nombre conocido
+              # trabajo-ya-483316:us-central1:trabajoya-db (según la imagen del usuario y cloudbuild.yaml)
               INSTANCE_CONNECTION_NAME="trabajo-ya-483316:us-central1:trabajoya-db"
               echo "🔧 Usando nombre de conexión conocido (fallback): ${INSTANCE_CONNECTION_NAME}"
             fi
@@ -336,19 +415,38 @@ if echo "$@" | grep -q "prisma.*migrate"; then
               echo "⚠️  Intentando usar la ruta de todas formas..."
             fi
             
-            # Construir DATABASE_URL con el socket Unix
-            DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
-            DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
-            DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
-            DB_PARAMS=$(echo "$DATABASE_URL" | sed -n 's|.*?\(.*\)|\1|p')
-            
-            if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
-              export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}&${DB_PARAMS}"
-            elif [ -n "$DB_PARAMS" ]; then
-              export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_PATH}|g")"
-            else
-              export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}"
-            fi
+            # Construir DATABASE_URL con el socket Unix usando Node.js
+            export DATABASE_URL=$(node <<NODE_SCRIPT
+              const url = require('url');
+              const originalUrl = process.env.ORIGINAL_DATABASE_URL || '${DATABASE_URL}';
+              const socketPath = '${CLOUD_SQL_PATH}';
+              try {
+                const parsed = new url.URL(originalUrl);
+                const newUrl = new url.URL(originalUrl);
+                newUrl.hostname = '';
+                newUrl.port = '';
+                newUrl.searchParams.set('host', socketPath);
+                const originalParams = new url.URL(originalUrl).searchParams;
+                originalParams.forEach((value, key) => {
+                  if (key !== 'host') {
+                    newUrl.searchParams.set(key, value);
+                  }
+                });
+                console.log(newUrl.toString());
+              } catch (e) {
+                const match = originalUrl.match(/^postgresql:\/\/([^:]+):([^@]+)@([^\/]+)?\/([^?]+)(\?.*)?$/);
+                if (match) {
+                  const [, user, pass, , db, params] = match;
+                  const paramsStr = params ? params.replace(/host=[^&]*/, '') : '';
+                  const newParams = paramsStr ? \`\${paramsStr}&host=\${socketPath}\` : \`host=\${socketPath}\`;
+                  console.log(\`postgresql://\${user}:\${pass}@/\${db}?\${newParams}\`);
+                } else {
+                  console.error('Error:', e.message);
+                  process.exit(1);
+                }
+              }
+NODE_SCRIPT
+            )
             echo "✅ DATABASE_URL ajustada para usar socket Unix: ${CLOUD_SQL_PATH}"
           else
             echo "❌ No se pudo determinar el nombre de conexión de Cloud SQL"
