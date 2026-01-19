@@ -24,11 +24,12 @@ steps:
     args:
       - '-c'
       - |
-        echo "🧹 Limpiando secrets antiguos (si existen)..."
+        echo "🧹 Limpiando secrets y conexiones Cloud SQL antiguas (si existen)..."
         gcloud run services update trabajoya-backend \
           --region=${_REGION} \
           --clear-secrets \
-          --no-traffic || echo "⚠️  No se pudieron limpiar secrets (puede ser normal si el servicio no existe)"
+          --clear-cloudsql-instances \
+          --no-traffic || echo "⚠️  No se pudieron limpiar (puede ser normal si el servicio no existe)"
         
         echo "🚀 Desplegando servicio..."
         gcloud run deploy trabajoya-backend \
@@ -46,6 +47,18 @@ steps:
           --set-env-vars="NODE_ENV=production" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+        
+        # Verificar que Cloud SQL esté configurado correctamente
+        echo "✅ Verificando configuración de Cloud SQL..."
+        CURR_SQL_INST=$$(gcloud run services describe trabajoya-backend --region=${_REGION} --format="value(spec.template.spec.containers[0].cloudSqlInstances)" 2>/dev/null || echo "")
+        if [ -z "$$CURR_SQL_INST" ] || [ "$$CURR_SQL_INST" != "${_CLOUD_SQL_INSTANCE}" ]; then
+          echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
+          gcloud run services update trabajoya-backend \
+            --region=${_REGION} \
+            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+        else
+          echo "✅ Cloud SQL ya está configurado correctamente"
+        fi
 
   # Crear/actualizar Cloud Run Job para migraciones
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -135,6 +148,12 @@ steps:
             --task-timeout=600
         else
           echo "🔄 Actualizando job trabajoya-seed existente..."
+          # Primero limpiar conexiones Cloud SQL existentes para asegurar configuración limpia
+          echo "🧹 Limpiando conexiones Cloud SQL existentes..."
+          gcloud run jobs update trabajoya-seed \
+            --region=us-central1 \
+            --clear-cloudsql-instances || echo "⚠️  No había conexiones previas o no se pudieron limpiar"
+          
           # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
           # Asegurar que la conexión Cloud SQL esté configurada usando --add-cloudsql-instances
           # en la misma actualización para que se aplique correctamente
