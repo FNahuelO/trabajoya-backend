@@ -172,23 +172,53 @@ if echo "$@" | grep -q "prisma.*migrate"; then
     echo "✅ Usando Cloud SQL a través de Cloud Run, no se requiere proxy TCP"
     # Opcional: Verificar que el socket esté disponible
     if [ -d "/cloudsql" ]; then
-      echo "📁 Sockets disponibles en /cloudsql:"
+      echo "📁 Contenido de /cloudsql:"
       ls -la /cloudsql/ 2>/dev/null || echo "   (directorio vacío o no accesible)"
+      echo "📋 Variables de entorno relacionadas con Cloud SQL:"
+      env | grep -i "cloud.*sql\|database" | sed 's/\(.*=\)\(.*\)/\1***/' || echo "   (ninguna encontrada)"
     fi
     
     # Ajustar DATABASE_URL para usar socket Unix si está configurada para TCP local
     if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -q "127.0.0.1\|localhost"; then
       echo "🔧 Ajustando DATABASE_URL para usar socket Unix de Cloud SQL..."
       
-      # Buscar el directorio del socket de Cloud SQL
+      # Buscar la ruta del socket de Cloud SQL
       # Cloud Run monta el socket en /cloudsql/[INSTANCE_CONNECTION_NAME]
-      CLOUD_SQL_DIR=""
+      # Puede ser un directorio o el socket puede estar dentro de un directorio
+      CLOUD_SQL_PATH=""
+      
       if [ -d "/cloudsql" ]; then
-        # Obtener el primer directorio disponible (normalmente hay uno)
-        CLOUD_SQL_DIR=$(ls -d /cloudsql/* 2>/dev/null | head -1)
+        # Buscar cualquier elemento en /cloudsql que no sea README
+        for item in /cloudsql/*; do
+          if [ -e "$item" ] && [ "$(basename "$item")" != "README" ]; then
+            # Si es un directorio, usarlo directamente
+            if [ -d "$item" ]; then
+              CLOUD_SQL_PATH="$item"
+              break
+            # Si es un archivo socket o cualquier otro archivo, usar el directorio padre
+            elif [ -f "$item" ] || [ -S "$item" ]; then
+              # El socket está en /cloudsql, así que usar el directorio /cloudsql
+              # Pero necesitamos el nombre de la instancia, que es el nombre del archivo/directorio
+              INSTANCE_NAME=$(basename "$item")
+              CLOUD_SQL_PATH="/cloudsql/${INSTANCE_NAME}"
+              break
+            fi
+          fi
+        done
+        
+        # Si no encontramos nada específico, buscar directorios que contengan sockets
+        if [ -z "$CLOUD_SQL_PATH" ]; then
+          # Listar todos los elementos y tomar el primero que no sea README
+          for item in /cloudsql/*; do
+            if [ -e "$item" ] && [ "$(basename "$item")" != "README" ]; then
+              CLOUD_SQL_PATH="/cloudsql/$(basename "$item")"
+              break
+            fi
+          done
+        fi
       fi
       
-      if [ -n "$CLOUD_SQL_DIR" ] && [ -d "$CLOUD_SQL_DIR" ]; then
+      if [ -n "$CLOUD_SQL_PATH" ]; then
         # Extraer componentes de la URL original
         # Formato: postgresql://user:password@host:port/database?params
         DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
@@ -199,17 +229,93 @@ if echo "$@" | grep -q "prisma.*migrate"; then
         # Construir nueva URL con socket Unix
         # Formato para Prisma: postgresql://user:password@/database?host=/cloudsql/INSTANCE
         if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
-          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_DIR}&${DB_PARAMS}"
+          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}&${DB_PARAMS}"
         elif [ -n "$DB_PARAMS" ]; then
           # Si ya tiene host=, reemplazarlo
-          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_DIR}|g")"
+          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_PATH}|g")"
         else
-          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_DIR}"
+          export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}"
         fi
-        echo "✅ DATABASE_URL ajustada para usar socket Unix: ${CLOUD_SQL_DIR}"
+        echo "✅ DATABASE_URL ajustada para usar socket Unix: ${CLOUD_SQL_PATH}"
       else
-        echo "⚠️  No se encontró directorio de socket de Cloud SQL, usando DATABASE_URL original"
-        echo "⚠️  Asegúrate de que DATABASE_URL en los secrets use el formato correcto para Cloud SQL"
+        # Si no encontramos el socket, intentar construir la ruta desde variables de entorno
+        # Cloud Run puede exponer información sobre la instancia
+        if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
+          CLOUD_SQL_PATH="/cloudsql/${CLOUD_SQL_CONNECTION_NAME}"
+          echo "🔧 Usando CLOUD_SQL_CONNECTION_NAME para construir ruta: ${CLOUD_SQL_PATH}"
+          
+          # Extraer componentes de la URL original
+          DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
+          DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
+          DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+          DB_PARAMS=$(echo "$DATABASE_URL" | sed -n 's|.*?\(.*\)|\1|p')
+          
+          # Construir nueva URL con socket Unix
+          if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
+            export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}&${DB_PARAMS}"
+          elif [ -n "$DB_PARAMS" ]; then
+            export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_PATH}|g")"
+          else
+            export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}"
+          fi
+          echo "✅ DATABASE_URL ajustada usando CLOUD_SQL_CONNECTION_NAME: ${CLOUD_SQL_PATH}"
+        else
+          # Último intento: buscar cualquier cosa en /cloudsql que no sea README
+          echo "🔍 Buscando socket de Cloud SQL en /cloudsql..."
+          if [ -d "/cloudsql" ]; then
+            # Listar todo y encontrar el primer elemento que no sea README
+            for item in /cloudsql/*; do
+              if [ -e "$item" ]; then
+                ITEM_NAME=$(basename "$item")
+                if [ "$ITEM_NAME" != "README" ]; then
+                  # Si es un directorio, usarlo directamente
+                  if [ -d "$item" ]; then
+                    CLOUD_SQL_PATH="$item"
+                    echo "✅ Encontrado directorio de socket: ${CLOUD_SQL_PATH}"
+                    break
+                  # Si parece ser un nombre de instancia (contiene :), construir la ruta
+                  elif echo "$ITEM_NAME" | grep -q ":"; then
+                    CLOUD_SQL_PATH="/cloudsql/${ITEM_NAME}"
+                    echo "✅ Construyendo ruta desde nombre de instancia: ${CLOUD_SQL_PATH}"
+                    break
+                  fi
+                fi
+              fi
+            done
+            
+            # Si aún no tenemos la ruta, intentar construirla desde cualquier elemento
+            if [ -z "$CLOUD_SQL_PATH" ]; then
+              # Buscar cualquier directorio o archivo que no sea README
+              FIRST_ITEM=$(ls -1 /cloudsql/ 2>/dev/null | grep -v "^README$" | head -1)
+              if [ -n "$FIRST_ITEM" ]; then
+                CLOUD_SQL_PATH="/cloudsql/${FIRST_ITEM}"
+                echo "✅ Usando primer elemento encontrado: ${CLOUD_SQL_PATH}"
+              fi
+            fi
+            
+            # Si encontramos una ruta, construir la DATABASE_URL
+            if [ -n "$CLOUD_SQL_PATH" ]; then
+              DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
+              DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
+              DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+              DB_PARAMS=$(echo "$DATABASE_URL" | sed -n 's|.*?\(.*\)|\1|p')
+              
+              if [ -n "$DB_PARAMS" ] && echo "$DB_PARAMS" | grep -vq "host="; then
+                export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}&${DB_PARAMS}"
+              elif [ -n "$DB_PARAMS" ]; then
+                export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?$(echo "$DB_PARAMS" | sed "s|host=[^&]*|host=${CLOUD_SQL_PATH}|g")"
+              else
+                export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=${CLOUD_SQL_PATH}"
+              fi
+              echo "✅ DATABASE_URL ajustada usando ruta encontrada: ${CLOUD_SQL_PATH}"
+            else
+              echo "❌ No se pudo encontrar o construir la ruta del socket de Cloud SQL"
+              echo "⚠️  Intentando usar DATABASE_URL original, pero puede fallar si usa 127.0.0.1"
+              echo "💡 Solución: Asegúrate de que DATABASE_URL en los secrets use el formato:"
+              echo "   postgresql://user:pass@/db?host=/cloudsql/PROJECT:REGION:INSTANCE"
+            fi
+          fi
+        fi
       fi
     fi
   else
@@ -225,9 +331,25 @@ if echo "$@" | grep -q "prisma.*migrate"; then
   fi
   
   # Mostrar información de depuración (sin mostrar credenciales)
-  DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
-  if [ -n "$DB_HOST" ]; then
-    echo "🔗 DATABASE_URL configurado para host: $DB_HOST"
+  echo "🔗 DATABASE_URL configurada (host oculto por seguridad):"
+  echo "$DATABASE_URL" | sed -E 's|://([^:]+):([^@]+)@|://***:***@|g' | sed -E 's|host=([^&]+)|host=***|g'
+  
+  # Verificar si la URL usa socket Unix
+  if echo "$DATABASE_URL" | grep -q "/cloudsql/"; then
+    echo "✅ DATABASE_URL usa socket Unix de Cloud SQL"
+    CLOUD_SQL_SOCKET_PATH=$(echo "$DATABASE_URL" | sed -n 's|.*host=\([^&]*\).*|\1|p')
+    if [ -n "$CLOUD_SQL_SOCKET_PATH" ]; then
+      echo "📁 Verificando socket en: ${CLOUD_SQL_SOCKET_PATH}"
+      if [ -e "$CLOUD_SQL_SOCKET_PATH" ] || [ -d "$CLOUD_SQL_SOCKET_PATH" ]; then
+        echo "✅ Socket encontrado"
+      else
+        echo "⚠️  Socket no encontrado en la ruta especificada"
+        echo "⚠️  Esto puede causar errores de conexión"
+      fi
+    fi
+  elif echo "$DATABASE_URL" | grep -q "127.0.0.1\|localhost"; then
+    echo "⚠️  DATABASE_URL usa TCP local (127.0.0.1 o localhost)"
+    echo "⚠️  En Cloud Run con Cloud SQL, debería usar socket Unix: /cloudsql/INSTANCE"
   fi
   
   # Intentar con reintentos en caso de error de conexión
