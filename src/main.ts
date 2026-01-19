@@ -119,15 +119,18 @@ async function bootstrap() {
       SwaggerModule.setup("api", app, document);
     }
 
-    const port = process.env.PORT || 4000;
+    const port = parseInt(process.env.PORT || "4000", 10);
     
     // Cloud Run usa WebSocket upgrade automáticamente, pero necesitamos configurarlo
     // NestJS con Socket.IO funciona correctamente en Cloud Run sin cambios adicionales
     
+    // Iniciar servidor de forma no bloqueante para que Cloud Run detecte el puerto rápidamente
     await app.listen(port, "0.0.0.0");
+    
     console.log("=".repeat(50));
     console.log(`✅ Application is running on: http://0.0.0.0:${port}`);
     console.log(`✅ Server listening on port: ${port}`);
+    console.log(`✅ Health check available at: http://0.0.0.0:${port}/health`);
     console.log(
       `📊 Swagger: ${
         process.env.SWAGGER_ENABLED === "true"
