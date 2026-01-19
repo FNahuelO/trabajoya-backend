@@ -24,23 +24,25 @@ fi
 if [ -n "$SECRET_CONTENT" ]; then
   echo "✅ Secret cargado, detectando formato..."
   
-  # Detectar si es JSON o formato KEY=VALUE
-  # Intentar parsear como JSON primero
-  node -e "
+  # Guardar el contenido en un archivo temporal para evitar problemas con caracteres especiales
+  echo "$SECRET_CONTENT" > /tmp/secret-content.txt
+  
+  # Detectar si es JSON o formato KEY=VALUE usando el archivo
+  node <<'NODE_SCRIPT'
     const fs = require('fs');
-    const secretContent = process.argv[1];
+    const secretContent = fs.readFileSync('/tmp/secret-content.txt', 'utf8');
     const exports = [];
     let secrets = {};
     let format = 'unknown';
     
     // Intentar parsear como JSON
     try {
-      secrets = JSON.parse(secretContent);
+      secrets = JSON.parse(secretContent.trim());
       if (typeof secrets === 'object' && !Array.isArray(secrets)) {
         format = 'json';
       }
     } catch (e) {
-      // No es JSON, intentar como formato KEY=VALUE
+      // No es JSON, será formato KEY=VALUE
       format = 'env';
     }
     
@@ -48,13 +50,13 @@ if [ -n "$SECRET_CONTENT" ]; then
       // Procesar como JSON
       Object.keys(secrets).forEach(key => {
         const value = String(secrets[key]);
-        const escaped = value.replace(/'/g, \"'\\\\''\");
-        exports.push(\`export \${key}='\${escaped}'\`);
+        const escaped = value.replace(/'/g, "'\\''");
+        exports.push(`export ${key}='${escaped}'`);
       });
-      console.log(\`✅ Formato JSON detectado, exportadas \${Object.keys(secrets).length} variables\`);
+      console.log(`✅ Formato JSON detectado, exportadas ${Object.keys(secrets).length} variables`);
     } else {
       // Procesar como formato KEY=VALUE (variables de entorno)
-      const lines = secretContent.split('\\n');
+      const lines = secretContent.split('\n');
       const keys = [];
       lines.forEach(line => {
         line = line.trim();
@@ -68,24 +70,24 @@ if [ -n "$SECRET_CONTENT" ]; then
             // Validar que la clave sea un identificador válido
             if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
               // Remover comillas externas si están presentes (simples o dobles)
-              if ((value.startsWith('\"') && value.endsWith('\"') && value.length > 1) || 
-                  (value.startsWith(\"'\") && value.endsWith(\"'\") && value.length > 1)) {
+              if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) || 
+                  (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
                 value = value.slice(1, -1);
               }
               // Escapar para shell
-              const escaped = value.replace(/'/g, \"'\\\\''\");
-              exports.push(\`export \${key}='\${escaped}'\`);
+              const escaped = value.replace(/'/g, "'\\''");
+              exports.push(`export ${key}='${escaped}'`);
               keys.push(key);
             }
           }
         }
       });
-      console.log(\`✅ Formato KEY=VALUE detectado, exportadas \${keys.length} variables\`);
+      console.log(`✅ Formato KEY=VALUE detectado, exportadas ${keys.length} variables`);
     }
     
     // Escribir a un archivo temporal
-    fs.writeFileSync('/tmp/export-secrets.sh', exports.join('\\n') + '\\n');
-  " "$SECRET_CONTENT"
+    fs.writeFileSync('/tmp/export-secrets.sh', exports.join('\n') + '\n');
+NODE_SCRIPT
   
   # Ejecutar el script de exportación
   . /tmp/export-secrets.sh
