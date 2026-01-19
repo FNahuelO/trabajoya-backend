@@ -29,6 +29,9 @@ const PLAN_CODES = ["LAUNCH_TRIAL", "URGENT", "STANDARD", "CRYSTAL"];
 
 async function checkTablesExist() {
   try {
+    // Intentar conectar primero con una consulta simple
+    await prisma.$connect();
+    
     // Verificar si la tabla User existe usando SQL directo
     const result = await prisma.$queryRaw`
       SELECT EXISTS (
@@ -41,7 +44,27 @@ async function checkTablesExist() {
 
     return result[0]?.exists || false;
   } catch (error) {
-    console.error("Error verificando si las tablas existen:", error);
+    // Detectar si es un error de conexión
+    const errorMessage = error.message || error.toString();
+    const isConnectionError = 
+      errorMessage.includes("Can't reach database server") ||
+      errorMessage.includes("not reachable") ||
+      errorMessage.includes("connection") ||
+      errorMessage.includes("ECONNREFUSED") ||
+      error.code === "P1001" || // Prisma connection error
+      error.code === "P1017";   // Prisma server closed connection
+    
+    if (isConnectionError) {
+      console.error("❌ Error de conexión a la base de datos:", errorMessage);
+      console.error("⚠️  Asegúrate de que:");
+      console.error("   - La instancia de Cloud SQL está configurada en Cloud Run");
+      console.error("   - El Cloud SQL proxy está corriendo");
+      console.error("   - La base de datos está accesible");
+      throw new Error("No se pudo conectar a la base de datos");
+    }
+    
+    // Otro tipo de error
+    console.error("Error verificando si las tablas existen:", errorMessage);
     return false;
   }
 }
@@ -188,48 +211,73 @@ async function runSeed() {
 async function main() {
   console.log("🔍 Verificando qué tablas necesitan seed...");
 
-  // Primero verificar si las tablas existen
-  const tablesExist = await checkTablesExist();
-  if (!tablesExist) {
-    console.log(
-      "⚠️  Las tablas no existen. El esquema debe aplicarse primero."
-    );
-    return;
-  }
+  try {
+    // Primero verificar si las tablas existen y si podemos conectar
+    const tablesExist = await checkTablesExist();
+    if (!tablesExist) {
+      console.log(
+        "⚠️  Las tablas no existen. El esquema debe aplicarse primero."
+      );
+      console.log("💡 Ejecuta las migraciones antes de correr el seed.");
+      return;
+    }
 
-  // Verificar cada tabla individualmente
-  const needsSeed = await checkWhatNeedsSeed();
+    // Verificar cada tabla individualmente
+    const needsSeed = await checkWhatNeedsSeed();
 
-  if (!needsSeed.needsAnySeed) {
-    console.log("\n✅ Todas las tablas ya contienen los datos necesarios. Saltando seed.");
-    return;
-  }
+    if (!needsSeed.needsAnySeed) {
+      console.log("\n✅ Todas las tablas ya contienen los datos necesarios. Saltando seed.");
+      return;
+    }
 
-  console.log("\n📊 Resumen de lo que necesita seed:");
-  if (needsSeed.user) {
-    console.log(`  - Usuario admin`);
-  }
-  if (needsSeed.catalogs.length > 0) {
-    console.log(`  - Catálogos: ${needsSeed.catalogs.join(", ")}`);
-  }
-  if (needsSeed.plans.length > 0) {
-    console.log(`  - Planes: ${needsSeed.plans.join(", ")}`);
-  }
-  if (needsSeed.iapProducts) {
-    console.log(`  - Productos IAP`);
-  }
+    console.log("\n📊 Resumen de lo que necesita seed:");
+    if (needsSeed.user) {
+      console.log(`  - Usuario admin`);
+    }
+    if (needsSeed.catalogs.length > 0) {
+      console.log(`  - Catálogos: ${needsSeed.catalogs.join(", ")}`);
+    }
+    if (needsSeed.plans.length > 0) {
+      console.log(`  - Planes: ${needsSeed.plans.join(", ")}`);
+    }
+    if (needsSeed.iapProducts) {
+      console.log(`  - Productos IAP`);
+    }
 
-  console.log("\n📦 Ejecutando seed...");
-  await runSeed();
-  console.log("✅ Seed ejecutado exitosamente.");
+    console.log("\n📦 Ejecutando seed...");
+    await runSeed();
+    console.log("✅ Seed ejecutado exitosamente.");
+  } catch (error) {
+    // Si es un error de conexión, lanzarlo para que se maneje arriba
+    if (error.message && error.message.includes("No se pudo conectar")) {
+      throw error;
+    }
+    // Otros errores se manejan normalmente
+    throw error;
+  }
 }
 
 main()
   .catch((error) => {
-    console.error("❌ Error en seed-if-empty:", error);
+    const errorMessage = error.message || error.toString();
+    
+    // Si es un error de conexión, dar un mensaje más específico
+    if (errorMessage.includes("No se pudo conectar")) {
+      console.error("\n❌ No se pudo conectar a la base de datos.");
+      console.error("💡 El seed se saltará. Verifica la configuración de Cloud SQL.");
+      // No fallar el despliegue, pero registrar el problema claramente
+    } else {
+      console.error("❌ Error en seed-if-empty:", errorMessage);
+    }
+    
     // No fallar el despliegue por un error de seed
+    // El seed puede ejecutarse manualmente después si es necesario
     process.exit(0);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    try {
+      await prisma.$disconnect();
+    } catch (error) {
+      // Ignorar errores al desconectar si ya había un problema de conexión
+    }
   });

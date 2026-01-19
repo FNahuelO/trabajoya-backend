@@ -176,13 +176,19 @@ async function main() {
     
     // Ejecutar seed-if-empty.js
     console.log('🚀 Ejecutando seed-if-empty...');
-    execSync('node scripts/seed-if-empty.js', {
-      stdio: 'inherit',
-      env: process.env,
-      cwd: process.cwd()
-    });
-    
-    console.log('✅ Seed ejecutado exitosamente');
+    try {
+      execSync('node scripts/seed-if-empty.js', {
+        stdio: 'inherit',
+        env: process.env,
+        cwd: process.cwd()
+      });
+      console.log('✅ Proceso de seed completado');
+    } catch (seedError) {
+      // seed-if-empty.js puede terminar con exit(0) incluso en caso de error
+      // para no fallar el despliegue, así que solo registramos el error
+      console.error('⚠️  El seed tuvo problemas, pero no se detiene el despliegue');
+      console.error('💡 Revisa los logs anteriores para más detalles');
+    }
     
   } catch (error) {
     console.error('❌ Error ejecutando seed:', error.message);
