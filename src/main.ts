@@ -5,13 +5,21 @@ import { AppModule } from "./app.module";
 import * as helmet from "helmet";
 
 async function bootstrap() {
+  const startTime = Date.now();
   console.log("🚀 Iniciando aplicación TrabajoYa...");
   console.log(`📅 Fecha: ${new Date().toISOString()}`);
   console.log(`🌍 Entorno: ${process.env.NODE_ENV || "development"}`);
   console.log(`🔌 Puerto configurado: ${process.env.PORT || 4000}`);
 
   try {
-    const app = await NestFactory.create(AppModule);
+    console.log("📦 Creando aplicación NestJS...");
+    const app = await NestFactory.create(AppModule, {
+      // Optimizar para Cloud Run: iniciar más rápido
+      logger: process.env.NODE_ENV === "production" 
+        ? ["error", "warn", "log"] 
+        : ["error", "warn", "log", "debug", "verbose"],
+    });
+    console.log(`⏱️  Aplicación creada en ${Date.now() - startTime}ms`);
 
     // Security
     app.use(

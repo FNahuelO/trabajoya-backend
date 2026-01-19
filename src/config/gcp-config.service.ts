@@ -27,9 +27,13 @@ export class GcpConfigService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    // Solo cargar secrets de GCP en producción
+    // Cargar secrets de forma asíncrona sin bloquear el inicio
+    // En Cloud Run, es crítico que el servidor inicie rápidamente
     if (process.env.NODE_ENV === "production") {
-      await this.loadSecretsFromGCP();
+      // Cargar en background sin await para no bloquear el inicio
+      this.loadSecretsFromGCP().catch((error) => {
+        this.logger.error("Error cargando secrets de GCP (no crítico):", error);
+      });
     } else {
       this.logger.log("Modo desarrollo: usando variables de entorno locales");
     }
