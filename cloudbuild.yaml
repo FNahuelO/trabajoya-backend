@@ -75,7 +75,8 @@ steps:
         else
           echo "🔄 Actualizando job trabajoya-migrate existente..."
           # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
-          # Usar --add-cloudsql-instances para asegurar que la conexión esté configurada
+          # Asegurar que la conexión Cloud SQL esté configurada usando --add-cloudsql-instances
+          # en la misma actualización para que se aplique correctamente
           gcloud run jobs update trabajoya-migrate \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --region=us-central1 \
@@ -88,6 +89,18 @@ steps:
             --cpu=1 \
             --max-retries=1 \
             --task-timeout=600
+          
+          # Verificar que Cloud SQL esté configurado (solo verificación, no bloquea)
+          echo "✅ Verificando configuración de Cloud SQL..."
+          CLOUD_SQL_CONFIG=$(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(spec.template.spec.cloudSqlInstances)" 2>/dev/null || echo "")
+          if [ -z "$CLOUD_SQL_CONFIG" ] || [ "$CLOUD_SQL_CONFIG" != "${_CLOUD_SQL_INSTANCE}" ]; then
+            echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
+            gcloud run jobs update trabajoya-migrate \
+              --region=us-central1 \
+              --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+          else
+            echo "✅ Cloud SQL ya está configurado correctamente"
+          fi
         fi
         
         echo "🚀 Ejecutando migraciones..."
@@ -123,7 +136,8 @@ steps:
         else
           echo "🔄 Actualizando job trabajoya-seed existente..."
           # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
-          # Usar --add-cloudsql-instances para asegurar que la conexión esté configurada
+          # Asegurar que la conexión Cloud SQL esté configurada usando --add-cloudsql-instances
+          # en la misma actualización para que se aplique correctamente
           gcloud run jobs update trabajoya-seed \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --region=us-central1 \
@@ -136,6 +150,18 @@ steps:
             --cpu=1 \
             --max-retries=1 \
             --task-timeout=600
+          
+          # Verificar que Cloud SQL esté configurado (solo verificación, no bloquea)
+          echo "✅ Verificando configuración de Cloud SQL..."
+          CLOUD_SQL_CONFIG=$(gcloud run jobs describe trabajoya-seed --region=us-central1 --format="value(spec.template.spec.cloudSqlInstances)" 2>/dev/null || echo "")
+          if [ -z "$CLOUD_SQL_CONFIG" ] || [ "$CLOUD_SQL_CONFIG" != "${_CLOUD_SQL_INSTANCE}" ]; then
+            echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
+            gcloud run jobs update trabajoya-seed \
+              --region=us-central1 \
+              --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+          else
+            echo "✅ Cloud SQL ya está configurado correctamente"
+          fi
         fi
         
         echo "🚀 Ejecutando seed (solo si la DB está vacía)..."
