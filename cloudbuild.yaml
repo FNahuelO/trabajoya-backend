@@ -63,8 +63,8 @@ steps:
           gcloud run jobs create trabajoya-migrate \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --region=us-central1 \
-            --command="sh" \
-            --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
+            --command="node" \
+            --args="scripts/run-migrations.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
             --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
@@ -79,8 +79,8 @@ steps:
           gcloud run jobs update trabajoya-migrate \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --region=us-central1 \
-            --command="sh" \
-            --args="scripts/load-secrets-and-run.sh,npx,prisma,migrate,deploy" \
+            --command="node" \
+            --args="scripts/run-migrations.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
             --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
@@ -111,8 +111,8 @@ steps:
           gcloud run jobs create trabajoya-seed \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --region=us-central1 \
-            --command="sh" \
-            --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
+            --command="node" \
+            --args="scripts/run-seed.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
             --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
@@ -127,8 +127,8 @@ steps:
           gcloud run jobs update trabajoya-seed \
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --region=us-central1 \
-            --command="sh" \
-            --args="scripts/load-secrets-and-run.sh,node,scripts/seed-if-empty.js" \
+            --command="node" \
+            --args="scripts/run-seed.js" \
             --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
             --set-env-vars="NODE_ENV=production" \
             --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
