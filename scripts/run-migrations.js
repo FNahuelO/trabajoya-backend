@@ -191,6 +191,103 @@ function configureDatabaseURL() {
   }
 }
 
+// Función para instalar y ejecutar Cloud SQL Proxy
+function startCloudSQLProxy(instanceConnectionName, port = 5432) {
+  return new Promise((resolve, reject) => {
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+    
+    console.log('🔧 Instalando Cloud SQL Proxy...');
+    
+    // Determinar la arquitectura
+    const arch = process.arch === 'x64' ? 'linux.amd64' : 'linux.386';
+    const proxyPath = path.join(os.tmpdir(), 'cloud-sql-proxy');
+    
+    try {
+      // Descargar Cloud SQL Proxy
+      const https = require('https');
+      const url = `https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.${arch}`;
+      
+      console.log(`📥 Descargando Cloud SQL Proxy desde ${url}...`);
+      
+      const file = fs.createWriteStream(proxyPath);
+      https.get(url, (response) => {
+        if (response.statusCode === 200) {
+          response.pipe(file);
+          file.on('finish', () => {
+            file.close();
+            fs.chmodSync(proxyPath, 0o755);
+            
+            console.log('✅ Cloud SQL Proxy instalado');
+            console.log(`🚀 Iniciando Cloud SQL Proxy en localhost:${port}...`);
+            
+            // Ejecutar proxy
+            const proxy = spawn(proxyPath, [
+              `${instanceConnectionName}?port=${port}`
+            ], {
+              stdio: ['ignore', 'pipe', 'pipe']
+            });
+            
+            let proxyReady = false;
+            
+            proxy.stdout.on('data', (data) => {
+              const output = data.toString();
+              console.log(`[Cloud SQL Proxy] ${output}`);
+              if (output.includes('Ready for new connections')) {
+                proxyReady = true;
+                resolve(proxy);
+              }
+            });
+            
+            proxy.stderr.on('data', (data) => {
+              const output = data.toString();
+              console.log(`[Cloud SQL Proxy] ${output}`);
+              if (output.includes('Ready for new connections')) {
+                proxyReady = true;
+                if (!proxyReady) {
+                  resolve(proxy);
+                }
+              }
+            });
+            
+            proxy.on('error', (error) => {
+              console.error('❌ Error ejecutando Cloud SQL Proxy:', error);
+              reject(error);
+            });
+            
+            // Esperar a que el proxy esté listo
+            setTimeout(() => {
+              if (proxyReady) {
+                resolve(proxy);
+              } else {
+                // Asumir que está listo después de 3 segundos
+                console.log('⚠️  Proxy iniciado (asumiendo que está listo)');
+                resolve(proxy);
+              }
+            }, 3000);
+            
+            // Guardar referencia al proceso para poder matarlo después
+            process.on('exit', () => {
+              if (!proxy.killed) {
+                proxy.kill();
+              }
+            });
+            
+          });
+        } else {
+          reject(new Error(`Error descargando proxy: ${response.statusCode}`));
+        }
+      }).on('error', (error) => {
+        reject(error);
+      });
+      
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 // Función para esperar conexión a PostgreSQL
 function waitForPostgreSQL(host, port, maxWait = 60000) {
   return new Promise((resolve, reject) => {
@@ -245,7 +342,24 @@ async function main() {
     }
     
     // 3. Configurar DATABASE_URL para socket Unix si está disponible
-    configureDatabaseURL();
+    // Si Prisma CLI no respeta PGHOST, usaremos Cloud SQL Proxy como fallback
+    const socketAvailable = existsSync('/cloudsql');
+    const instanceConnectionName = getInstanceConnectionName();
+    
+    let proxyProcess = null;
+    global.proxyProcess = null; // Para acceso desde handlers
+    
+    if (socketAvailable) {
+      console.log('✅ Socket Unix disponible');
+      
+      // Intentar primero con socket Unix directo
+      configureDatabaseURL();
+      
+      // Intentar una conexión de prueba con el formato actual
+      // Si falla, usaremos Cloud SQL Proxy
+    } else {
+      console.log('⚠️  Socket Unix no disponible, usando DATABASE_URL original');
+    }
     
     // 4. Ejecutar migraciones con reintentos
     const maxRetries = 5;
@@ -270,68 +384,47 @@ async function main() {
         const errorMessage = error.message || error.toString();
         const isConnectionError = /P1001|P1013|Can't reach database|ECONNREFUSED|connection.*refused|timeout|empty host/i.test(errorMessage);
         
-        // Si es error relacionado con el formato de URL, intentar alternativas
-        if (/empty host|P1013|P1001|Can't reach database/i.test(errorMessage)) {
-          console.log('⚠️  Error de conexión/formato, intentando configuración alternativa...');
+        // Si es error relacionado con conexión, usar Cloud SQL Proxy como último recurso
+        if ((/P1001|P1013|Can't reach database|ECONNREFUSED|connection.*refused|timeout/i.test(errorMessage)) && 
+            socketAvailable && !proxyProcess && attempt === 1) {
+          console.log('⚠️  Prisma CLI no respeta PGHOST, usando Cloud SQL Proxy...');
           
-          const socketPath = `/cloudsql/${getInstanceConnectionName()}`;
-          if (existsSync('/cloudsql')) {
-            const originalUrl = process.env.DATABASE_URL || process.env.ORIGINAL_DATABASE_URL;
+          try {
+            // Iniciar Cloud SQL Proxy
+            proxyProcess = await startCloudSQLProxy(instanceConnectionName);
+            global.proxyProcess = proxyProcess; // Guardar globalmente
             
-            // Intentar diferentes formatos
-            const formats = [
-              // Formato 1: Solo usar PGHOST con URL simple
-              () => {
-                const match = originalUrl?.match(/^postgresql:\/\/([^:]+):(.+?)@[^\/]*?\/([^?]+)/);
-                if (match) {
-                  const [, user, pass, db] = match;
-                  process.env.PGHOST = socketPath;
-                  process.env.PGDATABASE = db;
-                  process.env.PGUSER = user;
-                  process.env.PGPASSWORD = pass;
-                  return `postgresql://${user}:${pass}@127.0.0.1/${db}`;
-                }
-                return null;
-              },
-              // Formato 2: URL con hostname vacío pero sin parámetro host
-              () => {
-                const match = originalUrl?.match(/^postgresql:\/\/([^:]+):(.+?)@[^\/]*?\/([^?]+)/);
-                if (match) {
-                  const [, user, pass, db] = match;
-                  process.env.PGHOST = socketPath;
-                  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@/${db}`;
-                }
-                return null;
-              },
-              // Formato 3: Usar IP privada si está disponible (como último recurso)
-              () => {
-                // No intentar TCP si estamos en Cloud Run, usar solo socket
-                return null;
-              }
-            ];
+            // Esperar a que el proxy esté listo
+            await waitForPostgreSQL('127.0.0.1', 5432, 30000);
             
-            for (const formatFn of formats) {
-              try {
-                const newUrl = formatFn();
-                if (newUrl) {
-                  console.log(`🔄 Intentando formato alternativo...`);
-                  process.env.DATABASE_URL = newUrl;
-                  
-                  execSync('npx prisma migrate deploy', {
-                    stdio: 'inherit',
-                    env: process.env,
-                    cwd: process.cwd(),
-                    timeout: 60000
-                  });
-                  
-                  console.log('✅ Migraciones ejecutadas exitosamente con formato alternativo');
-                  process.exit(0);
-                }
-              } catch (formatError) {
-                // Continuar con el siguiente formato
-                continue;
-              }
+            // Configurar DATABASE_URL para usar TCP a través del proxy
+            const originalUrl = process.env.ORIGINAL_DATABASE_URL || process.env.DATABASE_URL;
+            const match = originalUrl.match(/^postgresql:\/\/([^:]+):(.+?)@[^\/]*?\/([^?]+)/);
+            
+            if (match) {
+              const [, user, pass, db] = match;
+              const encodedUser = encodeURIComponent(user);
+              const encodedPass = encodeURIComponent(pass);
+              
+              // Usar TCP a través del proxy local
+              process.env.DATABASE_URL = `postgresql://${encodedUser}:${encodedPass}@127.0.0.1:5432/${db}`;
+              
+              // Limpiar variables de PostgreSQL para que use la URL directamente
+              delete process.env.PGHOST;
+              delete process.env.PGDATABASE;
+              delete process.env.PGUSER;
+              delete process.env.PGPASSWORD;
+              
+              console.log('✅ Cloud SQL Proxy activo, usando TCP localhost:5432');
+              console.log(`🔍 URL: postgresql://***:***@127.0.0.1:5432/${db}`);
+              
+              // Reintentar inmediatamente con el proxy (sin incrementar attempt)
+              attempt = 0; // Resetear para que siga en intento 1 pero con proxy
+              continue;
             }
+          } catch (proxyError) {
+            console.error('❌ Error con Cloud SQL Proxy:', proxyError.message);
+            // Continuar con el ciclo de reintentos normal
           }
         }
         
@@ -349,8 +442,30 @@ async function main() {
     
   } catch (error) {
     console.error('❌ Error fatal:', error.message);
+    
+    // Limpiar proxy si existe
+    if (proxyProcess && !proxyProcess.killed) {
+      console.log('🧹 Cerrando Cloud SQL Proxy...');
+      proxyProcess.kill();
+    }
+    
     process.exit(1);
   }
 }
+
+// Manejar señales de terminación para limpiar el proxy
+process.on('SIGTERM', () => {
+  if (global.proxyProcess && !global.proxyProcess.killed) {
+    global.proxyProcess.kill();
+  }
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  if (global.proxyProcess && !global.proxyProcess.killed) {
+    global.proxyProcess.kill();
+  }
+  process.exit(0);
+});
 
 main();
