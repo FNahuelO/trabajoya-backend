@@ -48,48 +48,48 @@ steps:
         echo "$${SECRET_CONTENT}" > "$${TEMP_FILE}"
         
         # Parsear usando Node.js
-        node <<'NODE_SCRIPT'
-        const fs = require('fs');
-        const content = fs.readFileSync(process.argv[1], 'utf-8');
-        const lines = content.split('\n');
-        const variables = {};
-        
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('#')) continue;
-          
-          const eqIndex = trimmed.indexOf('=');
-          if (eqIndex <= 0) continue;
-          
-          const key = trimmed.substring(0, eqIndex).trim();
-          let value = trimmed.substring(eqIndex + 1);
-          
-          // Validar clave
-          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-          
-          // Remover comillas externas
-          if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
-              (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
-            value = value.slice(1, -1);
-          }
-          
-          // Reemplazar \\n con saltos de línea reales
-          value = value.replace(/\\n/g, '\n');
-          
-          variables[key] = value;
-        }
-        
-        // Escribir JSON con todas las variables
-        const output = [];
-        for (const [key, value] of Object.entries(variables)) {
-          // Escapar para bash
-          const escaped = JSON.stringify(value);
-          output.push({key, value: escaped});
-        }
-        
-        fs.writeFileSync('/tmp/secret_vars.json', JSON.stringify(output, null, 2));
-        console.log(`✅ Parseadas ${output.length} variables`);
-        NODE_SCRIPT "$${TEMP_FILE}"
+        node <<'NODE_SCRIPT' "$${TEMP_FILE}"
+const fs = require('fs');
+const content = fs.readFileSync(process.argv[1], 'utf-8');
+const lines = content.split('\n');
+const variables = {};
+
+for (const line of lines) {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#')) continue;
+  
+  const eqIndex = trimmed.indexOf('=');
+  if (eqIndex <= 0) continue;
+  
+  const key = trimmed.substring(0, eqIndex).trim();
+  let value = trimmed.substring(eqIndex + 1);
+  
+  // Validar clave
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+  
+  // Remover comillas externas
+  if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
+      (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
+    value = value.slice(1, -1);
+  }
+  
+  // Reemplazar \\n con saltos de línea reales
+  value = value.replace(/\\n/g, '\n');
+  
+  variables[key] = value;
+}
+
+// Escribir JSON con todas las variables
+const output = [];
+for (const [key, value] of Object.entries(variables)) {
+  // Escapar para bash
+  const escaped = JSON.stringify(value);
+  output.push({key, value: escaped});
+}
+
+fs.writeFileSync('/tmp/secret_vars.json', JSON.stringify(output, null, 2));
+console.log('✅ Parseadas ' + output.length + ' variables');
+NODE_SCRIPT
         
         if [ $$? -ne 0 ]; then
           echo "❌ Error al parsear el secreto"
