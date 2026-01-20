@@ -132,6 +132,13 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
       html,
       text,
       from: process.env.MAIL_FROM,
+      headers: {
+        // Headers para mejorar deliverability y evitar spam
+        "List-Unsubscribe": "<mailto:unsubscribe@trabajo-ya.com>",
+        "X-Priority": "3",
+        "X-MSMail-Priority": "Normal",
+        "Precedence": "bulk",
+      },
     });
 
     // El email se envía usando AWS SES (configurado en mail.module.ts)

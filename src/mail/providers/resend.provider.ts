@@ -42,12 +42,14 @@ export class ResendProvider implements MailProvider {
     html,
     text,
     from,
+    headers,
   }: {
     to: string | string[];
     subject: string;
     html?: string;
     text?: string;
     from?: string;
+    headers?: Record<string, string>;
   }): Promise<void> {
     // Verificar que la API key esté configurada antes de intentar enviar
     if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === "dummy-key-for-initialization") {
@@ -81,6 +83,7 @@ export class ResendProvider implements MailProvider {
         subject,
         html: html || text || "",
         text: text,
+        headers: headers,
       });
 
       if (error) {

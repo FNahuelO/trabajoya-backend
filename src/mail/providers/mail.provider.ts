@@ -5,5 +5,6 @@ export interface MailProvider {
     html?: string;
     text?: string;
     from?: string;
+    headers?: Record<string, string>;
   }): Promise<void>;
 }

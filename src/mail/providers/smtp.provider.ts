@@ -18,12 +18,14 @@ export class SmtpProvider implements MailProvider {
     html,
     text,
     from,
+    headers,
   }: {
     to: string | string[];
     subject: string;
     html?: string;
     text?: string;
     from?: string;
+    headers?: Record<string, string>;
   }) {
     await this.transporter.sendMail({
       from: from || process.env.MAIL_FROM || "no-reply@example.local",
@@ -31,6 +33,7 @@ export class SmtpProvider implements MailProvider {
       subject,
       html,
       text,
+      headers,
     });
   }
 }
