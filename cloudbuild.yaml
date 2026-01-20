@@ -1,163 +1,4 @@
 steps:
-  # Paso 0: Extraer variables del secreto y crear secretos individuales
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "🔐 Extrayendo variables del secreto 'trabajoya-secrets' y creando secretos individuales..."
-        PROJECT_ID="trabajo-ya-483316"
-        SECRET_NAME="trabajoya-secrets"
-        
-        # Instalar Node.js si no está disponible
-        if ! command -v node &> /dev/null; then
-          echo "📦 Instalando Node.js..."
-          apt-get update -qq && apt-get install -y -qq curl
-          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-          apt-get install -y -qq nodejs
-        fi
-        
-        # Verificar que Node.js está disponible
-        if ! command -v node &> /dev/null; then
-          echo "❌ Error: No se pudo instalar Node.js"
-          exit 1
-        fi
-        
-        echo "✅ Node.js disponible: $$(node --version)"
-        
-        # Obtener el secreto
-        echo "📦 Obteniendo secreto desde Secret Manager..."
-        SECRET_CONTENT=$$(gcloud secrets versions access latest --secret="$${SECRET_NAME}" --project="$${PROJECT_ID}" 2>&1)
-        
-        if [ $$? -ne 0 ]; then
-          echo "❌ Error al obtener secreto: $${SECRET_CONTENT}"
-          exit 1
-        fi
-        
-        if [ -z "$${SECRET_CONTENT}" ]; then
-          echo "❌ Error: El secreto está vacío"
-          exit 1
-        fi
-        
-        echo "✅ Secreto obtenido ($${#SECRET_CONTENT} caracteres)"
-        echo "🔍 Parseando y creando secretos individuales..."
-        echo ""
-        
-        # Guardar en archivo temporal
-        TEMP_FILE=$$(mktemp)
-        echo "$${SECRET_CONTENT}" > "$${TEMP_FILE}"
-        
-        # Crear script de Node.js para parsear
-        cat > /tmp/parse-secrets.js <<'SCRIPT_END'
-        const fs = require('fs');
-        const content = fs.readFileSync(process.argv[1], 'utf-8');
-        const lines = content.split('\n');
-        const variables = {};
-        
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('#')) continue;
-          
-          const eqIndex = trimmed.indexOf('=');
-          if (eqIndex <= 0) continue;
-          
-          const key = trimmed.substring(0, eqIndex).trim();
-          let value = trimmed.substring(eqIndex + 1);
-          
-          // Validar clave
-          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-          
-          // Remover comillas externas
-          if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
-              (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
-            value = value.slice(1, -1);
-          }
-          
-          // Reemplazar \\n con saltos de línea reales
-          value = value.replace(/\\n/g, '\n');
-          
-          variables[key] = value;
-        }
-        
-        // Escribir JSON con todas las variables
-        const output = [];
-        for (const [key, value] of Object.entries(variables)) {
-          // Escapar para bash
-          const escaped = JSON.stringify(value);
-          output.push({key, value: escaped});
-        }
-        
-        fs.writeFileSync('/tmp/secret_vars.json', JSON.stringify(output, null, 2));
-        console.log('✅ Parseadas ' + output.length + ' variables');
-        SCRIPT_END
-        
-        # Ejecutar script de Node.js para parsear
-        node /tmp/parse-secrets.js "$${TEMP_FILE}"
-        
-        if [ $$? -ne 0 ]; then
-          echo "❌ Error al parsear el secreto"
-          rm -f "$${TEMP_FILE}"
-          exit 1
-        fi
-        
-        # Crear script completo para procesar y crear secretos
-        cat > /tmp/create-secrets.js <<'SCRIPT_END'
-        const fs = require('fs');
-        const { execSync } = require('child_process');
-        
-        const PROJECT_ID = 'trabajo-ya-483316';
-        const varsList = JSON.parse(fs.readFileSync('/tmp/secret_vars.json', 'utf-8'));
-        
-        for (const {key, value} of varsList) {
-          const unescaped = JSON.parse(value);
-          const filePath = `/tmp/secret_${key}.txt`;
-          fs.writeFileSync(filePath, unescaped, 'utf-8');
-          
-          try {
-            console.log(`📝 Creando/actualizando secreto: ${key}`);
-            
-            // Crear secreto si no existe
-            try {
-              execSync(`gcloud secrets create "${key}" --project="${PROJECT_ID}" --replication-policy="automatic"`, {
-                stdio: 'ignore'
-              });
-            } catch (e) {
-              // Secreto ya existe, continuar
-            }
-            
-            // Agregar nueva versión
-            try {
-              execSync(`gcloud secrets versions add "${key}" --project="${PROJECT_ID}" --data-file="${filePath}"`, {
-                stdio: 'ignore'
-              });
-              console.log(`  ✅ ${key} creado/actualizado`);
-            } catch (e) {
-              console.log(`  ⚠️  Error al actualizar ${key}`);
-            }
-            
-            // Limpiar archivo temporal
-            fs.unlinkSync(filePath);
-          } catch (error) {
-            console.error(`❌ Error procesando ${key}:`, error.message);
-          }
-        }
-        SCRIPT_END
-        
-        # Ejecutar script completo
-        node /tmp/create-secrets.js
-        
-        if [ $$? -ne 0 ]; then
-          echo "❌ Error al procesar variables"
-          rm -f "$${TEMP_FILE}" /tmp/secret_vars.json /tmp/create-secrets.js
-          exit 1
-        fi
-        
-        # Limpiar
-        rm -f "$${TEMP_FILE}" /tmp/secret_vars.json /tmp/create-secrets.js /tmp/parse-secrets.js
-        
-        echo ""
-        echo "✅ Secretos individuales creados/actualizados correctamente"
-
   # Construir la imagen Docker
   - name: 'gcr.io/cloud-builders/docker'
     args:
@@ -184,6 +25,14 @@ steps:
       - '-c'
       - |
         echo "📦 Configurando y ejecutando migraciones..."
+        
+        # Verificar que el secreto DATABASE_URL existe
+        echo "🔍 Verificando que el secreto DATABASE_URL existe..."
+        if ! gcloud secrets describe DATABASE_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
+          echo "❌ Error: El secreto DATABASE_URL no existe en Secret Manager"
+          exit 1
+        fi
+        echo "✅ Secreto DATABASE_URL verificado"
         
         # Verificar si el job existe y su estado
         JOB_EXISTS=$$(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(name)" 2>/dev/null || echo "")
@@ -251,6 +100,14 @@ steps:
       - '-c'
       - |
         echo "🌱 Configurando y ejecutando seed..."
+        
+        # Verificar que el secreto DATABASE_URL existe
+        echo "🔍 Verificando que el secreto DATABASE_URL existe..."
+        if ! gcloud secrets describe DATABASE_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
+          echo "❌ Error: El secreto DATABASE_URL no existe en Secret Manager"
+          exit 1
+        fi
+        echo "✅ Secreto DATABASE_URL verificado"
         
         # Verificar si el job existe y su estado
         JOB_EXISTS=$$(gcloud run jobs describe trabajoya-seed --region=us-central1 --format="value(name)" 2>/dev/null || echo "")
@@ -363,4 +220,5 @@ substitutions:
   _CONCURRENCY: '80'
   _CLOUD_SQL_INSTANCE: "trabajo-ya-483316:us-central1:trabajoya-db"
 
+timeout: '900s'
 timeout: '900s'
