@@ -1303,6 +1303,17 @@ export class AuthService {
       );
     }
 
+    // Verificar que el usuario tenga contraseña (no sea usuario de Google/Apple)
+    const hasPassword = user.passwordHash && user.passwordHash.trim() !== "";
+    if (!hasPassword) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "auth.noPasswordToChange",
+          "Tu cuenta no tiene contraseña configurada. No puedes cambiar la contraseña aquí."
+        )
+      );
+    }
+
     // Verificar que la contraseña actual sea correcta
     const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!isPasswordValid) {
@@ -1336,6 +1347,53 @@ export class AuthService {
       message: await this.getTranslation(
         "auth.passwordChangedSuccess",
         "Contraseña cambiada exitosamente"
+      ),
+    };
+  }
+
+  async setPassword(userId: string, password: string, passwordConfirm: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        await this.getTranslation("users.userNotFound", "Usuario no encontrado")
+      );
+    }
+
+    // Verificar que las contraseñas coincidan
+    if (password !== passwordConfirm) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "auth.passwordsDontMatch",
+          "Las contraseñas no coinciden"
+        )
+      );
+    }
+
+    // Verificar que el usuario NO tenga contraseña (solo para usuarios de Google/Apple)
+    const hasPassword = user.passwordHash && user.passwordHash.trim() !== "";
+    if (hasPassword) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "auth.passwordAlreadySet",
+          "Ya tienes una contraseña configurada. Usa la opción de cambiar contraseña."
+        )
+      );
+    }
+
+    // Establecer la contraseña
+    const passwordHash = await bcrypt.hash(password, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    return {
+      message: await this.getTranslation(
+        "auth.passwordSetSuccess",
+        "Contraseña establecida exitosamente"
       ),
     };
   }
@@ -1592,6 +1650,45 @@ export class AuthService {
       },
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+    };
+  }
+
+  async getUserInfo(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        userType: true,
+        isVerified: true,
+        googleId: true,
+        appleId: true,
+        passwordHash: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        await this.getTranslation("users.userNotFound", "Usuario no encontrado")
+      );
+    }
+
+    // Un usuario tiene contraseña si passwordHash no está vacío
+    // Los usuarios de Google/Apple tienen passwordHash = ""
+    const hasPassword = user.passwordHash && user.passwordHash.trim() !== "";
+    const authProvider = user.googleId
+      ? "google"
+      : user.appleId
+        ? "apple"
+        : "email";
+
+    return {
+      userId: user.id,
+      email: user.email,
+      userType: user.userType,
+      isVerified: user.isVerified,
+      hasPassword,
+      authProvider,
     };
   }
 }

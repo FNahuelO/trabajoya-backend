@@ -5,6 +5,7 @@ import { RegisterDto } from "./dto/register.dto";
 import { RegisterEmpresaDto } from "./dto/register-empresa.dto";
 import { LoginDto } from "./dto/login.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
+import { SetPasswordDto } from "./dto/set-password.dto";
 import { ResendVerificationDto } from "./dto/resend-verification.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
@@ -49,8 +50,12 @@ export class AuthController {
   @Get("me")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  me(@Req() req: any) {
-    return { userId: req.user?.sub ?? null };
+  async me(@Req() req: any) {
+    return createResponse({
+      success: true,
+      message: "Información del usuario obtenida correctamente",
+      data: await this.service.getUserInfo(req.user?.sub),
+    });
   }
 
   @Public()
@@ -125,6 +130,21 @@ export class AuthController {
         req.user?.sub,
         dto.currentPassword,
         dto.newPassword
+      ),
+    });
+  }
+
+  @Post("set-password")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async setPassword(@Req() req: any, @Body() dto: SetPasswordDto) {
+    return createResponse({
+      success: true,
+      message: "Contraseña establecida correctamente",
+      data: await this.service.setPassword(
+        req.user?.sub,
+        dto.password,
+        dto.passwordConfirm
       ),
     });
   }
