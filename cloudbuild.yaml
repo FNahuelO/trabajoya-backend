@@ -91,7 +91,7 @@ steps:
         console.log('✅ Parseadas ' + output.length + ' variables');
         SCRIPT_END
         
-        # Ejecutar script de Node.js
+        # Ejecutar script de Node.js para parsear
         node /tmp/parse-secrets.js "$${TEMP_FILE}"
         
         if [ $$? -ne 0 ]; then
@@ -100,57 +100,60 @@ steps:
           exit 1
         fi
         
-        # Crear archivos temporales para cada variable
-        node <<'NODE_SCRIPT'
+        # Crear script completo para procesar y crear secretos
+        cat > /tmp/create-secrets.js <<'SCRIPT_END'
         const fs = require('fs');
+        const { execSync } = require('child_process');
+        
+        const PROJECT_ID = 'trabajo-ya-483316';
         const varsList = JSON.parse(fs.readFileSync('/tmp/secret_vars.json', 'utf-8'));
         
         for (const {key, value} of varsList) {
           const unescaped = JSON.parse(value);
           const filePath = `/tmp/secret_${key}.txt`;
           fs.writeFileSync(filePath, unescaped, 'utf-8');
+          
+          try {
+            console.log(`📝 Creando/actualizando secreto: ${key}`);
+            
+            // Crear secreto si no existe
+            try {
+              execSync(`gcloud secrets create "${key}" --project="${PROJECT_ID}" --replication-policy="automatic"`, {
+                stdio: 'ignore'
+              });
+            } catch (e) {
+              // Secreto ya existe, continuar
+            }
+            
+            // Agregar nueva versión
+            try {
+              execSync(`gcloud secrets versions add "${key}" --project="${PROJECT_ID}" --data-file="${filePath}"`, {
+                stdio: 'ignore'
+              });
+              console.log(`  ✅ ${key} creado/actualizado`);
+            } catch (e) {
+              console.log(`  ⚠️  Error al actualizar ${key}`);
+            }
+            
+            // Limpiar archivo temporal
+            fs.unlinkSync(filePath);
+          } catch (error) {
+            console.error(`❌ Error procesando ${key}:`, error.message);
+          }
         }
+        SCRIPT_END
         
-        // Crear lista de nombres de variables
-        const varNames = varsList.map(v => v.key).join('\n');
-        fs.writeFileSync('/tmp/secret_names.txt', varNames);
-NODE_SCRIPT
+        # Ejecutar script completo
+        node /tmp/create-secrets.js
         
         if [ $$? -ne 0 ]; then
           echo "❌ Error al procesar variables"
-          rm -f "$${TEMP_FILE}" /tmp/secret_vars.json
+          rm -f "$${TEMP_FILE}" /tmp/secret_vars.json /tmp/create-secrets.js
           exit 1
         fi
         
-        # Procesar cada secreto
-        while read -r SECRET_VAR; do
-          SECRET_FILE="/tmp/secret_$${SECRET_VAR}.txt"
-          
-          if [ -f "$${SECRET_FILE}" ]; then
-            echo "📝 Creando/actualizando secreto: $${SECRET_VAR}"
-            
-            # Crear secreto si no existe
-            gcloud secrets create "$${SECRET_VAR}" \
-              --project="$${PROJECT_ID}" \
-              --replication-policy="automatic" \
-              2>/dev/null || true
-            
-            # Agregar nueva versión
-            if gcloud secrets versions add "$${SECRET_VAR}" \
-              --project="$${PROJECT_ID}" \
-              --data-file="$${SECRET_FILE}" \
-              >/dev/null 2>&1; then
-              echo "  ✅ $${SECRET_VAR} creado/actualizado"
-            else
-              echo "  ⚠️  Error al actualizar $${SECRET_VAR}"
-            fi
-            
-            rm -f "$${SECRET_FILE}"
-          fi
-        done < /tmp/secret_names.txt
-        
         # Limpiar
-        rm -f "$${TEMP_FILE}" /tmp/secret_vars.json /tmp/secret_names.txt
+        rm -f "$${TEMP_FILE}" /tmp/secret_vars.json /tmp/create-secrets.js /tmp/parse-secrets.js
         
         echo ""
         echo "✅ Secretos individuales creados/actualizados correctamente"
