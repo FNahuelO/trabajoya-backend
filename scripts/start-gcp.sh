@@ -301,23 +301,62 @@ if [ -n "$DATABASE_URL" ]; then
   fi
 else
   echo "⚠️  DATABASE_URL no está disponible como variable de entorno"
-  echo "🔍 Verificando si hay secretos en formato antiguo (TRABAJOYA_SECRETS)..."
+  echo "🔍 Intentando cargar desde Secret Manager directamente..."
   
-  # Intentar cargar desde TRABAJOYA_SECRETS como fallback (compatibilidad hacia atrás)
-  if [ -n "$TRABAJOYA_SECRETS" ]; then
-    echo "✅ TRABAJOYA_SECRETS encontrado, parseando..."
-    if [ -f "./scripts/load-secrets.sh" ]; then
-      . ./scripts/load-secrets.sh
+  # Intentar leer DATABASE_URL directamente desde Secret Manager como fallback
+  if command -v node >/dev/null 2>&1; then
+    echo "📦 Intentando leer DATABASE_URL desde Secret Manager..."
+    DATABASE_URL_FROM_SECRET=$$(node <<'NODE_SCRIPT'
+      const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
+      const client = new SecretManagerServiceClient();
+      const projectId = 'trabajo-ya-483316';
+      const secretName = 'DATABASE_URL';
+      
+      async function getSecret() {
+        try {
+          const name = \`projects/\${projectId}/secrets/\${secretName}/versions/latest\`;
+          const [version] = await client.accessSecretVersion({name});
+          const secretValue = version.payload.data.toString();
+          console.log(secretValue);
+          process.exit(0);
+        } catch (error) {
+          console.error('Error leyendo secreto:', error.message);
+          process.exit(1);
+        }
+      }
+      
+      getSecret();
+NODE_SCRIPT
+    2>/dev/null || echo "")
+    
+    if [ -n "$${DATABASE_URL_FROM_SECRET}" ]; then
+      export DATABASE_URL="$${DATABASE_URL_FROM_SECRET}"
+      echo "✅ DATABASE_URL cargada desde Secret Manager"
     fi
-  elif [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
-    echo "✅ TRABAJOYA_SECRETS encontrado como archivo, parseando..."
-    if [ -f "./scripts/load-secrets.sh" ]; then
-      . ./scripts/load-secrets.sh
+  fi
+  
+  # Si aún no está disponible, intentar cargar desde TRABAJOYA_SECRETS (compatibilidad hacia atrás)
+  if [ -z "$DATABASE_URL" ]; then
+    echo "🔍 Verificando si hay secretos en formato antiguo (TRABAJOYA_SECRETS)..."
+    if [ -n "$TRABAJOYA_SECRETS" ]; then
+      echo "✅ TRABAJOYA_SECRETS encontrado, parseando..."
+      if [ -f "./scripts/load-secrets.sh" ]; then
+        . ./scripts/load-secrets.sh
+      fi
+    elif [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
+      echo "✅ TRABAJOYA_SECRETS encontrado como archivo, parseando..."
+      if [ -f "./scripts/load-secrets.sh" ]; then
+        . ./scripts/load-secrets.sh
+      fi
     fi
-  else
-    echo "❌ ERROR: DATABASE_URL no está disponible y no se encontró TRABAJOYA_SECRETS"
-    echo "💡 Con secretos individuales, Cloud Run debería montar DATABASE_URL directamente como variable de entorno"
+  fi
+  
+  # Si todavía no está disponible, error fatal
+  if [ -z "$DATABASE_URL" ]; then
+    echo "❌ ERROR: DATABASE_URL no está disponible después de todos los intentos"
+    echo "💡 Cloud Run debería montar DATABASE_URL directamente como variable de entorno"
     echo "💡 Verifica que el secreto DATABASE_URL esté configurado en Cloud Run usando --update-secrets"
+    exit 1
   fi
 fi
 
