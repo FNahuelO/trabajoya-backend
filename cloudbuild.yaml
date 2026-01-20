@@ -175,37 +175,53 @@ steps:
       - '-c'
       - |
         echo "🚀 Desplegando servicio..."
+        
+        # Verificar que el secreto DATABASE_URL existe
+        echo "🔍 Verificando que el secreto DATABASE_URL existe..."
+        if ! gcloud secrets describe DATABASE_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
+          echo "❌ Error: El secreto DATABASE_URL no existe en Secret Manager"
+          exit 1
+        fi
+        echo "✅ Secreto DATABASE_URL verificado"
+        
         # Intentar actualizar primero, si falla crear
-        gcloud run deploy trabajoya-backend \
-          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --region=${_REGION} \
-          --platform=managed \
-          --allow-unauthenticated \
-          --memory=${_MEMORY} \
-          --cpu=${_CPU} \
-          --min-instances=${_MIN_INSTANCES} \
-          --max-instances=${_MAX_INSTANCES} \
-          --port=8080 \
-          --timeout=300 \
-          --concurrency=${_CONCURRENCY} \
-          --set-env-vars="NODE_ENV=production,FRONTEND_URL=https://web.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-03-03T00:00:00Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
-          --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest \
-          --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} 2>/dev/null || \
-        gcloud run deploy trabajoya-backend \
-          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --region=${_REGION} \
-          --platform=managed \
-          --allow-unauthenticated \
-          --memory=${_MEMORY} \
-          --cpu=${_CPU} \
-          --min-instances=${_MIN_INSTANCES} \
-          --max-instances=${_MAX_INSTANCES} \
-          --port=8080 \
-          --timeout=300 \
-          --concurrency=${_CONCURRENCY} \
-          --set-env-vars="NODE_ENV=production,FRONTEND_URL=https://web.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-03-03T00:00:00Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
-          --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest \
-          --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+        if gcloud run services describe trabajoya-backend --region=${_REGION} >/dev/null 2>&1; then
+          echo "ℹ️  El servicio existe, actualizando..."
+          gcloud run deploy trabajoya-backend \
+            --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+            --region=${_REGION} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=${_MEMORY} \
+            --cpu=${_CPU} \
+            --min-instances=${_MIN_INSTANCES} \
+            --max-instances=${_MAX_INSTANCES} \
+            --port=8080 \
+            --timeout=300 \
+            --concurrency=${_CONCURRENCY} \
+            --set-env-vars="NODE_ENV=production,FRONTEND_URL=https://web.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-03-03T00:00:00Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest \
+            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+        else
+          echo "ℹ️  El servicio no existe, creando..."
+          gcloud run deploy trabajoya-backend \
+            --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+            --region=${_REGION} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=${_MEMORY} \
+            --cpu=${_CPU} \
+            --min-instances=${_MIN_INSTANCES} \
+            --max-instances=${_MAX_INSTANCES} \
+            --port=8080 \
+            --timeout=300 \
+            --concurrency=${_CONCURRENCY} \
+            --set-env-vars="NODE_ENV=production,FRONTEND_URL=https://web.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-03-03T00:00:00Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest \
+            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+        fi
+        
+        echo "✅ Servicio desplegado correctamente"
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -220,5 +236,4 @@ substitutions:
   _CONCURRENCY: '80'
   _CLOUD_SQL_INSTANCE: "trabajo-ya-483316:us-central1:trabajoya-db"
 
-timeout: '900s'
 timeout: '900s'
