@@ -17,6 +17,8 @@ interface ExpoPushMessage {
   expiration?: number;
   // Android: collapseKey para agrupar notificaciones similares
   collapseKey?: string;
+  // IMPORTANTE: subtitle ayuda a que las notificaciones se muestren correctamente
+  subtitle?: string;
   android?: {
     priority?: "default" | "normal" | "high";
     channelId?: string;
@@ -24,6 +26,10 @@ interface ExpoPushMessage {
     ttl?: number;
     // Android: collapseKey específico
     collapseKey?: string;
+    // Android: sticky para que la notificación persista
+    sticky?: boolean;
+    // Android: visibility para mostrar en pantalla bloqueada
+    visibility?: "default" | "public" | "secret" | "private";
   };
   ios?: {
     sound?: "default" | null;
@@ -34,6 +40,8 @@ interface ExpoPushMessage {
     mutableContent?: boolean;
     // iOS: interruptionLevel para notificaciones críticas (iOS 15+)
     interruptionLevel?: "passive" | "active" | "timeSensitive" | "critical";
+    // iOS: subtitle para mejor presentación
+    subtitle?: string;
   };
 }
 
@@ -178,13 +186,21 @@ export class ExpoPushService {
         collapseKey,
         // Configuraciones adicionales para Android para asegurar que funcionen en background
         // IMPORTANTE: El channelId en android debe coincidir con el canal creado en el frontend
+        // IMPORTANTE: Cuando uses FCM con Expo, estas configuraciones son críticas para que
+        // las notificaciones funcionen cuando la app está completamente cerrada
         android: {
           priority, // "high" es necesario para notificaciones en background/cerrada
           channelId, // Usar el mismo channelId que se configuró en el frontend
           ttl: ttlSeconds, // TTL específico para Android
           collapseKey, // collapseKey específico para Android
+          // visibility: "public" asegura que la notificación se muestre en pantalla bloqueada
+          visibility: "public",
+          // sticky: true hace que la notificación persista hasta que el usuario la descarte
+          sticky: channelId === "calls", // Solo para llamadas
         },
         // Configuraciones específicas para iOS para asegurar que funcionen en background
+        // IMPORTANTE: Cuando el certificado APNs está en Firebase, Expo actúa como intermediario
+        // pero estas configuraciones aseguran que el mensaje se entregue correctamente
         ios: {
           sound: "default",
           badge: options?.badge,
@@ -192,7 +208,7 @@ export class ExpoPushService {
           categoryId: channelId === "messages" ? "message" : undefined,
           // interruptionLevel: "timeSensitive" permite que las notificaciones se muestren
           // incluso cuando el dispositivo está en modo "No molestar" (iOS 15+)
-          // Para llamadas, usar "critical" si está disponible
+          // Para llamadas, usar "timeSensitive" para máxima prioridad
           interruptionLevel: channelId === "calls" ? "timeSensitive" : "active",
         },
       };
