@@ -52,16 +52,7 @@ export class MailService {
                 ✅ Verificar mi Email
               </a>
             </div>
-            
-            <!-- Alternative Link -->
-            <div style="background-color: #f9fafb; border-left: 4px solid #2563eb; padding: 16px; margin: 30px 0; border-radius: 4px;">
-              <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px 0; font-weight: 600;">
-                Si el botón no funciona, copia y pega este enlace en tu navegador:
-              </p>
-              <p style="color: #2563eb; font-size: 13px; margin: 0; word-break: break-all; font-family: monospace;">
-                ${webUrl}
-              </p>
-            </div>
+          
             
             <!-- Benefits -->
             <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin: 30px 0; border-radius: 4px;">
@@ -191,15 +182,6 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
               </a>
             </div>
             
-            <!-- Alternative Link -->
-            <div style="background-color: #f9fafb; border-left: 4px solid #2563eb; padding: 16px; margin: 30px 0; border-radius: 4px;">
-              <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px 0; font-weight: 600;">
-                Si el botón no funciona, copia y pega este enlace en tu navegador:
-              </p>
-              <p style="color: #2563eb; font-size: 13px; margin: 0; word-break: break-all; font-family: monospace;">
-                ${webUrl}
-              </p>
-            </div>
             
             <!-- Security Warning -->
             <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 30px 0; border-radius: 4px;">

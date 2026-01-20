@@ -20,6 +20,8 @@ import { TermsType } from "@prisma/client";
 @Injectable()
 export class AuthService {
   private googleClient: OAuth2Client;
+  // Tiempo de vida del token de verificación de email (en horas)
+  private readonly verificationTokenTtlHours = 3;
 
   constructor(
     private prisma: PrismaService,
@@ -307,6 +309,9 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const verificationToken = crypto.randomUUID();
+    const verificationTokenExpiry = new Date(
+      Date.now() + this.verificationTokenTtlHours * 60 * 60 * 1000
+    );
 
     const user = await this.prisma.user.create({
       data: {
@@ -315,6 +320,7 @@ export class AuthService {
         userType: "POSTULANTE",
         isVerified: false,
         verificationToken,
+        verificationTokenExpiry,
       },
     });
 
@@ -1412,11 +1418,31 @@ export class AuthService {
       );
     }
 
+    // Verificar expiración del token
+    if (!user.verificationTokenExpiry || user.verificationTokenExpiry < new Date()) {
+      // Invalidar el token expirado para forzar reenvío
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          verificationToken: null,
+          verificationTokenExpiry: null,
+        },
+      });
+
+      throw new UnauthorizedException(
+        await this.getTranslation(
+          "auth.verificationTokenExpired",
+          "El enlace de verificación expiró. Solicita uno nuevo."
+        )
+      );
+    }
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
         isVerified: true,
         verificationToken: null,
+        verificationTokenExpiry: null,
       },
     });
 
@@ -1448,15 +1474,15 @@ export class AuthService {
       );
     }
 
-    // Si no tiene token de verificación, generar uno nuevo
-    let verificationToken = user.verificationToken;
-    if (!verificationToken) {
-      verificationToken = crypto.randomUUID();
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { verificationToken },
-      });
-    }
+    // Generar un token nuevo y setear expiración (evita reusar tokens viejos)
+    const verificationToken = crypto.randomUUID();
+    const verificationTokenExpiry = new Date(
+      Date.now() + this.verificationTokenTtlHours * 60 * 60 * 1000
+    );
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { verificationToken, verificationTokenExpiry },
+    });
 
     // Enviar email con el token
     await this.mailService.sendVerificationEmail(user.email, verificationToken);
@@ -1505,15 +1531,15 @@ export class AuthService {
       };
     }
 
-    // Si no tiene token de verificación, generar uno nuevo
-    let verificationToken = user.verificationToken;
-    if (!verificationToken) {
-      verificationToken = crypto.randomUUID();
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { verificationToken },
-      });
-    }
+    // Generar un token nuevo y setear expiración
+    const verificationToken = crypto.randomUUID();
+    const verificationTokenExpiry = new Date(
+      Date.now() + this.verificationTokenTtlHours * 60 * 60 * 1000
+    );
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { verificationToken, verificationTokenExpiry },
+    });
 
     // Enviar email con el token
     await this.mailService.sendVerificationEmail(user.email, verificationToken);
@@ -1581,6 +1607,9 @@ export class AuthService {
     // Crear hash de la contraseña
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const verificationToken = crypto.randomUUID();
+    const verificationTokenExpiry = new Date(
+      Date.now() + this.verificationTokenTtlHours * 60 * 60 * 1000
+    );
 
     // Crear usuario
     const user = await this.prisma.user.create({
@@ -1590,6 +1619,7 @@ export class AuthService {
         userType: "EMPRESA",
         isVerified: false,
         verificationToken,
+        verificationTokenExpiry,
       },
     });
 
