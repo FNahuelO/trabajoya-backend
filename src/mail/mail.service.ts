@@ -137,7 +137,7 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
         "List-Unsubscribe": "<mailto:unsubscribe@trabajo-ya.com>",
         "X-Priority": "3",
         "X-MSMail-Priority": "Normal",
-        "Precedence": "bulk",
+        Precedence: "bulk",
       },
     });
 

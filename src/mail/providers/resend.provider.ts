@@ -9,7 +9,7 @@ export class ResendProvider implements MailProvider {
 
   constructor() {
     this.apiKey = process.env.RESEND_API_KEY;
-    
+
     if (!this.apiKey) {
       this.logger.warn(
         "RESEND_API_KEY no está configurado. El servicio de email no funcionará correctamente."
@@ -52,7 +52,10 @@ export class ResendProvider implements MailProvider {
     headers?: Record<string, string>;
   }): Promise<void> {
     // Verificar que la API key esté configurada antes de intentar enviar
-    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === "dummy-key-for-initialization") {
+    if (
+      !process.env.RESEND_API_KEY ||
+      process.env.RESEND_API_KEY === "dummy-key-for-initialization"
+    ) {
       this.logger.error(
         "RESEND_API_KEY no está configurado. No se puede enviar el email."
       );
@@ -63,7 +66,7 @@ export class ResendProvider implements MailProvider {
 
     try {
       const fromEmail = from || process.env.MAIL_FROM;
-      
+
       if (!fromEmail) {
         throw new Error(
           "MAIL_FROM no está configurado. Debe ser un email verificado en Resend."
@@ -87,18 +90,25 @@ export class ResendProvider implements MailProvider {
       });
 
       if (error) {
-        this.logger.error(`Error enviando email con Resend: ${error.message}`, error);
+        this.logger.error(
+          `Error enviando email con Resend: ${error.message}`,
+          error
+        );
         throw new Error(`Error enviando email con Resend: ${error.message}`);
       }
 
       const recipients = Array.isArray(to) ? to : [to];
       this.logger.log(
-        `Email enviado exitosamente a ${recipients.join(", ")}. MessageId: ${data?.id}`
+        `Email enviado exitosamente a ${recipients.join(", ")}. MessageId: ${
+          data?.id
+        }`
       );
     } catch (error: any) {
-      this.logger.error(`Error enviando email con Resend: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error enviando email con Resend: ${error.message}`,
+        error.stack
+      );
       throw error;
     }
   }
 }
-
