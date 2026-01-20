@@ -18,153 +18,81 @@ steps:
       - '--all-tags'
       - 'gcr.io/$PROJECT_ID/trabajoya-backend'
 
-  # Paso 1: Configurar y ejecutar secrets primero (migraciones)
-  # Crear/actualizar Cloud Run Job para migraciones
+  # Paso 1: Configurar y ejecutar migraciones
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "📦 Configurando Cloud Run Job para migraciones..."
-        
-        # Crear o actualizar el job de migraciones
-        
-        # Intentar crear el job primero
-        if ! gcloud run jobs describe trabajoya-migrate --region=us-central1 >/dev/null 2>&1; then
-          echo "📦 Creando nuevo job trabajoya-migrate..."
-          gcloud run jobs create trabajoya-migrate \
-            --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-            --region=us-central1 \
-            --command="node" \
-            --args="scripts/run-migrations.js" \
-            --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
-            --set-env-vars="NODE_ENV=production" \
-            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
-            --memory=1Gi \
-            --cpu=1 \
-            --max-retries=1 \
-            --task-timeout=600
-        else
-          echo "🔄 Actualizando job trabajoya-migrate existente..."
-          # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
-          # Asegurar que la conexión Cloud SQL esté configurada usando --add-cloudsql-instances
-          # en la misma actualización para que se aplique correctamente
-          gcloud run jobs update trabajoya-migrate \
-            --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-            --region=us-central1 \
-            --command="node" \
-            --args="scripts/run-migrations.js" \
-            --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
-            --set-env-vars="NODE_ENV=production" \
-            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
-            --memory=1Gi \
-            --cpu=1 \
-            --max-retries=1 \
-            --task-timeout=600
-          
-          # Verificar que Cloud SQL esté configurado (solo verificación, no bloquea)
-          echo "✅ Verificando configuración de Cloud SQL..."
-          CURR_SQL_INST=$$(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(spec.template.spec.cloudSqlInstances)" 2>/dev/null || echo "")
-          if [ -z "$$CURR_SQL_INST" ] || [ "$$CURR_SQL_INST" != "${_CLOUD_SQL_INSTANCE}" ]; then
-            echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
-            gcloud run jobs update trabajoya-migrate \
-              --region=us-central1 \
-              --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
-          else
-            echo "✅ Cloud SQL ya está configurado correctamente"
-          fi
-        fi
+        echo "📦 Configurando y ejecutando migraciones..."
+        # Intentar actualizar primero, si falla crear
+        gcloud run jobs update trabajoya-migrate \
+          --region=us-central1 \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --set-env-vars="NODE_ENV=production" \
+          --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+          --memory=1Gi \
+          --cpu=1 \
+          --max-retries=1 \
+          --task-timeout=300 2>/dev/null || \
+        gcloud run jobs create trabajoya-migrate \
+          --region=us-central1 \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --command="node" \
+          --args="scripts/run-migrations.js" \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --set-env-vars="NODE_ENV=production" \
+          --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+          --memory=1Gi \
+          --cpu=1 \
+          --max-retries=1 \
+          --task-timeout=300
         
         echo "🚀 Ejecutando migraciones..."
-        gcloud run jobs execute trabajoya-migrate \
-          --region=us-central1 \
-          --wait || echo "⚠️  Error en migraciones, pero continuando..."
+        gcloud run jobs execute trabajoya-migrate --region=us-central1 --wait
 
   # Paso 2: Ejecutar seed después de migraciones
-  # Crear/actualizar Cloud Run Job para seed
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "🌱 Configurando Cloud Run Job para seed..."
-        
-        # Crear o actualizar el job de seed
-        
-        # Intentar crear el job primero
-        if ! gcloud run jobs describe trabajoya-seed --region=us-central1 >/dev/null 2>&1; then
-          echo "📦 Creando nuevo job trabajoya-seed..."
-          gcloud run jobs create trabajoya-seed \
-            --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-            --region=us-central1 \
-            --command="node" \
-            --args="scripts/run-seed.js" \
-            --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
-            --set-env-vars="NODE_ENV=production" \
-            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
-            --memory=1Gi \
-            --cpu=1 \
-            --max-retries=1 \
-            --task-timeout=600
-        else
-          echo "🔄 Actualizando job trabajoya-seed existente..."
-          # Primero limpiar conexiones Cloud SQL existentes para asegurar configuración limpia
-          echo "🧹 Limpiando conexiones Cloud SQL existentes..."
-          gcloud run jobs update trabajoya-seed \
-            --region=us-central1 \
-            --clear-cloudsql-instances || echo "⚠️  No había conexiones previas o no se pudieron limpiar"
-          
-          # Actualizar el job con todos los parámetros, incluyendo Cloud SQL
-          # Asegurar que la conexión Cloud SQL esté configurada usando --add-cloudsql-instances
-          # en la misma actualización para que se aplique correctamente
-          gcloud run jobs update trabajoya-seed \
-            --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-            --region=us-central1 \
-            --command="node" \
-            --args="scripts/run-seed.js" \
-            --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
-            --set-env-vars="NODE_ENV=production" \
-            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
-            --memory=1Gi \
-            --cpu=1 \
-            --max-retries=1 \
-            --task-timeout=600
-          
-          # Verificar que Cloud SQL esté configurado (solo verificación, no bloquea)
-          echo "✅ Verificando configuración de Cloud SQL..."
-          CURR_SQL_INST=$$(gcloud run jobs describe trabajoya-seed --region=us-central1 --format="value(spec.template.spec.cloudSqlInstances)" 2>/dev/null || echo "")
-          if [ -z "$$CURR_SQL_INST" ] || [ "$$CURR_SQL_INST" != "${_CLOUD_SQL_INSTANCE}" ]; then
-            echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
-            gcloud run jobs update trabajoya-seed \
-              --region=us-central1 \
-              --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
-          else
-            echo "✅ Cloud SQL ya está configurado correctamente"
-          fi
-        fi
-        
-        echo "🚀 Ejecutando seed (solo si la DB está vacía)..."
-        gcloud run jobs execute trabajoya-seed \
+        echo "🌱 Configurando y ejecutando seed..."
+        # Intentar actualizar primero, si falla crear
+        gcloud run jobs update trabajoya-seed \
           --region=us-central1 \
-          --wait || echo "⚠️  Error en seed, pero continuando..."
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --set-env-vars="NODE_ENV=production" \
+          --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+          --memory=1Gi \
+          --cpu=1 \
+          --max-retries=1 \
+          --task-timeout=300 2>/dev/null || \
+        gcloud run jobs create trabajoya-seed \
+          --region=us-central1 \
+          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+          --command="node" \
+          --args="scripts/run-seed.js" \
+          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --set-env-vars="NODE_ENV=production" \
+          --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+          --memory=1Gi \
+          --cpu=1 \
+          --max-retries=1 \
+          --task-timeout=300
+        
+        echo "🚀 Ejecutando seed..."
+        gcloud run jobs execute trabajoya-seed --region=us-central1 --wait
 
-  # Paso 3: Desplegar servicio principal DESPUÉS de que los secrets estén configurados y la DB esté lista
-  # Desplegar a Cloud Run
+  # Paso 3: Desplegar servicio principal
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "🧹 Limpiando secrets y conexiones Cloud SQL antiguas (si existen)..."
-        gcloud run services update trabajoya-backend \
-          --region=${_REGION} \
-          --clear-secrets \
-          --clear-cloudsql-instances \
-          --no-traffic || echo "⚠️  No se pudieron limpiar (puede ser normal si el servicio no existe)"
-        
-        echo "🚀 Desplegando servicio (secrets y DB ya configurados)..."
-        # --set-secrets monta el secret como variable de entorno TRABAJOYA_SECRETS
-        # El script start-gcp.sh carga estos secrets antes de iniciar Node.js
+        echo "🚀 Desplegando servicio..."
         gcloud run deploy trabajoya-backend \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \
@@ -180,18 +108,6 @@ steps:
           --set-env-vars="NODE_ENV=production" \
           --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
           --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
-        
-        # Verificar que Cloud SQL esté configurado correctamente
-        echo "✅ Verificando configuración de Cloud SQL..."
-        CURR_SQL_INST=$$(gcloud run services describe trabajoya-backend --region=${_REGION} --format="value(spec.template.spec.containers[0].cloudSqlInstances)" 2>/dev/null || echo "")
-        if [ -z "$$CURR_SQL_INST" ] || [ "$$CURR_SQL_INST" != "${_CLOUD_SQL_INSTANCE}" ]; then
-          echo "⚠️  Cloud SQL no está configurado correctamente, forzando actualización..."
-          gcloud run services update trabajoya-backend \
-            --region=${_REGION} \
-            --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
-        else
-          echo "✅ Cloud SQL ya está configurado correctamente"
-        fi
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -207,5 +123,5 @@ substitutions:
   _CLOUD_SQL_INSTANCE: "$PROJECT_ID:us-central1:trabajoya-db"
 
 
-timeout: '1200s'
+timeout: '900s'
 
