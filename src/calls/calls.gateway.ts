@@ -231,15 +231,14 @@ export class CallsGateway
   }
 
   /**
-   * Iniciar llamada
+   * Notificar llamada iniciada (puede ser llamado desde el controller o desde WebSocket)
    */
-  @SubscribeMessage("call:initiate")
-  async handleInitiateCall(
-    @MessageBody()
-    data: { fromUserId: string; toUserId: string; callId: string },
-    @ConnectedSocket() client: AuthenticatedSocket
+  async notifyCallInitiated(
+    fromUserId: string,
+    toUserId: string,
+    callId: string,
+    client?: AuthenticatedSocket
   ) {
-    const { fromUserId, toUserId, callId } = data;
     this.logger.log(
       `Call initiated from ${fromUserId} to ${toUserId} with callId ${callId}`
     );
@@ -251,6 +250,9 @@ export class CallsGateway
 
     // Obtener el socket del destinatario
     const toSocketId = this.connectedUsers.get(toUserId);
+    
+    // Si no hay cliente, usar el socket del llamador si está conectado
+    const fromSocketId = client?.id || this.connectedUsers.get(fromUserId);
 
     // Obtener información del llamador (necesaria tanto para WebSocket como para push)
     let callerName = "Alguien";
@@ -287,7 +289,7 @@ export class CallsGateway
       this.server.to(toSocketId).emit("call:incoming", {
         callId,
         fromUserId,
-        fromSocketId: client.id,
+        fromSocketId: fromSocketId || "unknown",
       });
       this.logger.log(`Call:incoming event emitted successfully`);
       
@@ -342,6 +344,23 @@ export class CallsGateway
 
       return { success: false, message: "Usuario no disponible" };
     }
+  }
+
+  /**
+   * Iniciar llamada (handler de WebSocket)
+   */
+  @SubscribeMessage("call:initiate")
+  async handleInitiateCall(
+    @MessageBody()
+    data: { fromUserId: string; toUserId: string; callId: string },
+    @ConnectedSocket() client: AuthenticatedSocket
+  ) {
+    return await this.notifyCallInitiated(
+      data.fromUserId,
+      data.toUserId,
+      data.callId,
+      client
+    );
   }
 
   /**

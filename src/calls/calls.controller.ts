@@ -7,6 +7,8 @@ import {
   Body,
   Req,
   UseGuards,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -15,6 +17,7 @@ import {
   ApiResponse,
 } from "@nestjs/swagger";
 import { CallsService } from "./calls.service";
+import { CallsGateway } from "./calls.gateway";
 import { InitiateCallDto, CallResponseDto } from "./dto";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
@@ -24,13 +27,32 @@ import { createResponse } from "../common/mapper/api-response.mapper";
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class CallsController {
-  constructor(private callsService: CallsService) {}
+  constructor(
+    private callsService: CallsService,
+    @Inject(forwardRef(() => CallsGateway))
+    private callsGateway: CallsGateway
+  ) {}
 
   @Post()
   @ApiOperation({ summary: "Iniciar una nueva llamada" })
   @ApiResponse({ status: 201, type: CallResponseDto })
   async initiateCall(@Req() req: any, @Body() dto: InitiateCallDto) {
     const call = await this.callsService.initiateCall(req.user?.sub, dto);
+    
+    // IMPORTANTE: Notificar al destinatario automáticamente después de crear la llamada
+    // Esto asegura que la notificación se envíe incluso si el WebSocket no está conectado
+    // El gateway manejará tanto WebSocket como notificaciones push
+    try {
+      await this.callsGateway.notifyCallInitiated(
+        req.user?.sub,
+        dto.toUserId,
+        call.id
+      );
+    } catch (error) {
+      // No fallar la creación de la llamada si hay error en la notificación
+      console.error("Error notifying call initiation:", error);
+    }
+    
     return createResponse({
       success: true,
       message: "Llamada iniciada",

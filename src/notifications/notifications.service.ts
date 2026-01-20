@@ -58,50 +58,30 @@ export class NotificationsService {
     deviceId?: string
   ): Promise<void> {
     try {
-      // Verificar si el token ya existe
-      const existing = await this.prisma.pushToken.findUnique({
+      // Usar upsert para evitar condiciones de carrera
+      // Si el token existe, actualizar; si no, crear
+      await this.prisma.pushToken.upsert({
         where: { token },
+        update: {
+          userId,
+          deviceId,
+          platform, // Actualizar plataforma por si cambió
+          isActive: true,
+          updatedAt: new Date(),
+        },
+        create: {
+          userId,
+          token,
+          platform,
+          deviceId,
+          isActive: true,
+        },
       });
-
-      if (existing) {
-        // Actualizar si cambió el usuario o dispositivo
-        if (existing.userId !== userId || existing.deviceId !== deviceId) {
-          await this.prisma.pushToken.update({
-            where: { token },
-            data: {
-              userId,
-              deviceId,
-              isActive: true,
-              updatedAt: new Date(),
-            },
-          });
-          this.logger.log(`Updated push token for user ${userId}`);
-        } else {
-          // Solo actualizar la fecha
-          await this.prisma.pushToken.update({
-            where: { token },
-            data: {
-              isActive: true,
-              updatedAt: new Date(),
-            },
-          });
-        }
-      } else {
-        // Crear nuevo token
-        await this.prisma.pushToken.create({
-          data: {
-            userId,
-            token,
-            platform,
-            deviceId,
-            isActive: true,
-          },
-        });
-        this.logger.log(`Registered new push token for user ${userId}`);
-      }
+      this.logger.log(`Registered/updated push token for user ${userId}`);
     } catch (error) {
       this.logger.error(`Error registering push token for user ${userId}:`, error);
-      throw error;
+      // No lanzar el error para evitar que falle el registro del token
+      // El token puede seguir funcionando aunque haya un error en la BD
     }
   }
 
