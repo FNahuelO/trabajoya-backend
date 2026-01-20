@@ -10,9 +10,8 @@ export class PrismaService
 
   constructor() {
     // CRÍTICO: Pasar la URL explícitamente para que se evalúe en runtime
-    // Esto asegura que DATABASE_URL se lea cuando NestJS instancia el servicio,
-    // no cuando se compila el código
-    const databaseUrl = process.env.DATABASE_URL;
+    // Usamos PRISMA_DATABASE_URL primero, luego DATABASE_URL como fallback
+    const databaseUrl = process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL;
     
     if (!databaseUrl) {
       // Log de error detallado para debugging
@@ -21,7 +20,7 @@ export class PrismaService
         .join(', ');
       
       throw new Error(
-        `❌ DATABASE_URL no está definida en las variables de entorno.\n` +
+        `❌ PRISMA_DATABASE_URL ni DATABASE_URL están definidas.\n` +
         `Variables relacionadas disponibles: ${availableEnvVars || 'ninguna'}\n` +
         `Esto puede indicar que Cloud Run no está montando los secretos correctamente.`
       );
@@ -39,7 +38,8 @@ export class PrismaService
         : ['query', 'error', 'warn'],
     });
 
-    this.logger.log('✅ PrismaClient inicializado con DATABASE_URL desde variables de entorno');
+    const sourceVar = process.env.PRISMA_DATABASE_URL ? 'PRISMA_DATABASE_URL' : 'DATABASE_URL';
+    this.logger.log(`✅ PrismaClient inicializado con ${sourceVar} desde variables de entorno`);
   }
 
   async onModuleInit() {
