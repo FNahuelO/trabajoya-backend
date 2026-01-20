@@ -144,8 +144,8 @@ export class NotificationsController {
 
   @Post("test-send")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
-    summary: "TEST: Enviar notificación de prueba (solo para debugging)" 
+  @ApiOperation({
+    summary: "TEST: Enviar notificación de prueba (solo para debugging)",
   })
   @ApiResponse({
     status: 200,
@@ -161,16 +161,11 @@ export class NotificationsController {
     const type = dto.type || "message";
 
     try {
-      await this.notificationsService.sendPushToUser(
-        userId,
-        title,
-        body,
-        {
-          type,
-          testNotification: true,
-          timestamp: new Date().toISOString(),
-        }
-      );
+      await this.notificationsService.sendPushToUser(userId, title, body, {
+        type,
+        testNotification: true,
+        timestamp: new Date().toISOString(),
+      });
 
       return createResponse({
         success: true,
@@ -194,8 +189,8 @@ export class NotificationsController {
 
   @Get("debug-tokens/:userId")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
-    summary: "DEBUG: Ver todos los tokens registrados de un usuario" 
+  @ApiOperation({
+    summary: "DEBUG: Ver todos los tokens registrados de un usuario",
   })
   @ApiResponse({
     status: 200,
@@ -217,8 +212,10 @@ export class NotificationsController {
     }
 
     try {
-      const tokens = await this.notificationsService.getUserActiveTokens(userId);
-      
+      const tokens = await this.notificationsService.getUserActiveTokens(
+        userId
+      );
+
       return createResponse({
         success: true,
         message: "Tokens obtenidos correctamente",
@@ -227,9 +224,13 @@ export class NotificationsController {
           tokenCount: tokens.length,
           tokens: tokens.map((token, index) => ({
             index: index + 1,
-            token: `${token.substring(0, 30)}...${token.substring(token.length - 10)}`,
+            token: `${token.substring(0, 30)}...${token.substring(
+              token.length - 10
+            )}`,
             fullToken: token,
-            isValid: token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken["),
+            isValid:
+              token.startsWith("ExponentPushToken[") ||
+              token.startsWith("ExpoPushToken["),
           })),
         },
       });
@@ -242,4 +243,3 @@ export class NotificationsController {
     }
   }
 }
-
