@@ -59,6 +59,10 @@ export class WebSocketMessageInterceptor implements NestInterceptor {
               // Obtener contenido del mensaje
               const messageContent = (data as any).content || "";
 
+              this.logger.log(
+                `[WebSocketMessageInterceptor] Sending push notification to user ${data.toUserId} from ${senderName} (messageId: ${data.id})`
+              );
+
               // Enviar notificación push
               await this.notificationsService.sendMessageNotification(
                 data.toUserId,
@@ -70,8 +74,15 @@ export class WebSocketMessageInterceptor implements NestInterceptor {
                   toUserId: data.toUserId,
                 }
               );
+              
+              this.logger.log(
+                `[WebSocketMessageInterceptor] Push notification request sent successfully to user ${data.toUserId}`
+              );
             } catch (error) {
-              this.logger.error("Error sending push notification:", error);
+              this.logger.error(
+                `[WebSocketMessageInterceptor] Error sending push notification to user ${data.toUserId}:`,
+                error
+              );
             }
           }
 

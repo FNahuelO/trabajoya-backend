@@ -211,21 +211,32 @@ export class MessagesGateway
       // SIEMPRE enviar notificación push, incluso si el usuario está conectado
       // Esto asegura que las notificaciones funcionen cuando la app está en segundo plano o cerrada
       this.logger.log(
-        `Sending push notification to user ${
+        `[MessagesGateway] Sending push notification to user ${
           data.toUserId
-        } (connected: ${!!recipientSocketId})`
+        } (connected: ${!!recipientSocketId}, messageId: ${message.id})`
       );
 
       // Enviar notificación push
-      await this.notificationsService
-        .sendMessageNotification(data.toUserId, senderName, data.message, {
-          messageId: message.id,
-          fromUserId: client.userId,
-          toUserId: data.toUserId,
-        })
-        .catch((error) => {
-          this.logger.error("Error sending push notification:", error);
-        });
+      try {
+        await this.notificationsService.sendMessageNotification(
+          data.toUserId,
+          senderName,
+          data.message,
+          {
+            messageId: message.id,
+            fromUserId: client.userId,
+            toUserId: data.toUserId,
+          }
+        );
+        this.logger.log(
+          `[MessagesGateway] Push notification request sent successfully to user ${data.toUserId}`
+        );
+      } catch (error) {
+        this.logger.error(
+          `[MessagesGateway] Error sending push notification to user ${data.toUserId}:`,
+          error
+        );
+      }
 
       // Confirmar al remitente que el mensaje se envió
       client.emit("messageSent", message);

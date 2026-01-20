@@ -67,9 +67,11 @@ export class ExpoPushService {
       });
 
       if (tokens.length === 0) {
-        this.logger.debug(`No active push tokens found for user ${userId}`);
+        this.logger.warn(`[ExpoPushService] No active push tokens found for user ${userId}. User may not have registered push token.`);
         return;
       }
+
+      this.logger.log(`[ExpoPushService] Sending push notification to user ${userId} with ${tokens.length} token(s)`);
 
       // Enviar notificación a todos los tokens
       const pushTokens = tokens.map((t) => t.token);
@@ -159,6 +161,8 @@ export class ExpoPushService {
     });
 
     try {
+      this.logger.log(`[ExpoPushService] Sending ${messages.length} push notification(s) to Expo Push API`);
+      
       const response = await fetch(this.EXPO_PUSH_ENDPOINT, {
         method: "POST",
         headers: {
@@ -172,15 +176,17 @@ export class ExpoPushService {
       const result = await response.json();
 
       if (!response.ok) {
-        this.logger.error("Expo push notification error:", result);
+        this.logger.error("[ExpoPushService] Expo push notification error:", result);
         return;
       }
+
+      this.logger.log(`[ExpoPushService] Expo Push API responded successfully. Processing ${result.data?.length || 0} ticket(s)`);
 
       // Procesar tickets
       const tickets: ExpoPushTicket[] = result.data || [];
       await this.processTickets(tokens, tickets);
     } catch (error) {
-      this.logger.error("Error calling Expo push API:", error);
+      this.logger.error("[ExpoPushService] Error calling Expo push API:", error);
     }
   }
 
@@ -206,7 +212,7 @@ export class ExpoPushService {
           await this.deactivateToken(token);
         }
       } else {
-        this.logger.debug(`Push notification sent successfully to ${token}`);
+        this.logger.log(`[ExpoPushService] Push notification sent successfully to ${token.substring(0, 30)}...`);
       }
     }
   }

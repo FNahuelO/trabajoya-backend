@@ -218,11 +218,15 @@ export class NotificationsService {
       true;
 
     if (!hasMessagesEnabled) {
-      this.logger.debug(
-        `User ${toUserId} has disabled message notifications`
+      this.logger.log(
+        `[NotificationsService] User ${toUserId} has disabled message notifications, skipping push notification`
       );
       return;
     }
+
+    this.logger.log(
+      `[NotificationsService] Sending message notification to user ${toUserId} from ${fromUserName}`
+    );
 
     await this.expoPushService.sendMessageNotification(
       toUserId,
