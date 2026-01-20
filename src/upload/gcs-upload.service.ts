@@ -167,17 +167,56 @@ export class GCSUploadService {
       );
     }
 
-    const bucket = this.storage.bucket(this.bucketName);
-    const file = bucket.file(key);
+    try {
+      const bucket = this.storage.bucket(this.bucketName);
+      const file = bucket.file(key);
 
-    // Generar presigned URL de lectura
-    const [url] = await file.getSignedUrl({
-      version: "v4",
-      action: "read",
-      expires: Date.now() + expiresIn * 1000,
-    });
+      // Verificar que el archivo existe antes de generar la URL firmada
+      try {
+        const [exists] = await file.exists();
+        if (!exists) {
+          throw new Error(`Archivo no encontrado: ${key}`);
+        }
+      } catch (error: any) {
+        console.error(`[GCSUploadService] Error verificando existencia del archivo ${key}:`, error.message);
+        throw new Error(`No se pudo verificar el archivo: ${error.message}`);
+      }
 
-    return url;
+      // Generar presigned URL de lectura
+      // Asegurar que expiresIn no sea menor a 1 minuto ni mayor a 7 días (límite de GCS)
+      const validExpiresIn = Math.max(60, Math.min(expiresIn, 604800)); // Entre 1 min y 7 días
+      const expirationTime = Date.now() + validExpiresIn * 1000;
+
+      const [url] = await file.getSignedUrl({
+        version: "v4",
+        action: "read",
+        expires: expirationTime,
+      });
+
+      if (!url) {
+        throw new Error("No se pudo generar la URL firmada");
+      }
+
+      return url;
+    } catch (error: any) {
+      console.error(`[GCSUploadService] Error generando URL firmada para ${key}:`, {
+        message: error.message,
+        code: error.code,
+        key,
+        bucketName: this.bucketName,
+      });
+      
+      // Si hay un error de permisos, lanzar un error más descriptivo
+      if (error.code === 403 || error.message?.includes('403') || error.message?.includes('Forbidden')) {
+        throw new Error(
+          `Permisos insuficientes: La cuenta de servicio no tiene permisos para acceder al bucket ${this.bucketName}. ` +
+          `Verifica que la cuenta de servicio tenga el rol "Storage Object Viewer" en el bucket. ` +
+          `Error: ${error.message}`
+        );
+      }
+      
+      throw error;
+    }
   }
 
   /**
