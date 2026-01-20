@@ -54,7 +54,7 @@ steps:
             if ! gcloud run jobs update trabajoya-migrate \
               --region=us-central1 \
               --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-              --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+              --set-secrets=DATABASE_URL=DATABASE_URL:latest \
               --set-env-vars="NODE_ENV=production" \
               --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
               --memory=1Gi \
@@ -81,7 +81,7 @@ steps:
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --command="node" \
             --args="scripts/run-migrations.js" \
-            --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest \
             --set-env-vars="NODE_ENV=production" \
             --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
@@ -129,7 +129,7 @@ steps:
             if ! gcloud run jobs update trabajoya-seed \
               --region=us-central1 \
               --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-              --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+              --set-secrets=DATABASE_URL=DATABASE_URL:latest \
               --set-env-vars="NODE_ENV=production" \
               --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
               --memory=1Gi \
@@ -156,7 +156,7 @@ steps:
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --command="node" \
             --args="scripts/run-seed.js" \
-            --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest \
             --set-env-vars="NODE_ENV=production" \
             --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
@@ -176,64 +176,34 @@ steps:
       - |
         echo "🚀 Desplegando servicio..."
         
-        # Verificar que el secreto DATABASE_URL existe
-        echo "🔍 Verificando que el secreto DATABASE_URL existe..."
-        if ! gcloud secrets describe DATABASE_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
-          echo "❌ Error: El secreto DATABASE_URL no existe en Secret Manager"
-          exit 1
-        fi
-        echo "✅ Secreto DATABASE_URL verificado"
+        # Verificar que todos los secretos existen
+        echo "🔍 Verificando secretos en Secret Manager..."
+        SECRETS=("DATABASE_URL" "JWT_ACCESS_SECRET" "GOOGLE_CLIENT_ID" "GOOGLE_CLIENT_SECRET" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "RESEND_API_KEY" "OPENAI_API_KEY" "PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "APPLE_PRIVATE_KEY")
         
-        # Obtener el service account del servicio
-        SERVICE_ACCOUNT=$$(gcloud run services describe trabajoya-backend --region=${_REGION} --format="value(spec.template.spec.serviceAccountName)" 2>/dev/null || echo "")
+        for SECRET in "$${SECRETS[@]}"; do
+          if ! gcloud secrets describe "$${SECRET}" --project=trabajo-ya-483316 >/dev/null 2>&1; then
+            echo "❌ Error: El secreto $${SECRET} no existe en Secret Manager"
+            exit 1
+          fi
+        done
+        echo "✅ Todos los secretos verificados"
         
-        # Si no tiene service account, usar el default compute service account
-        if [ -z "$${SERVICE_ACCOUNT}" ]; then
-          SERVICE_ACCOUNT="335199126550-compute@developer.gserviceaccount.com"
-        fi
+        # Service account
+        SERVICE_ACCOUNT="335199126550-compute@developer.gserviceaccount.com"
         
-        echo "🔐 Verificando permisos del service account: $${SERVICE_ACCOUNT}"
+        echo "🔐 Configurando permisos del service account: $${SERVICE_ACCOUNT}"
         
-        # Otorgar rol de Secret Manager Secret Accessor al service account a nivel del proyecto
-        echo "  🔓 Otorgando rol de Secret Manager Secret Accessor al service account..."
+        # Otorgar rol de Secret Manager Secret Accessor
         gcloud projects add-iam-policy-binding trabajo-ya-483316 \
           --member="serviceAccount:$${SERVICE_ACCOUNT}" \
           --role="roles/secretmanager.secretAccessor" \
           --condition=None \
           --quiet 2>/dev/null || true
         
-        # Verificar y otorgar permisos para acceder a los secretos individuales también
-        SECRETS=("DATABASE_URL" "JWT_ACCESS_SECRET" "GOOGLE_CLIENT_ID" "GOOGLE_CLIENT_SECRET" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "RESEND_API_KEY" "OPENAI_API_KEY" "PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "APPLE_PRIVATE_KEY")
+        echo "✅ Permisos configurados"
         
-        for SECRET in "$${SECRETS[@]}"; do
-          # Verificar si el service account ya tiene acceso
-          if ! gcloud secrets get-iam-policy "$${SECRET}" --project=trabajo-ya-483316 2>/dev/null | grep -q "$${SERVICE_ACCOUNT}"; then
-            echo "  🔓 Otorgando acceso específico al secreto $${SECRET}..."
-            gcloud secrets add-iam-policy-binding "$${SECRET}" \
-              --project=trabajo-ya-483316 \
-              --member="serviceAccount:$${SERVICE_ACCOUNT}" \
-              --role="roles/secretmanager.secretAccessor" \
-              --quiet 2>/dev/null || true
-          fi
-        done
-        
-        echo "✅ Permisos de secretos verificados"
-        
-        # Eliminar el servicio existente para forzar la creación de uno nuevo con secretos correctos
-        echo "🗑️  Eliminando servicio existente para recrearlo con secretos correctos..."
-        if gcloud run services describe trabajoya-backend --region=${_REGION} >/dev/null 2>&1; then
-          echo "  Eliminando servicio trabajoya-backend..."
-          gcloud run services delete trabajoya-backend \
-            --region=${_REGION} \
-            --quiet 2>/dev/null || true
-          echo "  ✅ Servicio eliminado"
-          sleep 5
-        else
-          echo "  ℹ️  El servicio no existe, se creará uno nuevo"
-        fi
-        
-        # Crear el servicio desde cero con todos los secretos configurados desde el inicio
-        echo "🚀 Creando servicio trabajoya-backend con secretos desde el inicio..."
+        # Deploy del servicio (update si existe, create si no)
+        echo "🚀 Desplegando servicio trabajoya-backend..."
         gcloud run deploy trabajoya-backend \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --region=${_REGION} \
@@ -251,22 +221,21 @@ steps:
           --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest \
           --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
         
-        # Verificar que el despliegue fue exitoso
         if [ $$? -ne 0 ]; then
-          echo "❌ Error al crear el servicio"
+          echo "❌ Error al desplegar el servicio"
           exit 1
         fi
         
-        echo "✅ Servicio creado correctamente con secretos configurados desde el inicio"
+        echo "✅ Servicio desplegado correctamente"
         
-        # Esperar un momento para que la nueva revisión esté lista
-        echo "⏳ Esperando a que el servicio esté completamente listo..."
-        sleep 5
-        
-        # Verificar que la nueva revisión tiene los secretos configurados
+        # Verificar la revisión
         LATEST_REVISION=$$(gcloud run services describe trabajoya-backend --region=${_REGION} --format="value(status.latestReadyRevisionName)" 2>/dev/null || echo "")
         if [ -n "$${LATEST_REVISION}" ]; then
-          echo "✅ Nueva revisión creada: $${LATEST_REVISION}"
+          echo "✅ Revisión activa: $${LATEST_REVISION}"
+          
+          # Verificar que los secretos estén montados
+          echo "🔍 Verificando secretos montados en la revisión..."
+          gcloud run revisions describe "$${LATEST_REVISION}" --region=${_REGION} --format="value(spec.template.spec.containers[0].env)" 2>/dev/null || echo "No se pudieron listar variables"
         fi
 
 options:
