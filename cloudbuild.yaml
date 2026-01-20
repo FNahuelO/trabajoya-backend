@@ -100,7 +100,7 @@ steps:
           exit 1
         fi
         
-        # Crear secretos individuales
+        # Crear archivos temporales para cada variable
         node <<'NODE_SCRIPT'
         const fs = require('fs');
         const varsList = JSON.parse(fs.readFileSync('/tmp/secret_vars.json', 'utf-8'));
@@ -109,14 +109,24 @@ steps:
           const unescaped = JSON.parse(value);
           const filePath = `/tmp/secret_${key}.txt`;
           fs.writeFileSync(filePath, unescaped, 'utf-8');
-          console.log(key);
         }
-        NODE_SCRIPT | while read -r SECRET_VAR; do
+        
+        // Crear lista de nombres de variables
+        const varNames = varsList.map(v => v.key).join('\n');
+        fs.writeFileSync('/tmp/secret_names.txt', varNames);
+NODE_SCRIPT
+        
+        if [ $$? -ne 0 ]; then
+          echo "❌ Error al procesar variables"
+          rm -f "$${TEMP_FILE}" /tmp/secret_vars.json
+          exit 1
+        fi
+        
+        # Procesar cada secreto
+        while read -r SECRET_VAR; do
           SECRET_FILE="/tmp/secret_$${SECRET_VAR}.txt"
           
           if [ -f "$${SECRET_FILE}" ]; then
-            VALUE=$$(cat "$${SECRET_FILE}")
-            
             echo "📝 Creando/actualizando secreto: $${SECRET_VAR}"
             
             # Crear secreto si no existe
@@ -137,10 +147,10 @@ steps:
             
             rm -f "$${SECRET_FILE}"
           fi
-        done
+        done < /tmp/secret_names.txt
         
         # Limpiar
-        rm -f "$${TEMP_FILE}" /tmp/secret_vars.json
+        rm -f "$${TEMP_FILE}" /tmp/secret_vars.json /tmp/secret_names.txt
         
         echo ""
         echo "✅ Secretos individuales creados/actualizados correctamente"
