@@ -9,6 +9,22 @@ steps:
         PROJECT_ID="trabajo-ya-483316"
         SECRET_NAME="trabajoya-secrets"
         
+        # Instalar Node.js si no está disponible
+        if ! command -v node &> /dev/null; then
+          echo "📦 Instalando Node.js..."
+          apt-get update -qq && apt-get install -y -qq curl
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y -qq nodejs
+        fi
+        
+        # Verificar que Node.js está disponible
+        if ! command -v node &> /dev/null; then
+          echo "❌ Error: No se pudo instalar Node.js"
+          exit 1
+        fi
+        
+        echo "✅ Node.js disponible: $$(node --version)"
+        
         # Obtener el secreto
         echo "📦 Obteniendo secreto desde Secret Manager..."
         SECRET_CONTENT=$$(gcloud secrets versions access latest --secret="$${SECRET_NAME}" --project="$${PROJECT_ID}" 2>&1)
@@ -31,7 +47,7 @@ steps:
         TEMP_FILE=$$(mktemp)
         echo "$${SECRET_CONTENT}" > "$${TEMP_FILE}"
         
-        # Parsear usando Node.js (disponible en cloud-sdk)
+        # Parsear usando Node.js
         node <<'NODE_SCRIPT'
         const fs = require('fs');
         const content = fs.readFileSync(process.argv[1], 'utf-8');
