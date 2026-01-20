@@ -28,7 +28,7 @@ EXPOSE 8080
 RUN apk update && apk add --no-cache postgresql-client
 
 # Dar permisos de ejecución a los scripts necesarios
-RUN chmod +x ./scripts/start-gcp.sh ./scripts/load-secrets-and-run.sh ./scripts/run-migrations.js ./scripts/run-seed.js
+RUN chmod +x ./scripts/start-gcp.sh ./scripts/load-secrets.sh ./scripts/load-secrets-and-run.sh ./scripts/run-migrations.js ./scripts/run-seed.js
 
 # Cloud Run usa PORT variable, ajustar start.sh para usarlo
 ENV PORT=8080

@@ -1,4 +1,161 @@
 steps:
+  # Paso 0: Extraer variables del secreto y crear secretos individuales
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔐 Extrayendo variables del secreto 'trabajoya-secrets' y creando secretos individuales..."
+        PROJECT_ID="trabajo-ya-483316"
+        SECRET_NAME="trabajoya-secrets"
+        
+        # Obtener el secreto
+        echo "📦 Obteniendo secreto '$SECRET_NAME' desde Secret Manager..."
+        SECRET_CONTENT=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>&1)
+        
+        if [ $? -ne 0 ]; then
+          echo "❌ Error al obtener secreto: $SECRET_CONTENT"
+          exit 1
+        fi
+        
+        if [ -z "$SECRET_CONTENT" ]; then
+          echo "❌ Error: El secreto está vacío"
+          exit 1
+        fi
+        
+        echo "✅ Secreto obtenido (${#SECRET_CONTENT} caracteres)"
+        echo "🔍 Parseando y creando secretos individuales..."
+        echo ""
+        
+        # Guardar en archivo temporal
+        TEMP_FILE=$(mktemp)
+        echo "$SECRET_CONTENT" > "$TEMP_FILE"
+        
+        # Función para crear secreto individual
+        create_secret_var() {
+          local key="$1"
+          local value="$2"
+          
+          echo "🔍 Procesando: $key"
+          
+          # Crear el secreto si no existe (ignorar error si ya existe)
+          gcloud secrets create "$key" \
+            --project="$PROJECT_ID" \
+            --replication-policy="automatic" \
+            2>/dev/null || echo "  ℹ️  Secreto $key ya existe"
+          
+          # Guardar valor en archivo temporal
+          SECRET_FILE=$(mktemp)
+          echo -n "$value" > "$SECRET_FILE"
+          
+          # Agregar nueva versión
+          if gcloud secrets versions add "$key" \
+            --project="$PROJECT_ID" \
+            --data-file="$SECRET_FILE" \
+            >/dev/null 2>&1; then
+            echo "  ✅ Secreto $key creado/actualizado"
+          else
+            echo "  ❌ Error al actualizar $key"
+          fi
+          
+          rm -f "$SECRET_FILE"
+        }
+        
+        # Parsear usando Node.js (disponible en cloud-sdk)
+        node <<'NODE_SCRIPT'
+        const fs = require('fs');
+        const content = fs.readFileSync(process.argv[1], 'utf-8');
+        const lines = content.split('\n');
+        const variables = {};
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          
+          const eqIndex = trimmed.indexOf('=');
+          if (eqIndex <= 0) continue;
+          
+          const key = trimmed.substring(0, eqIndex).trim();
+          let value = trimmed.substring(eqIndex + 1);
+          
+          // Validar clave
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+          
+          // Remover comillas externas
+          if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
+              (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
+            value = value.slice(1, -1);
+          }
+          
+          // Reemplazar \\n con saltos de línea reales
+          value = value.replace(/\\n/g, '\n');
+          
+          variables[key] = value;
+        }
+        
+        // Escribir JSON con todas las variables
+        const output = [];
+        for (const [key, value] of Object.entries(variables)) {
+          // Escapar para bash
+          const escaped = JSON.stringify(value);
+          output.push({key, value: escaped});
+        }
+        
+        fs.writeFileSync('/tmp/secret_vars.json', JSON.stringify(output, null, 2));
+        console.log(`✅ Parseadas ${output.length} variables`);
+        NODE_SCRIPT "$TEMP_FILE"
+        
+        if [ $? -ne 0 ]; then
+          echo "❌ Error al parsear el secreto"
+          rm -f "$TEMP_FILE"
+          exit 1
+        fi
+        
+        # Crear secretos individuales
+        node <<'NODE_SCRIPT'
+        const fs = require('fs');
+        const varsList = JSON.parse(fs.readFileSync('/tmp/secret_vars.json', 'utf-8'));
+        
+        for (const {key, value} of varsList) {
+          const unescaped = JSON.parse(value);
+          const filePath = `/tmp/secret_${key}.txt`;
+          fs.writeFileSync(filePath, unescaped, 'utf-8');
+          console.log(key);
+        }
+        NODE_SCRIPT | while read -r SECRET_VAR; do
+          SECRET_FILE="/tmp/secret_${SECRET_VAR}.txt"
+          
+          if [ -f "$SECRET_FILE" ]; then
+            VALUE=$(cat "$SECRET_FILE")
+            
+            echo "📝 Creando/actualizando secreto: $SECRET_VAR"
+            
+            # Crear secreto si no existe
+            gcloud secrets create "$SECRET_VAR" \
+              --project="$PROJECT_ID" \
+              --replication-policy="automatic" \
+              2>/dev/null || true
+            
+            # Agregar nueva versión
+            if gcloud secrets versions add "$SECRET_VAR" \
+              --project="$PROJECT_ID" \
+              --data-file="$SECRET_FILE" \
+              >/dev/null 2>&1; then
+              echo "  ✅ $SECRET_VAR creado/actualizado"
+            else
+              echo "  ⚠️  Error al actualizar $SECRET_VAR"
+            fi
+            
+            rm -f "$SECRET_FILE"
+          fi
+        done
+        
+        # Limpiar
+        rm -f "$TEMP_FILE" /tmp/secret_vars.json
+        
+        echo ""
+        echo "✅ Secretos individuales creados/actualizados correctamente"
+
   # Construir la imagen Docker
   - name: 'gcr.io/cloud-builders/docker'
     args:
@@ -29,7 +186,7 @@ steps:
         gcloud run jobs update trabajoya-migrate \
           --region=us-central1 \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --update-secrets=DATABASE_URL=trabajoya-secrets:latest \
+          --update-secrets=DATABASE_URL=DATABASE_URL:latest \
           --set-env-vars="NODE_ENV=production" \
           --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --memory=1Gi \
@@ -41,7 +198,7 @@ steps:
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --command="node" \
           --args="scripts/run-migrations.js" \
-          --update-secrets=DATABASE_URL=trabajoya-secrets:latest \
+          --update-secrets=DATABASE_URL=DATABASE_URL:latest \
           --set-env-vars="NODE_ENV=production" \
           --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --memory=1Gi \
@@ -63,7 +220,7 @@ steps:
         gcloud run jobs update trabajoya-seed \
           --region=us-central1 \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --update-secrets=DATABASE_URL=trabajoya-secrets:latest \
+          --update-secrets=DATABASE_URL=DATABASE_URL:latest \
           --set-env-vars="NODE_ENV=production" \
           --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --memory=1Gi \
@@ -75,7 +232,7 @@ steps:
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --command="node" \
           --args="scripts/run-seed.js" \
-          --update-secrets=DATABASE_URL=trabajoya-secrets:latest \
+          --update-secrets=DATABASE_URL=DATABASE_URL:latest \
           --set-env-vars="NODE_ENV=production" \
           --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --memory=1Gi \
@@ -107,7 +264,7 @@ steps:
           --timeout=300 \
           --concurrency=${_CONCURRENCY} \
           --set-env-vars="NODE_ENV=production,FRONTEND_URL=https://web.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-03-03T00:00:00Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
-          --update-secrets=DATABASE_URL=trabajoya-secrets:latest,JWT_ACCESS_SECRET=trabajoya-secrets:latest,GOOGLE_CLIENT_ID=trabajoya-secrets:latest,GOOGLE_CLIENT_SECRET=trabajoya-secrets:latest,AWS_ACCESS_KEY_ID=trabajoya-secrets:latest,AWS_SECRET_ACCESS_KEY=trabajoya-secrets:latest,RESEND_API_KEY=trabajoya-secrets:latest,OPENAI_API_KEY=trabajoya-secrets:latest,PAYPAL_CLIENT_ID=trabajoya-secrets:latest,PAYPAL_CLIENT_SECRET=trabajoya-secrets:latest,APPLE_PRIVATE_KEY=trabajoya-secrets:latest \
+          --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest \
           --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} 2>/dev/null || \
         gcloud run deploy trabajoya-backend \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
@@ -122,7 +279,7 @@ steps:
           --timeout=300 \
           --concurrency=${_CONCURRENCY} \
           --set-env-vars="NODE_ENV=production,FRONTEND_URL=https://web.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-03-03T00:00:00Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
-          --set-secrets=DATABASE_URL=trabajoya-secrets:latest,JWT_ACCESS_SECRET=trabajoya-secrets:latest,GOOGLE_CLIENT_ID=trabajoya-secrets:latest,GOOGLE_CLIENT_SECRET=trabajoya-secrets:latest,AWS_ACCESS_KEY_ID=trabajoya-secrets:latest,AWS_SECRET_ACCESS_KEY=trabajoya-secrets:latest,RESEND_API_KEY=trabajoya-secrets:latest,OPENAI_API_KEY=trabajoya-secrets:latest,PAYPAL_CLIENT_ID=trabajoya-secrets:latest,PAYPAL_CLIENT_SECRET=trabajoya-secrets:latest,APPLE_PRIVATE_KEY=trabajoya-secrets:latest \
+          --set-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest \
           --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
 
 options:
