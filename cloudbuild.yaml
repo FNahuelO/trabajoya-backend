@@ -194,13 +194,21 @@ steps:
         
         echo "🔐 Verificando permisos del service account: $${SERVICE_ACCOUNT}"
         
-        # Verificar y otorgar permisos para acceder a los secretos
+        # Otorgar rol de Secret Manager Secret Accessor al service account a nivel del proyecto
+        echo "  🔓 Otorgando rol de Secret Manager Secret Accessor al service account..."
+        gcloud projects add-iam-policy-binding trabajo-ya-483316 \
+          --member="serviceAccount:$${SERVICE_ACCOUNT}" \
+          --role="roles/secretmanager.secretAccessor" \
+          --condition=None \
+          --quiet 2>/dev/null || true
+        
+        # Verificar y otorgar permisos para acceder a los secretos individuales también
         SECRETS=("DATABASE_URL" "JWT_ACCESS_SECRET" "GOOGLE_CLIENT_ID" "GOOGLE_CLIENT_SECRET" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "RESEND_API_KEY" "OPENAI_API_KEY" "PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "APPLE_PRIVATE_KEY")
         
         for SECRET in "$${SECRETS[@]}"; do
           # Verificar si el service account ya tiene acceso
           if ! gcloud secrets get-iam-policy "$${SECRET}" --project=trabajo-ya-483316 2>/dev/null | grep -q "$${SERVICE_ACCOUNT}"; then
-            echo "  🔓 Otorgando acceso al secreto $${SECRET}..."
+            echo "  🔓 Otorgando acceso específico al secreto $${SECRET}..."
             gcloud secrets add-iam-policy-binding "$${SECRET}" \
               --project=trabajo-ya-483316 \
               --member="serviceAccount:$${SERVICE_ACCOUNT}" \

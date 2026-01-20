@@ -2,25 +2,50 @@
 # Script de inicio optimizado para Cloud Run
 # Inicia la aplicación inmediatamente sin esperar migraciones
 
+# Debug: Listar todas las variables de entorno disponibles
+echo "🔍 Debug: Variables de entorno disponibles:"
+env | grep -E "^(DATABASE_URL|NODE_ENV|PORT)=" || echo "⚠️  No se encontraron variables críticas"
+
 # Verificar que DATABASE_URL esté disponible
 # Con secretos individuales, Cloud Run monta cada secreto directamente como variable de entorno
 echo "🔍 Verificando variables de entorno críticas..."
 
+# Verificar inmediatamente si DATABASE_URL está disponible
+if [ -n "$DATABASE_URL" ]; then
+  echo "✅ DATABASE_URL está disponible desde el inicio (montada desde Secret Manager)"
+else
+  echo "⚠️  DATABASE_URL no está disponible al inicio del script"
+  echo "🔍 Listando todas las variables de entorno que contienen 'DATABASE' o 'SECRET':"
+  env | grep -i -E "(database|secret)" || echo "   No se encontraron variables relacionadas"
+fi
+
 # Función para cargar secrets y exportar variables en el proceso actual
 load_secrets() {
-  echo "🔐 Cargando secrets antes de iniciar..."
+  echo "🔐 Verificando secretos individuales montados por Cloud Run..."
   
-  # Intentar cargar el secret desde diferentes ubicaciones posibles
+  # Con secretos individuales, Cloud Run monta cada secreto directamente como variable de entorno
+  # No necesitamos parsear TRABAJOYA_SECRETS, solo verificar que las variables estén disponibles
+  
+  # Verificar si DATABASE_URL ya está disponible directamente (montado desde Secret Manager)
+  if [ -n "$DATABASE_URL" ]; then
+    echo "✅ DATABASE_URL ya está disponible como variable de entorno (montada desde Secret Manager)"
+    return 0
+  fi
+  
+  # Si no está disponible, intentar cargar desde TRABAJOYA_SECRETS (compatibilidad hacia atrás)
   SECRET_CONTENT=""
   
   # 1. Intentar desde variable de entorno (Cloud Run monta secrets como variables)
   if [ -n "$TRABAJOYA_SECRETS" ]; then
-    echo "📦 Secret encontrado como variable de entorno"
+    echo "📦 TRABAJOYA_SECRETS encontrado, parseando..."
     SECRET_CONTENT="$TRABAJOYA_SECRETS"
   # 2. Intentar desde archivo montado (Cloud Run también puede montar como archivo)
   elif [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
-    echo "📦 Secret encontrado como archivo montado"
+    echo "📦 TRABAJOYA_SECRETS encontrado como archivo montado, parseando..."
     SECRET_CONTENT=$(cat /etc/secrets/TRABAJOYA_SECRETS)
+  else
+    echo "⚠️  TRABAJOYA_SECRETS no está disponible (esto es normal si usas secretos individuales)"
+    return 1
   fi
   
   # Si tenemos contenido del secret, parsearlo y exportar variables
@@ -255,10 +280,11 @@ NODE_SCRIPT
   fi
 }
 
-# Con secretos individuales, cada variable viene directamente desde su secreto
-# Solo verificamos que DATABASE_URL esté disponible y configurada correctamente
+# Con secretos individuales, Cloud Run monta cada secreto directamente como variable de entorno
+# Verificar primero si DATABASE_URL está disponible directamente (montada desde Secret Manager)
 if [ -n "$DATABASE_URL" ]; then
-  echo "✅ DATABASE_URL encontrada y configurada (longitud: ${#DATABASE_URL} caracteres)"
+  echo "✅ DATABASE_URL encontrada como variable de entorno (montada desde Secret Manager)"
+  echo "   Longitud: ${#DATABASE_URL} caracteres"
   
   # Si por alguna razón DATABASE_URL contiene múltiples variables (fallback al sistema anterior),
   # intentar parsearlas usando load-secrets.sh
@@ -274,10 +300,10 @@ if [ -n "$DATABASE_URL" ]; then
     fi
   fi
 else
-  echo "❌ ERROR: DATABASE_URL no está disponible"
-  echo "🔍 Verificando si hay secretos en formato antiguo..."
+  echo "⚠️  DATABASE_URL no está disponible como variable de entorno"
+  echo "🔍 Verificando si hay secretos en formato antiguo (TRABAJOYA_SECRETS)..."
   
-  # Intentar cargar desde TRABAJOYA_SECRETS como fallback
+  # Intentar cargar desde TRABAJOYA_SECRETS como fallback (compatibilidad hacia atrás)
   if [ -n "$TRABAJOYA_SECRETS" ]; then
     echo "✅ TRABAJOYA_SECRETS encontrado, parseando..."
     if [ -f "./scripts/load-secrets.sh" ]; then
@@ -289,7 +315,9 @@ else
       . ./scripts/load-secrets.sh
     fi
   else
-    echo "❌ No se encontró DATABASE_URL ni secretos alternativos"
+    echo "❌ ERROR: DATABASE_URL no está disponible y no se encontró TRABAJOYA_SECRETS"
+    echo "💡 Con secretos individuales, Cloud Run debería montar DATABASE_URL directamente como variable de entorno"
+    echo "💡 Verifica que el secreto DATABASE_URL esté configurado en Cloud Run usando --update-secrets"
   fi
 fi
 
