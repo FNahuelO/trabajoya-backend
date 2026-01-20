@@ -363,6 +363,9 @@ model VideoMeeting {
   duration      Int? // Duración estimada en minutos
   status        VideoMeetingStatus @default(SCHEDULED)
   meetingUrl    String? // URL de la reunión (si se usa servicio externo)
+  // IDs de eventos creados en Google Calendar (si el usuario conectó su cuenta)
+  googleEventIdCreator String?
+  googleEventIdInvited String?
   callId        String? // ID de la llamada asociada cuando se inicia
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt

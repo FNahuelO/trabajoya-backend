@@ -152,6 +152,81 @@ export class GoogleMeetService {
   }
 
   /**
+   * Crea un evento en Google Calendar SIN crear un nuevo Google Meet.
+   * Útil para reflejar la reunión en el calendario del invitado usando el mismo meetingUrl.
+   */
+  async createCalendarEvent(
+    userEmail: string,
+    accessToken: string,
+    title: string,
+    description: string,
+    startTime: Date,
+    endTime: Date,
+    attendees: string[] = [],
+    meetingUrl?: string
+  ): Promise<{ eventId: string }> {
+    if (!this.oauth2Client) {
+      throw new BadRequestException(
+        "Google OAuth no está configurado. Por favor, configura GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET."
+      );
+    }
+
+    try {
+      this.oauth2Client.setCredentials({
+        access_token: accessToken,
+      });
+
+      const calendar = google.calendar({
+        version: "v3",
+        auth: this.oauth2Client,
+      });
+
+      const finalDescription = meetingUrl
+        ? `${description || ""}\n\n🔗 Link de la reunión: ${meetingUrl}`.trim()
+        : description;
+
+      const event: any = {
+        summary: title,
+        description: finalDescription,
+        start: {
+          dateTime: startTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
+        },
+        end: {
+          dateTime: endTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
+        },
+        attendees: attendees.map((email) => ({ email })),
+        location: meetingUrl,
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: "email", minutes: 24 * 60 },
+            { method: "popup", minutes: 15 },
+          ],
+        },
+      };
+
+      const response = await calendar.events.insert({
+        calendarId: "primary",
+        requestBody: event,
+        sendUpdates: "all",
+      });
+
+      this.logger.log(
+        `Evento de calendario creado (sin Meet): ${response.data.id} para usuario ${userEmail}`
+      );
+
+      return { eventId: response.data.id || "" };
+    } catch (error: any) {
+      this.logger.error("Error creando evento de calendario:", error);
+      throw new BadRequestException(
+        `Error al crear evento de calendario: ${error.message}`
+      );
+    }
+  }
+
+  /**
    * Genera una URL de autorización OAuth para que el usuario autorice
    * el acceso a Google Calendar
    *
@@ -271,6 +346,124 @@ export class GoogleMeetService {
   }
 
   /**
+   * Actualiza un evento de Google Calendar
+   *
+   * @param accessToken Token de acceso OAuth del usuario
+   * @param eventId ID del evento a actualizar
+   * @param title Nuevo título
+   * @param description Nueva descripción
+   * @param startTime Nueva fecha/hora de inicio
+   * @param endTime Nueva fecha/hora de fin
+   * @param attendees Lista de emails de los asistentes
+   * @returns URL de la reunión de Google Meet actualizada
+   */
+  async updateMeeting(
+    accessToken: string,
+    eventId: string,
+    title: string,
+    description: string,
+    startTime: Date,
+    endTime: Date,
+    attendees: string[] = []
+  ): Promise<{ meetingUrl: string }> {
+    if (!this.oauth2Client) {
+      throw new BadRequestException("Google OAuth no está configurado");
+    }
+
+    try {
+      this.oauth2Client.setCredentials({
+        access_token: accessToken,
+      });
+
+      const calendar = google.calendar({
+        version: "v3",
+        auth: this.oauth2Client,
+      });
+
+      // Obtener el evento actual para preservar el conferenceData
+      const existingEvent = await calendar.events.get({
+        calendarId: "primary",
+        eventId: eventId,
+      });
+
+      // Actualizar el evento
+      const updatedEvent = {
+        summary: title,
+        description: description,
+        start: {
+          dateTime: startTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
+        },
+        end: {
+          dateTime: endTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
+        },
+        attendees: attendees.map((email) => ({ email })),
+        // Preservar el conferenceData existente si existe
+        conferenceData: existingEvent.data.conferenceData || undefined,
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: "email", minutes: 24 * 60 }, // 1 día antes
+            { method: "popup", minutes: 15 }, // 15 minutos antes
+          ],
+        },
+      };
+
+      const response = await calendar.events.update({
+        calendarId: "primary",
+        eventId: eventId,
+        requestBody: updatedEvent,
+        conferenceDataVersion: 1,
+        sendUpdates: "all", // Enviar actualizaciones a los asistentes
+      });
+
+      const meetingUrl =
+        response.data.conferenceData?.entryPoints?.[0]?.uri ||
+        response.data.hangoutLink ||
+        existingEvent.data.hangoutLink;
+
+      if (!meetingUrl) {
+        throw new BadRequestException(
+          "No se pudo obtener el enlace de Google Meet actualizado"
+        );
+      }
+
+      this.logger.log(
+        `Reunión de Google Meet actualizada: ${eventId} para usuario`
+      );
+
+      return {
+        meetingUrl,
+      };
+    } catch (error: any) {
+      this.logger.error("Error actualizando reunión de Google Meet:", error);
+
+      if (error.code === 401) {
+        throw new BadRequestException(
+          "Token de acceso inválido o expirado. Por favor, re-autoriza la aplicación."
+        );
+      }
+
+      if (error.code === 403) {
+        throw new BadRequestException(
+          "No tienes permisos para actualizar eventos de calendario."
+        );
+      }
+
+      if (error.code === 404) {
+        throw new BadRequestException(
+          "El evento no se encontró en Google Calendar."
+        );
+      }
+
+      throw new BadRequestException(
+        `Error al actualizar reunión de Google Meet: ${error.message}`
+      );
+    }
+  }
+
+  /**
    * Elimina un evento de Google Calendar (y por ende, la reunión de Meet)
    *
    * @param accessToken Token de acceso OAuth del usuario
@@ -294,11 +487,33 @@ export class GoogleMeetService {
       await calendar.events.delete({
         calendarId: "primary",
         eventId: eventId,
+        sendUpdates: "all", // Notificar a los asistentes sobre la cancelación
       });
 
       this.logger.log(`Reunión de Google Meet eliminada: ${eventId}`);
     } catch (error: any) {
       this.logger.error("Error eliminando reunión de Google Meet:", error);
+
+      // Si el evento ya no existe, no es un error crítico
+      if (error.code === 404) {
+        this.logger.warn(
+          `El evento ${eventId} ya no existe en Google Calendar`
+        );
+        return;
+      }
+
+      if (error.code === 401) {
+        throw new BadRequestException(
+          "Token de acceso inválido o expirado. Por favor, re-autoriza la aplicación."
+        );
+      }
+
+      if (error.code === 403) {
+        throw new BadRequestException(
+          "No tienes permisos para eliminar eventos de calendario."
+        );
+      }
+
       throw new BadRequestException(
         `Error al eliminar reunión: ${error.message}`
       );
