@@ -10,15 +10,30 @@ interface ExpoPushMessage {
   badge?: number;
   priority?: "default" | "normal" | "high";
   channelId?: string;
+  // TTL (Time To Live) en segundos - crítico para notificaciones cuando la app está cerrada
+  // Permite que Expo mantenga la notificación en cola si el dispositivo está offline
+  ttl?: number;
+  // Expiration timestamp - alternativa a ttl
+  expiration?: number;
+  // Android: collapseKey para agrupar notificaciones similares
+  collapseKey?: string;
   android?: {
     priority?: "default" | "normal" | "high";
     channelId?: string;
+    // Android: ttl específico
+    ttl?: number;
+    // Android: collapseKey específico
+    collapseKey?: string;
   };
   ios?: {
     sound?: "default" | null;
     badge?: number;
     priority?: "default" | "normal" | "high";
     categoryId?: string;
+    // iOS: mutableContent permite que las extensiones modifiquen el contenido
+    mutableContent?: boolean;
+    // iOS: interruptionLevel para notificaciones críticas (iOS 15+)
+    interruptionLevel?: "passive" | "active" | "timeSensitive" | "critical";
   };
 }
 
@@ -119,6 +134,8 @@ export class ExpoPushService {
 
   /**
    * Enviar un lote de notificaciones
+   * IMPORTANTE: Las configuraciones aquí son críticas para que las notificaciones funcionen
+   * cuando la app está completamente cerrada o en modo de ahorro de energía
    */
   private async sendBatch(
     tokens: string[],
@@ -135,6 +152,16 @@ export class ExpoPushService {
       const channelId = options?.channelId || "general";
       const priority = options?.priority || "high";
       
+      // TTL de 24 horas (86400 segundos) - permite que Expo mantenga la notificación
+      // en cola si el dispositivo está offline o en modo de ahorro de energía
+      const ttlSeconds = 86400;
+      
+      // Generar collapseKey único basado en el tipo de notificación
+      // Esto ayuda a Android a agrupar notificaciones similares
+      const collapseKey = data?.type 
+        ? `${data.type}_${data.toUserId || data.fromUserId || 'general'}` 
+        : undefined;
+      
       return {
         to: token,
         sound: "default",
@@ -144,11 +171,18 @@ export class ExpoPushService {
         badge: options?.badge,
         priority, // "high" es necesario para notificaciones en background
         channelId, // ChannelId a nivel raíz para compatibilidad
+        // TTL crítico: permite que la notificación se entregue incluso si el dispositivo
+        // está offline o en modo de ahorro de energía cuando la app está cerrada
+        ttl: ttlSeconds,
+        // collapseKey para Android: ayuda a agrupar notificaciones similares
+        collapseKey,
         // Configuraciones adicionales para Android para asegurar que funcionen en background
         // IMPORTANTE: El channelId en android debe coincidir con el canal creado en el frontend
         android: {
           priority, // "high" es necesario para notificaciones en background/cerrada
           channelId, // Usar el mismo channelId que se configuró en el frontend
+          ttl: ttlSeconds, // TTL específico para Android
+          collapseKey, // collapseKey específico para Android
         },
         // Configuraciones específicas para iOS para asegurar que funcionen en background
         ios: {
@@ -156,6 +190,10 @@ export class ExpoPushService {
           badge: options?.badge,
           priority, // "high" es necesario para notificaciones en background
           categoryId: channelId === "messages" ? "message" : undefined,
+          // interruptionLevel: "timeSensitive" permite que las notificaciones se muestren
+          // incluso cuando el dispositivo está en modo "No molestar" (iOS 15+)
+          // Para llamadas, usar "critical" si está disponible
+          interruptionLevel: channelId === "calls" ? "timeSensitive" : "active",
         },
       };
     });
