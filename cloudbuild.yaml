@@ -10,56 +10,26 @@ steps:
         SECRET_NAME="trabajoya-secrets"
         
         # Obtener el secreto
-        echo "📦 Obteniendo secreto '$SECRET_NAME' desde Secret Manager..."
-        SECRET_CONTENT=$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$PROJECT_ID" 2>&1)
+        echo "📦 Obteniendo secreto desde Secret Manager..."
+        SECRET_CONTENT=$$(gcloud secrets versions access latest --secret="$${SECRET_NAME}" --project="$${PROJECT_ID}" 2>&1)
         
-        if [ $? -ne 0 ]; then
-          echo "❌ Error al obtener secreto: $SECRET_CONTENT"
+        if [ $$? -ne 0 ]; then
+          echo "❌ Error al obtener secreto: $${SECRET_CONTENT}"
           exit 1
         fi
         
-        if [ -z "$SECRET_CONTENT" ]; then
+        if [ -z "$${SECRET_CONTENT}" ]; then
           echo "❌ Error: El secreto está vacío"
           exit 1
         fi
         
-        echo "✅ Secreto obtenido (${#SECRET_CONTENT} caracteres)"
+        echo "✅ Secreto obtenido ($${#SECRET_CONTENT} caracteres)"
         echo "🔍 Parseando y creando secretos individuales..."
         echo ""
         
         # Guardar en archivo temporal
-        TEMP_FILE=$(mktemp)
-        echo "$SECRET_CONTENT" > "$TEMP_FILE"
-        
-        # Función para crear secreto individual
-        create_secret_var() {
-          local key="$1"
-          local value="$2"
-          
-          echo "🔍 Procesando: $key"
-          
-          # Crear el secreto si no existe (ignorar error si ya existe)
-          gcloud secrets create "$key" \
-            --project="$PROJECT_ID" \
-            --replication-policy="automatic" \
-            2>/dev/null || echo "  ℹ️  Secreto $key ya existe"
-          
-          # Guardar valor en archivo temporal
-          SECRET_FILE=$(mktemp)
-          echo -n "$value" > "$SECRET_FILE"
-          
-          # Agregar nueva versión
-          if gcloud secrets versions add "$key" \
-            --project="$PROJECT_ID" \
-            --data-file="$SECRET_FILE" \
-            >/dev/null 2>&1; then
-            echo "  ✅ Secreto $key creado/actualizado"
-          else
-            echo "  ❌ Error al actualizar $key"
-          fi
-          
-          rm -f "$SECRET_FILE"
-        }
+        TEMP_FILE=$$(mktemp)
+        echo "$${SECRET_CONTENT}" > "$${TEMP_FILE}"
         
         # Parsear usando Node.js (disponible en cloud-sdk)
         node <<'NODE_SCRIPT'
@@ -103,11 +73,11 @@ steps:
         
         fs.writeFileSync('/tmp/secret_vars.json', JSON.stringify(output, null, 2));
         console.log(`✅ Parseadas ${output.length} variables`);
-        NODE_SCRIPT "$TEMP_FILE"
+        NODE_SCRIPT "$${TEMP_FILE}"
         
-        if [ $? -ne 0 ]; then
+        if [ $$? -ne 0 ]; then
           echo "❌ Error al parsear el secreto"
-          rm -f "$TEMP_FILE"
+          rm -f "$${TEMP_FILE}"
           exit 1
         fi
         
@@ -123,35 +93,35 @@ steps:
           console.log(key);
         }
         NODE_SCRIPT | while read -r SECRET_VAR; do
-          SECRET_FILE="/tmp/secret_${SECRET_VAR}.txt"
+          SECRET_FILE="/tmp/secret_$${SECRET_VAR}.txt"
           
-          if [ -f "$SECRET_FILE" ]; then
-            VALUE=$(cat "$SECRET_FILE")
+          if [ -f "$${SECRET_FILE}" ]; then
+            VALUE=$$(cat "$${SECRET_FILE}")
             
-            echo "📝 Creando/actualizando secreto: $SECRET_VAR"
+            echo "📝 Creando/actualizando secreto: $${SECRET_VAR}"
             
             # Crear secreto si no existe
-            gcloud secrets create "$SECRET_VAR" \
-              --project="$PROJECT_ID" \
+            gcloud secrets create "$${SECRET_VAR}" \
+              --project="$${PROJECT_ID}" \
               --replication-policy="automatic" \
               2>/dev/null || true
             
             # Agregar nueva versión
-            if gcloud secrets versions add "$SECRET_VAR" \
-              --project="$PROJECT_ID" \
-              --data-file="$SECRET_FILE" \
+            if gcloud secrets versions add "$${SECRET_VAR}" \
+              --project="$${PROJECT_ID}" \
+              --data-file="$${SECRET_FILE}" \
               >/dev/null 2>&1; then
-              echo "  ✅ $SECRET_VAR creado/actualizado"
+              echo "  ✅ $${SECRET_VAR} creado/actualizado"
             else
-              echo "  ⚠️  Error al actualizar $SECRET_VAR"
+              echo "  ⚠️  Error al actualizar $${SECRET_VAR}"
             fi
             
-            rm -f "$SECRET_FILE"
+            rm -f "$${SECRET_FILE}"
           fi
         done
         
         # Limpiar
-        rm -f "$TEMP_FILE" /tmp/secret_vars.json
+        rm -f "$${TEMP_FILE}" /tmp/secret_vars.json
         
         echo ""
         echo "✅ Secretos individuales creados/actualizados correctamente"
