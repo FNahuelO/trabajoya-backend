@@ -8,7 +8,9 @@ const { execSync, spawn } = require('child_process');
 const { existsSync } = require('fs');
 const path = require('path');
 
-// Función para cargar secrets desde TRABAJOYA_SECRETS
+// Función para cargar secrets desde TRABAJOYA_SECRETS (opcional)
+// Si TRABAJOYA_SECRETS no está disponible, asume que los secretos individuales
+// ya están disponibles como variables de entorno (montados desde Secret Manager)
 function loadSecrets() {
   let secretContent = process.env.TRABAJOYA_SECRETS || '';
   
@@ -17,9 +19,17 @@ function loadSecrets() {
     secretContent = fs.readFileSync('/etc/secrets/TRABAJOYA_SECRETS', 'utf8');
   }
   
+  // Si TRABAJOYA_SECRETS no está disponible, verificar que DATABASE_URL existe
+  // (asumiendo que los secretos individuales ya están montados)
   if (!secretContent) {
-    console.error('❌ ERROR: TRABAJOYA_SECRETS no está disponible');
-    process.exit(1);
+    if (process.env.DATABASE_URL) {
+      console.log('ℹ️  TRABAJOYA_SECRETS no está disponible, usando secretos individuales montados');
+      console.log('✅ DATABASE_URL ya está disponible como variable de entorno');
+      return;
+    } else {
+      console.error('❌ ERROR: TRABAJOYA_SECRETS no está disponible y DATABASE_URL tampoco está configurada');
+      process.exit(1);
+    }
   }
   
   console.log('🔐 Cargando secrets desde TRABAJOYA_SECRETS...');
