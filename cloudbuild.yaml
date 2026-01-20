@@ -184,29 +184,62 @@ steps:
       - '-c'
       - |
         echo "📦 Configurando y ejecutando migraciones..."
-        # Intentar actualizar primero, si falla crear
-        gcloud run jobs update trabajoya-migrate \
-          --region=us-central1 \
-          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --update-secrets=DATABASE_URL=DATABASE_URL:latest \
-          --set-env-vars="NODE_ENV=production" \
-          --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
-          --memory=1Gi \
-          --cpu=1 \
-          --max-retries=1 \
-          --task-timeout=300 2>/dev/null || \
-        gcloud run jobs create trabajoya-migrate \
-          --region=us-central1 \
-          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --command="node" \
-          --args="scripts/run-migrations.js" \
-          --update-secrets=DATABASE_URL=DATABASE_URL:latest \
-          --set-env-vars="NODE_ENV=production" \
-          --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
-          --memory=1Gi \
-          --cpu=1 \
-          --max-retries=1 \
-          --task-timeout=300
+        
+        # Verificar si el job existe y su estado
+        JOB_EXISTS=$$(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(name)" 2>/dev/null || echo "")
+        NEEDS_CREATE=false
+        
+        if [ -n "$${JOB_EXISTS}" ]; then
+          echo "ℹ️  El job trabajoya-migrate ya existe, verificando estado..."
+          
+          # Verificar si está en estado de error
+          JOB_READY=$$(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(status.conditions[0].status)" 2>/dev/null || echo "False")
+          
+          if [ "$${JOB_READY}" != "True" ]; then
+            echo "⚠️  El job está en estado de error o no listo, eliminándolo para recrear..."
+            gcloud run jobs delete trabajoya-migrate --region=us-central1 --quiet 2>/dev/null || true
+            sleep 2
+            NEEDS_CREATE=true
+          else
+            echo "✅ El job existe y está listo, actualizando..."
+            if ! gcloud run jobs update trabajoya-migrate \
+              --region=us-central1 \
+              --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+              --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+              --set-env-vars="NODE_ENV=production" \
+              --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+              --memory=1Gi \
+              --cpu=1 \
+              --max-retries=1 \
+              --task-timeout=300 2>/dev/null; then
+              echo "⚠️  Error al actualizar, eliminando y recreando..."
+              gcloud run jobs delete trabajoya-migrate --region=us-central1 --quiet 2>/dev/null || true
+              sleep 2
+              NEEDS_CREATE=true
+            else
+              echo "✅ Job actualizado correctamente"
+            fi
+          fi
+        else
+          NEEDS_CREATE=true
+        fi
+        
+        # Crear el job si es necesario
+        if [ "$${NEEDS_CREATE}" = "true" ]; then
+          echo "📝 Creando job trabajoya-migrate..."
+          gcloud run jobs create trabajoya-migrate \
+            --region=us-central1 \
+            --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+            --command="node" \
+            --args="scripts/run-migrations.js" \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --set-env-vars="NODE_ENV=production" \
+            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+            --memory=1Gi \
+            --cpu=1 \
+            --max-retries=1 \
+            --task-timeout=300
+        fi
         
         echo "🚀 Ejecutando migraciones..."
         gcloud run jobs execute trabajoya-migrate --region=us-central1 --wait
@@ -218,29 +251,62 @@ steps:
       - '-c'
       - |
         echo "🌱 Configurando y ejecutando seed..."
-        # Intentar actualizar primero, si falla crear
-        gcloud run jobs update trabajoya-seed \
-          --region=us-central1 \
-          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --update-secrets=DATABASE_URL=DATABASE_URL:latest \
-          --set-env-vars="NODE_ENV=production" \
-          --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
-          --memory=1Gi \
-          --cpu=1 \
-          --max-retries=1 \
-          --task-timeout=300 2>/dev/null || \
-        gcloud run jobs create trabajoya-seed \
-          --region=us-central1 \
-          --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --command="node" \
-          --args="scripts/run-seed.js" \
-          --update-secrets=DATABASE_URL=DATABASE_URL:latest \
-          --set-env-vars="NODE_ENV=production" \
-          --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
-          --memory=1Gi \
-          --cpu=1 \
-          --max-retries=1 \
-          --task-timeout=300
+        
+        # Verificar si el job existe y su estado
+        JOB_EXISTS=$$(gcloud run jobs describe trabajoya-seed --region=us-central1 --format="value(name)" 2>/dev/null || echo "")
+        NEEDS_CREATE=false
+        
+        if [ -n "$${JOB_EXISTS}" ]; then
+          echo "ℹ️  El job trabajoya-seed ya existe, verificando estado..."
+          
+          # Verificar si está en estado de error
+          JOB_READY=$$(gcloud run jobs describe trabajoya-seed --region=us-central1 --format="value(status.conditions[0].status)" 2>/dev/null || echo "False")
+          
+          if [ "$${JOB_READY}" != "True" ]; then
+            echo "⚠️  El job está en estado de error o no listo, eliminándolo para recrear..."
+            gcloud run jobs delete trabajoya-seed --region=us-central1 --quiet 2>/dev/null || true
+            sleep 2
+            NEEDS_CREATE=true
+          else
+            echo "✅ El job existe y está listo, actualizando..."
+            if ! gcloud run jobs update trabajoya-seed \
+              --region=us-central1 \
+              --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+              --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+              --set-env-vars="NODE_ENV=production" \
+              --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+              --memory=1Gi \
+              --cpu=1 \
+              --max-retries=1 \
+              --task-timeout=300 2>/dev/null; then
+              echo "⚠️  Error al actualizar, eliminando y recreando..."
+              gcloud run jobs delete trabajoya-seed --region=us-central1 --quiet 2>/dev/null || true
+              sleep 2
+              NEEDS_CREATE=true
+            else
+              echo "✅ Job actualizado correctamente"
+            fi
+          fi
+        else
+          NEEDS_CREATE=true
+        fi
+        
+        # Crear el job si es necesario
+        if [ "$${NEEDS_CREATE}" = "true" ]; then
+          echo "📝 Creando job trabajoya-seed..."
+          gcloud run jobs create trabajoya-seed \
+            --region=us-central1 \
+            --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+            --command="node" \
+            --args="scripts/run-seed.js" \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --set-env-vars="NODE_ENV=production" \
+            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+            --memory=1Gi \
+            --cpu=1 \
+            --max-retries=1 \
+            --task-timeout=300
+        fi
         
         echo "🚀 Ejecutando seed..."
         gcloud run jobs execute trabajoya-seed --region=us-central1 --wait
