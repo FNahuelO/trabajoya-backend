@@ -260,20 +260,30 @@ env | grep -i "DATABASE\|PRISMA\|TRABAJOYA" | head -10 || echo "   (ninguna vari
 if [ -n "$DATABASE_URL" ]; then
   echo "✅ DATABASE_URL encontrada (longitud: ${#DATABASE_URL} caracteres)"
   
-  # Verificar si DATABASE_URL contiene múltiples líneas (formato KEY=VALUE completo del secreto)
-  LINE_COUNT=$(echo "$DATABASE_URL" | wc -l | tr -d ' ')
+  # Verificar si DATABASE_URL contiene múltiples variables (formato KEY=VALUE completo del secreto)
+  # Si contiene múltiples líneas con "KEY=" diferentes, es el secreto completo
+  LINE_COUNT=$(printf "%s\n" "$DATABASE_URL" | wc -l | tr -d ' ')
+  EQUALS_COUNT=$(printf "%s\n" "$DATABASE_URL" | grep -c "^[A-Za-z_][A-Za-z0-9_]*=" || echo "0")
   
-  if [ "$LINE_COUNT" -gt 1 ]; then
-    echo "🔍 DATABASE_URL contiene múltiples líneas, parseando formato KEY=VALUE..."
+  # Verificar si contiene múltiples nombres de variables diferentes (no solo DATABASE_URL)
+  DIFFERENT_VARS=$(printf "%s\n" "$DATABASE_URL" | grep "^[A-Za-z_][A-Za-z0-9_]*=" | cut -d'=' -f1 | sort -u | wc -l | tr -d ' ')
+  
+  # Solo parsear si claramente contiene múltiples variables diferentes (más de 1 variable)
+  # O si tiene más de 1 línea con KEY= al inicio
+  if [ "$DIFFERENT_VARS" -gt 1 ] || [ "$EQUALS_COUNT" -gt 1 ] || ([ "$LINE_COUNT" -gt 1 ] && [ "$EQUALS_COUNT" -gt 0 ]); then
+    echo "🔍 DATABASE_URL contiene el secreto completo (${EQUALS_COUNT} variables, ${LINE_COUNT} líneas), parseando..."
     
     # Guardar el contenido completo en un archivo temporal para parsearlo
     echo "$DATABASE_URL" > /tmp/secret-content.txt
     
-    # Parsear y extraer solo el valor de DATABASE_URL usando Node.js para manejar valores complejos
-    DATABASE_URL_PARSED=$(node <<'NODE_SCRIPT'
+    # Parsear TODAS las variables y exportarlas
+    echo "🔍 Parseando todas las variables del secreto..."
+    node <<'NODE_SCRIPT'
       const fs = require('fs');
       const content = fs.readFileSync('/tmp/secret-content.txt', 'utf-8');
       const lines = content.split('\n');
+      const exports = [];
+      const variables = {};
       
       for (const line of lines) {
         const trimmed = line.trim();
@@ -285,6 +295,9 @@ if [ -n "$DATABASE_URL" ]; then
         const key = trimmed.substring(0, eqIndex).trim();
         let value = trimmed.substring(eqIndex + 1);
         
+        // Validar que la clave sea un identificador válido
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+        
         // Remover comillas externas si están presentes
         if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
             (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
@@ -294,63 +307,34 @@ if [ -n "$DATABASE_URL" ]; then
         // Reemplazar \n con saltos de línea reales (para claves privadas, etc.)
         value = value.replace(/\\n/g, '\n');
         
-        if (key === 'DATABASE_URL') {
-          console.log(value);
-          break;
-        }
+        // Guardar variable
+        variables[key] = value;
+      }
+      
+      // Generar exports para todas las variables
+      for (const [key, value] of Object.entries(variables)) {
+        // Escapar comillas simples para shell
+        const escaped = String(value).replace(/'/g, "'\\''");
+        exports.push(`export ${key}='${escaped}'`);
+      }
+      
+      // Escribir archivo de exports
+      fs.writeFileSync('/tmp/export-secrets.sh', exports.join('\n') + '\n');
+      
+      // Escribir información de debug
+      console.log(`✅ Parseadas ${Object.keys(variables).length} variables: ${Object.keys(variables).join(', ')}`);
+      if (variables.DATABASE_URL) {
+        console.log(`✅ DATABASE_URL encontrada (longitud: ${variables.DATABASE_URL.length} caracteres)`);
       }
 NODE_SCRIPT
-    )
     
-    if [ -n "$DATABASE_URL_PARSED" ]; then
-      export DATABASE_URL="$DATABASE_URL_PARSED"
-      echo "✅ DATABASE_URL extraída del formato KEY=VALUE (longitud: ${#DATABASE_URL} caracteres)"
-      
-      # Parsear y exportar otras variables importantes del mismo secreto
-      echo "🔍 Parseando otras variables del secreto..."
-      node <<'NODE_SCRIPT'
-        const fs = require('fs');
-        const content = fs.readFileSync('/tmp/secret-content.txt', 'utf-8');
-        const lines = content.split('\n');
-        const exports = [];
-        
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('#')) continue;
-          
-          const eqIndex = trimmed.indexOf('=');
-          if (eqIndex <= 0) continue;
-          
-          const key = trimmed.substring(0, eqIndex).trim();
-          let value = trimmed.substring(eqIndex + 1);
-          
-          // Validar que la clave sea un identificador válido
-          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-          
-          // Remover comillas externas si están presentes
-          if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
-              (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
-            value = value.slice(1, -1);
-          }
-          
-          // Reemplazar \n con saltos de línea reales
-          value = value.replace(/\\n/g, '\n');
-          
-          // Escapar comillas simples para shell
-          const escaped = value.replace(/'/g, "'\\''");
-          exports.push(`export ${key}='${escaped}'`);
-        }
-        
-        fs.writeFileSync('/tmp/export-secrets.sh', exports.join('\n') + '\n');
-NODE_SCRIPT
-      
-      # Cargar las variables exportadas
+    # Cargar las variables exportadas
+    if [ -f "/tmp/export-secrets.sh" ]; then
       . /tmp/export-secrets.sh
       rm -f /tmp/secret-content.txt /tmp/export-secrets.sh
-      
-      echo "✅ Variables de entorno parseadas desde el secreto"
+      echo "✅ Variables de entorno parseadas y exportadas desde el secreto"
     else
-      echo "⚠️  No se pudo extraer DATABASE_URL del formato KEY=VALUE"
+      echo "⚠️  No se pudo generar el archivo de exports"
       rm -f /tmp/secret-content.txt
     fi
   # Verificar si es JSON
