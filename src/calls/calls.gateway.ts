@@ -286,12 +286,14 @@ export class CallsGateway
         `Sending call:incoming to socket ${toSocketId} (user ${toUserId})`
       );
       // Notificar al destinatario de la llamada entrante por WebSocket
-      this.server.to(toSocketId).emit("call:incoming", {
+      const callData = {
         callId,
         fromUserId,
         fromSocketId: fromSocketId || "unknown",
-      });
-      this.logger.log(`Call:incoming event emitted successfully`);
+      };
+      this.logger.log(`Emitting call:incoming with data:`, JSON.stringify(callData));
+      this.server.to(toSocketId).emit("call:incoming", callData);
+      this.logger.log(`Call:incoming event emitted successfully to socket ${toSocketId}`);
       
       // IMPORTANTE: También enviar notificación push como fallback
       // Esto asegura que iOS reciba la llamada incluso si hay problemas con WebSocket
