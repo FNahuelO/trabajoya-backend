@@ -252,17 +252,67 @@ export class CallsGateway
     // Obtener el socket del destinatario
     const toSocketId = this.connectedUsers.get(toUserId);
 
+    // Obtener información del llamador (necesaria tanto para WebSocket como para push)
+    let callerName = "Alguien";
+    try {
+      const fromUser = await this.callsService["prisma"].user.findUnique({
+        where: { id: fromUserId },
+        include: {
+          postulante: {
+            select: { fullName: true },
+          },
+          empresa: {
+            select: { companyName: true },
+          },
+        },
+      });
+
+      callerName =
+        fromUser?.postulante?.fullName ||
+        fromUser?.empresa?.companyName ||
+        fromUser?.email ||
+        "Alguien";
+    } catch (error) {
+      this.logger.error(
+        "Error getting caller info for push notification:",
+        error
+      );
+    }
+
     if (toSocketId) {
       this.logger.log(
         `Sending call:incoming to socket ${toSocketId} (user ${toUserId})`
       );
-      // Notificar al destinatario de la llamada entrante
+      // Notificar al destinatario de la llamada entrante por WebSocket
       this.server.to(toSocketId).emit("call:incoming", {
         callId,
         fromUserId,
         fromSocketId: client.id,
       });
       this.logger.log(`Call:incoming event emitted successfully`);
+      
+      // IMPORTANTE: También enviar notificación push como fallback
+      // Esto asegura que iOS reciba la llamada incluso si hay problemas con WebSocket
+      // o si la app está en background
+      this.logger.log(
+        `Sending push notification as fallback for incoming call to user ${toUserId} (callId: ${callId}, fromUserId: ${fromUserId})`
+      );
+      try {
+        await this.notificationsService.sendCallNotification(toUserId, callerName, {
+          callId,
+          fromUserId,
+          toUserId,
+        });
+        this.logger.log(
+          `Push notification sent successfully as fallback to user ${toUserId}`
+        );
+      } catch (error) {
+        this.logger.error(
+          `Error sending push notification for call (fallback) to user ${toUserId}:`,
+          error
+        );
+      }
+      
       return { success: true, message: "Llamada iniciada" };
     } else {
       this.logger.warn(`User ${toUserId} not found in connected users map`);
@@ -276,45 +326,19 @@ export class CallsGateway
         `Sending push notification for incoming call to user ${toUserId}`
       );
 
-      // Obtener información del llamador
-      try {
-        const fromUser = await this.callsService["prisma"].user.findUnique({
-          where: { id: fromUserId },
-          include: {
-            postulante: {
-              select: { fullName: true },
-            },
-            empresa: {
-              select: { companyName: true },
-            },
-          },
+      // Enviar notificación push
+      await this.notificationsService
+        .sendCallNotification(toUserId, callerName, {
+          callId,
+          fromUserId,
+          toUserId,
+        })
+        .catch((error) => {
+          this.logger.error(
+            "Error sending push notification for call:",
+            error
+          );
         });
-
-        const callerName =
-          fromUser?.postulante?.fullName ||
-          fromUser?.empresa?.companyName ||
-          fromUser?.email ||
-          "Alguien";
-
-        // Enviar notificación push
-        await this.notificationsService
-          .sendCallNotification(toUserId, callerName, {
-            callId,
-            fromUserId,
-            toUserId,
-          })
-          .catch((error) => {
-            this.logger.error(
-              "Error sending push notification for call:",
-              error
-            );
-          });
-      } catch (error) {
-        this.logger.error(
-          "Error getting caller info for push notification:",
-          error
-        );
-      }
 
       return { success: false, message: "Usuario no disponible" };
     }
