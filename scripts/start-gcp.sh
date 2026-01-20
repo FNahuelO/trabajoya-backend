@@ -251,35 +251,163 @@ NODE_SCRIPT
   fi
 }
 
-# Cargar secrets primero si están disponibles
-echo "🔍 Verificando disponibilidad de TRABAJOYA_SECRETS..."
-echo "🔍 Variables de entorno iniciales:"
-env | grep -i "TRABAJOYA\|DATABASE\|PRISMA" | head -5 || echo "   (ninguna variable relevante encontrada)"
+# Verificar primero si DATABASE_URL ya está disponible directamente (Cloud Run con --update-secrets)
+echo "🔍 Verificando variables de entorno iniciales..."
+echo "🔍 Variables de entorno disponibles:"
+env | grep -i "DATABASE\|PRISMA\|TRABAJOYA" | head -10 || echo "   (ninguna variable relevante encontrada)"
 
-if [ -n "$TRABAJOYA_SECRETS" ]; then
-  echo "✅ TRABAJOYA_SECRETS encontrado como variable de entorno (longitud: ${#TRABAJOYA_SECRETS})"
-  load_secrets
-elif [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
-  echo "✅ TRABAJOYA_SECRETS encontrado como archivo en /etc/secrets/TRABAJOYA_SECRETS"
-  load_secrets
-elif [ -d "/etc/secrets" ]; then
-  echo "📁 Directorio /etc/secrets existe, listando contenido:"
-  ls -la /etc/secrets/ || echo "   (no se pudo listar)"
-  # Intentar encontrar cualquier archivo de secret
-  if [ -n "$(ls -A /etc/secrets 2>/dev/null)" ]; then
-    echo "📦 Intentando cargar primer archivo encontrado en /etc/secrets..."
-    FIRST_SECRET=$(ls -1 /etc/secrets/ | head -1)
-    if [ -n "$FIRST_SECRET" ]; then
-      echo "📦 Cargando $FIRST_SECRET..."
-      TRABAJOYA_SECRETS=$(cat "/etc/secrets/$FIRST_SECRET")
-      load_secrets
+# Si DATABASE_URL ya está disponible, verificar si contiene múltiples variables (formato KEY=VALUE)
+if [ -n "$DATABASE_URL" ]; then
+  echo "✅ DATABASE_URL encontrada (longitud: ${#DATABASE_URL} caracteres)"
+  
+  # Verificar si DATABASE_URL contiene múltiples líneas (formato KEY=VALUE completo del secreto)
+  LINE_COUNT=$(echo "$DATABASE_URL" | wc -l | tr -d ' ')
+  
+  if [ "$LINE_COUNT" -gt 1 ]; then
+    echo "🔍 DATABASE_URL contiene múltiples líneas, parseando formato KEY=VALUE..."
+    
+    # Guardar el contenido completo en un archivo temporal para parsearlo
+    echo "$DATABASE_URL" > /tmp/secret-content.txt
+    
+    # Parsear y extraer solo el valor de DATABASE_URL usando Node.js para manejar valores complejos
+    DATABASE_URL_PARSED=$(node <<'NODE_SCRIPT'
+      const fs = require('fs');
+      const content = fs.readFileSync('/tmp/secret-content.txt', 'utf-8');
+      const lines = content.split('\n');
+      
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        
+        const eqIndex = trimmed.indexOf('=');
+        if (eqIndex <= 0) continue;
+        
+        const key = trimmed.substring(0, eqIndex).trim();
+        let value = trimmed.substring(eqIndex + 1);
+        
+        // Remover comillas externas si están presentes
+        if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
+            (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
+          value = value.slice(1, -1);
+        }
+        
+        // Reemplazar \n con saltos de línea reales (para claves privadas, etc.)
+        value = value.replace(/\\n/g, '\n');
+        
+        if (key === 'DATABASE_URL') {
+          console.log(value);
+          break;
+        }
+      }
+NODE_SCRIPT
+    )
+    
+    if [ -n "$DATABASE_URL_PARSED" ]; then
+      export DATABASE_URL="$DATABASE_URL_PARSED"
+      echo "✅ DATABASE_URL extraída del formato KEY=VALUE (longitud: ${#DATABASE_URL} caracteres)"
+      
+      # Parsear y exportar otras variables importantes del mismo secreto
+      echo "🔍 Parseando otras variables del secreto..."
+      node <<'NODE_SCRIPT'
+        const fs = require('fs');
+        const content = fs.readFileSync('/tmp/secret-content.txt', 'utf-8');
+        const lines = content.split('\n');
+        const exports = [];
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          
+          const eqIndex = trimmed.indexOf('=');
+          if (eqIndex <= 0) continue;
+          
+          const key = trimmed.substring(0, eqIndex).trim();
+          let value = trimmed.substring(eqIndex + 1);
+          
+          // Validar que la clave sea un identificador válido
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+          
+          // Remover comillas externas si están presentes
+          if ((value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
+              (value.startsWith("'") && value.endsWith("'") && value.length > 1)) {
+            value = value.slice(1, -1);
+          }
+          
+          // Reemplazar \n con saltos de línea reales
+          value = value.replace(/\\n/g, '\n');
+          
+          // Escapar comillas simples para shell
+          const escaped = value.replace(/'/g, "'\\''");
+          exports.push(`export ${key}='${escaped}'`);
+        }
+        
+        fs.writeFileSync('/tmp/export-secrets.sh', exports.join('\n') + '\n');
+NODE_SCRIPT
+      
+      # Cargar las variables exportadas
+      . /tmp/export-secrets.sh
+      rm -f /tmp/secret-content.txt /tmp/export-secrets.sh
+      
+      echo "✅ Variables de entorno parseadas desde el secreto"
+    else
+      echo "⚠️  No se pudo extraer DATABASE_URL del formato KEY=VALUE"
+      rm -f /tmp/secret-content.txt
+    fi
+  # Verificar si es JSON
+  elif echo "$DATABASE_URL" | grep -qE '^[\"'{]|^\s*\{'; then
+    echo "🔍 DATABASE_URL parece ser JSON, parseando..."
+    DATABASE_URL_PARSED=$(echo "$DATABASE_URL" | node -e "
+      const data = require('fs').readFileSync(0, 'utf-8').trim();
+      try {
+        const json = JSON.parse(data);
+        if (json.DATABASE_URL) {
+          console.log(json.DATABASE_URL);
+        } else if (json.database_url) {
+          console.log(json.database_url);
+        } else {
+          console.log(data);
+        }
+      } catch(e) {
+        // No es JSON válido, usar como está
+        console.log(data);
+      }
+    " 2>/dev/null)
+    if [ -n "$DATABASE_URL_PARSED" ] && [ "$DATABASE_URL_PARSED" != "$DATABASE_URL" ]; then
+      export DATABASE_URL="$DATABASE_URL_PARSED"
+      echo "✅ DATABASE_URL extraída del JSON"
+    fi
+  fi
+  
+  echo "✅ DATABASE_URL configurada (longitud: ${#DATABASE_URL} caracteres)"
+else
+  echo "⚠️  DATABASE_URL no está disponible directamente, buscando en TRABAJOYA_SECRETS..."
+  
+  # Intentar cargar desde TRABAJOYA_SECRETS solo si DATABASE_URL no está disponible
+  if [ -n "$TRABAJOYA_SECRETS" ]; then
+    echo "✅ TRABAJOYA_SECRETS encontrado como variable de entorno (longitud: ${#TRABAJOYA_SECRETS})"
+    load_secrets
+  elif [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
+    echo "✅ TRABAJOYA_SECRETS encontrado como archivo en /etc/secrets/TRABAJOYA_SECRETS"
+    load_secrets
+  elif [ -d "/etc/secrets" ]; then
+    echo "📁 Directorio /etc/secrets existe, listando contenido:"
+    ls -la /etc/secrets/ || echo "   (no se pudo listar)"
+    # Intentar encontrar cualquier archivo de secret
+    if [ -n "$(ls -A /etc/secrets 2>/dev/null)" ]; then
+      echo "📦 Intentando cargar primer archivo encontrado en /etc/secrets..."
+      FIRST_SECRET=$(ls -1 /etc/secrets/ | head -1)
+      if [ -n "$FIRST_SECRET" ]; then
+        echo "📦 Cargando $FIRST_SECRET..."
+        TRABAJOYA_SECRETS=$(cat "/etc/secrets/$FIRST_SECRET")
+        load_secrets
+      fi
+    else
+      echo "⚠️  Directorio /etc/secrets está vacío"
     fi
   else
-    echo "⚠️  Directorio /etc/secrets está vacío"
+    echo "⚠️  TRABAJOYA_SECRETS no encontrado ni como variable ni como archivo"
+    echo "⚠️  Directorio /etc/secrets no existe"
   fi
-else
-  echo "⚠️  TRABAJOYA_SECRETS no encontrado ni como variable ni como archivo"
-  echo "⚠️  Directorio /etc/secrets no existe"
 fi
 
 # Configurar DATABASE_URL para Cloud SQL si es necesario
@@ -315,6 +443,12 @@ fi
 # Verificar que DATABASE_URL esté realmente configurada antes de iniciar
 if [ -z "$DATABASE_URL" ]; then
   echo "❌ ERROR CRÍTICO: DATABASE_URL no está configurada después de todos los intentos"
+  echo "🔍 Debug: Variables de entorno relacionadas con DATABASE:"
+  env | grep -i "DATABASE\|PRISMA\|SECRET" || echo "   (ninguna encontrada)"
+  echo "🔍 Debug: Archivos en /etc/secrets:"
+  ls -la /etc/secrets/ 2>/dev/null || echo "   (directorio no existe o no accesible)"
+  echo "🔍 Debug: Verificando si secret manager está accesible:"
+  echo "   Cloud Run debería montar DATABASE_URL directamente desde trabajoya-secrets:latest"
   exit 1
 fi
 

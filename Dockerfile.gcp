@@ -24,15 +24,10 @@ RUN npm run build
 # Exponer puerto
 EXPOSE 8080
 
-# Instalar postgresql-client para usar psql
-RUN apk add --no-cache postgresql-client
+# Instalar postgresql-client para usar psql (actualizar cache primero para evitar warnings)
+RUN apk update && apk add --no-cache postgresql-client
 
-# Copiar scripts necesarios para Cloud Run
-COPY scripts/start-gcp.sh ./scripts/
-COPY scripts/seed-if-empty.js ./scripts/
-COPY scripts/run-migrations.js ./scripts/
-COPY scripts/run-seed.js ./scripts/
-COPY scripts/load-secrets-and-run.sh ./scripts/
+# Dar permisos de ejecución a los scripts necesarios
 RUN chmod +x ./scripts/start-gcp.sh ./scripts/load-secrets-and-run.sh ./scripts/run-migrations.js ./scripts/run-seed.js
 
 # Cloud Run usa PORT variable, ajustar start.sh para usarlo
