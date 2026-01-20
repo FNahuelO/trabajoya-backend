@@ -180,9 +180,9 @@ steps:
         echo "🔍 Verificando secretos en Secret Manager..."
         SECRETS=("DATABASE_URL" "PRISMA_DATABASE_URL" "JWT_ACCESS_SECRET" "GOOGLE_CLIENT_ID" "GOOGLE_CLIENT_SECRET" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "RESEND_API_KEY" "OPENAI_API_KEY" "PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "APPLE_PRIVATE_KEY")
         
-        for SECRET in "${SECRETS[@]}"; do
-          if ! gcloud secrets describe "${SECRET}" --project=trabajo-ya-483316 >/dev/null 2>&1; then
-            echo "❌ Error: El secreto ${SECRET} no existe en Secret Manager"
+        for SECRET in "$${SECRETS[@]}"; do
+          if ! gcloud secrets describe "$${SECRET}" --project=trabajo-ya-483316 >/dev/null 2>&1; then
+            echo "❌ Error: El secreto $${SECRET} no existe en Secret Manager"
             exit 1
           fi
         done
