@@ -253,19 +253,33 @@ NODE_SCRIPT
 
 # Cargar secrets primero si están disponibles
 echo "🔍 Verificando disponibilidad de TRABAJOYA_SECRETS..."
+echo "🔍 Variables de entorno iniciales:"
+env | grep -i "TRABAJOYA\|DATABASE\|PRISMA" | head -5 || echo "   (ninguna variable relevante encontrada)"
+
 if [ -n "$TRABAJOYA_SECRETS" ]; then
   echo "✅ TRABAJOYA_SECRETS encontrado como variable de entorno (longitud: ${#TRABAJOYA_SECRETS})"
   load_secrets
 elif [ -f "/etc/secrets/TRABAJOYA_SECRETS" ]; then
   echo "✅ TRABAJOYA_SECRETS encontrado como archivo en /etc/secrets/TRABAJOYA_SECRETS"
   load_secrets
+elif [ -d "/etc/secrets" ]; then
+  echo "📁 Directorio /etc/secrets existe, listando contenido:"
+  ls -la /etc/secrets/ || echo "   (no se pudo listar)"
+  # Intentar encontrar cualquier archivo de secret
+  if [ -n "$(ls -A /etc/secrets 2>/dev/null)" ]; then
+    echo "📦 Intentando cargar primer archivo encontrado en /etc/secrets..."
+    FIRST_SECRET=$(ls -1 /etc/secrets/ | head -1)
+    if [ -n "$FIRST_SECRET" ]; then
+      echo "📦 Cargando $FIRST_SECRET..."
+      TRABAJOYA_SECRETS=$(cat "/etc/secrets/$FIRST_SECRET")
+      load_secrets
+    fi
+  else
+    echo "⚠️  Directorio /etc/secrets está vacío"
+  fi
 else
   echo "⚠️  TRABAJOYA_SECRETS no encontrado ni como variable ni como archivo"
-  # Listar archivos en /etc/secrets para debug
-  if [ -d "/etc/secrets" ]; then
-    echo "📁 Contenido de /etc/secrets:"
-    ls -la /etc/secrets/ || echo "   (no se pudo listar)"
-  fi
+  echo "⚠️  Directorio /etc/secrets no existe"
 fi
 
 # Configurar DATABASE_URL para Cloud SQL si es necesario
@@ -379,7 +393,26 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
+# Asegurar que las variables estén disponibles en el entorno de Node.js
+# CRÍTICO: PrismaClient se inicializa inmediatamente al importar, así que las variables
+# DEBEN estar disponibles antes de que Node.js cargue cualquier módulo
+export DATABASE_URL
+export PRISMA_DATABASE_URL
+
+# Verificar una última vez que DATABASE_URL está disponible
+if [ -z "$DATABASE_URL" ]; then
+  echo "❌ ERROR FATAL: DATABASE_URL no está disponible en el entorno justo antes de iniciar Node.js"
+  echo "🔍 Estado del entorno:"
+  env | grep -i "DATABASE\|PRISMA\|TRABAJOYA" || echo "   (ninguna variable relacionada encontrada)"
+  exit 1
+fi
+
+# Imprimir confirmación final (sin mostrar el valor por seguridad)
+echo "✅ Confirmación final: DATABASE_URL está configurada (longitud: ${#DATABASE_URL} caracteres)"
+echo "🚀 Iniciando Node.js con DATABASE_URL disponible en el entorno..."
+
 # Iniciar el servidor Node.js - usar exec para que reciba señales correctamente
+# CRÍTICO: Usar exec para reemplazar el shell actual y pasar el entorno completo
 # Las variables exportadas estarán disponibles en process.env
 exec node dist/main.js
 
