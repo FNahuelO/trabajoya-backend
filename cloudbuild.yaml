@@ -29,7 +29,7 @@ steps:
         gcloud run jobs update trabajoya-migrate \
           --region=us-central1 \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --update-secrets="DATABASE_URL=trabajoya-secrets:latest:DATABASE_URL" \
           --set-env-vars="NODE_ENV=production" \
           --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --memory=1Gi \
@@ -41,7 +41,7 @@ steps:
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --command="node" \
           --args="scripts/run-migrations.js" \
-          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --update-secrets="DATABASE_URL=trabajoya-secrets:latest:DATABASE_URL" \
           --set-env-vars="NODE_ENV=production" \
           --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --memory=1Gi \
@@ -63,7 +63,7 @@ steps:
         gcloud run jobs update trabajoya-seed \
           --region=us-central1 \
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --update-secrets="DATABASE_URL=trabajoya-secrets:latest:DATABASE_URL" \
           --set-env-vars="NODE_ENV=production" \
           --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --memory=1Gi \
@@ -75,7 +75,7 @@ steps:
           --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
           --command="node" \
           --args="scripts/run-seed.js" \
-          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --update-secrets="DATABASE_URL=trabajoya-secrets:latest:DATABASE_URL" \
           --set-env-vars="NODE_ENV=production" \
           --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --memory=1Gi \
@@ -106,7 +106,7 @@ steps:
           --timeout=300 \
           --concurrency=${_CONCURRENCY} \
           --set-env-vars="NODE_ENV=production" \
-          --set-secrets="TRABAJOYA_SECRETS=trabajoya-secrets:latest" \
+          --update-secrets="DATABASE_URL=trabajoya-secrets:latest:DATABASE_URL,JWT_ACCESS_SECRET=trabajoya-secrets:latest:JWT_ACCESS_SECRET,GOOGLE_CLIENT_ID=trabajoya-secrets:latest:GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET=trabajoya-secrets:latest:GOOGLE_CLIENT_SECRET,AWS_ACCESS_KEY_ID=trabajoya-secrets:latest:AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY=trabajoya-secrets:latest:AWS_SECRET_ACCESS_KEY,RESEND_API_KEY=trabajoya-secrets:latest:RESEND_API_KEY,OPENAI_API_KEY=trabajoya-secrets:latest:OPENAI_API_KEY,PAYPAL_CLIENT_ID=trabajoya-secrets:latest:PAYPAL_CLIENT_ID,PAYPAL_CLIENT_SECRET=trabajoya-secrets:latest:PAYPAL_CLIENT_SECRET,APPLE_TEAM_ID=trabajoya-secrets:latest:APPLE_TEAM_ID,APPLE_KEY_ID=trabajoya-secrets:latest:APPLE_KEY_ID,APPLE_CLIENT_ID=trabajoya-secrets:latest:APPLE_CLIENT_ID,APPLE_BUNDLE_ID=trabajoya-secrets:latest:APPLE_BUNDLE_ID,APPLE_PRIVATE_KEY=trabajoya-secrets:latest:APPLE_PRIVATE_KEY,APPLE_REDIRECT_URI=trabajoya-secrets:latest:APPLE_REDIRECT_URI,GOOGLE_ANDROID_CLIENT_ID=trabajoya-secrets:latest:GOOGLE_ANDROID_CLIENT_ID,GOOGLE_IOS_CLIENT_ID=trabajoya-secrets:latest:GOOGLE_IOS_CLIENT_ID,FRONTEND_URL=trabajoya-secrets:latest:FRONTEND_URL,MAIL_PROVIDER=trabajoya-secrets:latest:MAIL_PROVIDER,MAIL_FROM=trabajoya-secrets:latest:MAIL_FROM,S3_BUCKET_NAME=trabajoya-secrets:latest:S3_BUCKET_NAME,GCS_BUCKET_NAME=trabajoya-secrets:latest:GCS_BUCKET_NAME,GCP_PROJECT_ID=trabajoya-secrets:latest:GCP_PROJECT_ID,AWS_REGION=trabajoya-secrets:latest:AWS_REGION,CLOUDFRONT_DOMAIN=trabajoya-secrets:latest:CLOUDFRONT_DOMAIN,OPENAI_MODEL=trabajoya-secrets:latest:OPENAI_MODEL,LAUNCH_TRIAL_START_AT=trabajoya-secrets:latest:LAUNCH_TRIAL_START_AT,LAUNCH_TRIAL_END_AT=trabajoya-secrets:latest:LAUNCH_TRIAL_END_AT,LAUNCH_TRIAL_DURATION_DAYS=trabajoya-secrets:latest:LAUNCH_TRIAL_DURATION_DAYS,JWT_ACCESS_EXPIRES_IN=trabajoya-secrets:latest:JWT_ACCESS_EXPIRES_IN,JWT_REFRESH_EXPIRES_IN=trabajoya-secrets:latest:JWT_REFRESH_EXPIRES_IN" \
           --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
 
 options:
@@ -120,8 +120,6 @@ substitutions:
   _MIN_INSTANCES: '1'
   _MAX_INSTANCES: '10'
   _CONCURRENCY: '80'
-  _CLOUD_SQL_INSTANCE: "$PROJECT_ID:us-central1:trabajoya-db"
-
+  _CLOUD_SQL_INSTANCE: "trabajo-ya-483316:us-central1:trabajoya-db"
 
 timeout: '900s'
-
