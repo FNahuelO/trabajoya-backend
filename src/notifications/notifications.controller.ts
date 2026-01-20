@@ -141,5 +141,105 @@ export class NotificationsController {
       data: { preferences },
     });
   }
+
+  @Post("test-send")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: "TEST: Enviar notificación de prueba (solo para debugging)" 
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Notificación de prueba enviada",
+  })
+  async testSendNotification(
+    @Req() req: any,
+    @Body() dto: { title?: string; body?: string; type?: "message" | "call" }
+  ) {
+    const userId = req.user?.sub;
+    const title = dto.title || "Notificación de Prueba";
+    const body = dto.body || "Esta es una notificación de prueba del sistema";
+    const type = dto.type || "message";
+
+    try {
+      await this.notificationsService.sendPushToUser(
+        userId,
+        title,
+        body,
+        {
+          type,
+          testNotification: true,
+          timestamp: new Date().toISOString(),
+        }
+      );
+
+      return createResponse({
+        success: true,
+        message: "Notificación de prueba enviada correctamente",
+        data: {
+          userId,
+          title,
+          body,
+          type,
+          instruction: "Cierra completamente la app y espera la notificación",
+        },
+      });
+    } catch (error) {
+      return createResponse({
+        success: false,
+        message: "Error enviando notificación de prueba",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
+
+  @Get("debug-tokens/:userId")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: "DEBUG: Ver todos los tokens registrados de un usuario" 
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Tokens del usuario",
+  })
+  async debugGetUserTokens(
+    @Req() req: any,
+    @Body("userId") paramUserId?: string
+  ) {
+    // Solo permitir ver los tokens del usuario autenticado o un admin viendo sus propios tokens
+    const userId = paramUserId || req.user?.sub;
+
+    if (!userId) {
+      return createResponse({
+        success: false,
+        message: "Usuario no identificado",
+        data: null,
+      });
+    }
+
+    try {
+      const tokens = await this.notificationsService.getUserActiveTokens(userId);
+      
+      return createResponse({
+        success: true,
+        message: "Tokens obtenidos correctamente",
+        data: {
+          userId,
+          tokenCount: tokens.length,
+          tokens: tokens.map((token, index) => ({
+            index: index + 1,
+            token: `${token.substring(0, 30)}...${token.substring(token.length - 10)}`,
+            fullToken: token,
+            isValid: token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken["),
+          })),
+        },
+      });
+    } catch (error) {
+      return createResponse({
+        success: false,
+        message: "Error obteniendo tokens",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
 }
 
