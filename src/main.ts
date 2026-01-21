@@ -34,6 +34,18 @@ async function bootstrap() {
       ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
       : ["*"];
 
+    // Función para extraer el dominio del origin (sin protocolo, sin puerto)
+    const extractDomain = (origin: string): string | null => {
+      if (!origin) return null;
+      try {
+        const url = new URL(origin);
+        return url.hostname.toLowerCase();
+      } catch {
+        // Si no es una URL válida, intentar extraer el dominio manualmente
+        return origin.replace(/^https?:\/\//, "").replace(/\/.*$/, "").split(":")[0].toLowerCase();
+      }
+    };
+
     // Función para normalizar el origin (remover barras finales y protocolos)
     const normalizeOrigin = (origin: string): string => {
       return origin.replace(/\/+$/, ""); // Remover barras finales
@@ -51,6 +63,7 @@ async function bootstrap() {
         }
 
         const normalizedOrigin = normalizeOrigin(origin);
+        const domain = extractDomain(origin);
 
         // Si está configurado "*", permitir todo
         if (allowedOrigins.includes("*")) {
@@ -65,32 +78,54 @@ async function bootstrap() {
           return callback(null, true);
         }
 
-        // Permitir dominios relacionados con trabajo-ya.com (verificar en origin normalizado)
+        // Permitir dominios relacionados con trabajoya.com (incluyendo subdominios)
+        const allowedDomainPatterns = [
+          /^([a-z0-9-]+\.)?trabajoya\.com$/,
+          /^([a-z0-9-]+\.)?trabajo-ya\.com$/,
+          /^localhost$/,
+          /^127\.0\.0\.1$/,
+        ];
+
+        if (domain) {
+          const isAllowedDomain = allowedDomainPatterns.some((pattern) =>
+            pattern.test(domain)
+          );
+
+          if (isAllowedDomain) {
+            return callback(null, true);
+          }
+        }
+
+        // Verificación adicional por si acaso (backward compatibility)
         const allowedDomains = [
           "trabajo-ya.com",
           "trabajoya.com",
           "trabajoya",
           "web.trabajo-ya.com",
+          "web.trabajoya.com",
+          "www.trabajoya.com",
+          "www.trabajo-ya.com",
           "api.trabajoya.com",
         ];
 
-        const isAllowedDomain = allowedDomains.some((domain) =>
-          normalizedOrigin.includes(domain)
+        const isAllowedDomainLegacy = allowedDomains.some((allowedDomain) =>
+          domain && domain.includes(allowedDomain.replace(/^https?:\/\//, "").split("/")[0])
         );
 
-        if (isAllowedDomain) {
+        if (isAllowedDomainLegacy) {
           return callback(null, true);
         }
 
         // Permitir localhost en desarrollo
         if (
           process.env.NODE_ENV !== "production" &&
-          normalizedOrigin.includes("localhost")
+          domain &&
+          (domain.includes("localhost") || domain.includes("127.0.0.1"))
         ) {
           return callback(null, true);
         }
 
-        console.warn(`🚫 CORS bloqueado para origin: ${origin}`);
+        console.warn(`🚫 CORS bloqueado para origin: ${origin} (domain: ${domain})`);
         callback(new Error("Not allowed by CORS"));
       },
       credentials: true,

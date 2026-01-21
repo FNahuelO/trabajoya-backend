@@ -22,6 +22,18 @@ async function createApp() {
     ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
     : ["*"];
 
+  // Función para extraer el dominio del origin (sin protocolo, sin puerto)
+  const extractDomain = (origin) => {
+    if (!origin) return null;
+    try {
+      const url = new URL(origin);
+      return url.hostname.toLowerCase();
+    } catch {
+      // Si no es una URL válida, intentar extraer el dominio manualmente
+      return origin.replace(/^https?:\/\//, "").replace(/\/.*$/, "").split(":")[0].toLowerCase();
+    }
+  };
+
   // Función para normalizar el origin (remover barras finales)
   const normalizeOrigin = (origin) => {
     return origin.replace(/\/+$/, ""); // Remover barras finales
@@ -32,6 +44,7 @@ async function createApp() {
     if (!origin) return true; // Permitir requests sin origin
 
     const normalizedOrigin = normalizeOrigin(origin);
+    const domain = extractDomain(origin);
     const isDevelopment = process.env.NODE_ENV !== "production";
 
     // Si está configurado "*", permitir todo
@@ -52,25 +65,46 @@ async function createApp() {
       return true;
     }
 
-    // Permitir dominios relacionados con trabajo-ya.com
+    // Permitir dominios relacionados con trabajoya.com (incluyendo subdominios)
+    const allowedDomainPatterns = [
+      /^([a-z0-9-]+\.)?trabajoya\.com$/,
+      /^([a-z0-9-]+\.)?trabajo-ya\.com$/,
+      /^localhost$/,
+      /^127\.0\.0\.1$/,
+    ];
+
+    if (domain) {
+      const isAllowedDomain = allowedDomainPatterns.some((pattern) =>
+        pattern.test(domain)
+      );
+
+      if (isAllowedDomain) {
+        return true;
+      }
+    }
+
+    // Verificación adicional por si acaso (backward compatibility)
     const allowedDomains = [
       "trabajo-ya.com",
       "trabajoya.com",
       "trabajoya",
       "web.trabajo-ya.com",
+      "web.trabajoya.com",
+      "www.trabajoya.com",
+      "www.trabajo-ya.com",
       "api.trabajoya.com",
     ];
 
-    const isAllowedDomain = allowedDomains.some((domain) =>
-      normalizedOrigin.includes(domain)
+    const isAllowedDomainLegacy = allowedDomains.some((allowedDomain) =>
+      domain && domain.includes(allowedDomain.replace(/^https?:\/\//, "").split("/")[0])
     );
 
-    if (isAllowedDomain) {
+    if (isAllowedDomainLegacy) {
       return true;
     }
 
     // Permitir localhost en desarrollo
-    if (isDevelopment && normalizedOrigin.includes("localhost")) {
+    if (isDevelopment && domain && (domain.includes("localhost") || domain.includes("127.0.0.1"))) {
       return true;
     }
 
@@ -81,6 +115,36 @@ async function createApp() {
   expressApp.use((req, res, next) => {
     const origin = req.headers.origin;
 
+    // Manejar preflight requests primero
+    if (req.method === "OPTIONS") {
+      if (isOriginAllowed(origin)) {
+        if (origin) {
+          res.setHeader("Access-Control-Allow-Origin", origin);
+          res.setHeader("Access-Control-Allow-Credentials", "true");
+        } else {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+        }
+        res.setHeader(
+          "Access-Control-Allow-Methods",
+          "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        );
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization, Accept, Accept-Language, X-Requested-With, Origin, Referer"
+        );
+        res.setHeader(
+          "Access-Control-Expose-Headers",
+          "Content-Type, Authorization"
+        );
+        res.setHeader("Access-Control-Max-Age", "86400");
+        return res.status(204).end();
+      } else {
+        // Si el origin no está permitido, aún responder al OPTIONS pero sin headers CORS
+        return res.status(204).end();
+      }
+    }
+
+    // Para requests normales, configurar CORS si el origin está permitido
     if (isOriginAllowed(origin)) {
       // Si hay origin, usarlo; si no, permitir todos (solo si no hay credentials)
       if (origin) {
@@ -104,11 +168,6 @@ async function createApp() {
       res.setHeader("Access-Control-Max-Age", "86400");
     }
 
-    // Manejar preflight requests
-    if (req.method === "OPTIONS") {
-      return res.status(204).end();
-    }
-
     next();
   });
 
@@ -124,11 +183,14 @@ async function createApp() {
   const corsOptions = {
     origin: (origin, callback) => {
       if (isOriginAllowed(origin)) {
+        const domain = extractDomain(origin || "");
+        console.log(`✅ CORS permitido para origin: ${origin} (domain: ${domain})`);
         callback(null, true);
       } else {
         const normalizedOrigin = normalizeOrigin(origin || "");
+        const domain = extractDomain(origin || "");
         console.warn(
-          `🚫 CORS bloqueado para origin: ${origin} (normalized: ${normalizedOrigin})`
+          `🚫 CORS bloqueado para origin: ${origin} (normalized: ${normalizedOrigin}, domain: ${domain})`
         );
         callback(new Error("Not allowed by CORS"));
       }
