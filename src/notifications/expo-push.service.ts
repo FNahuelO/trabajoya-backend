@@ -210,6 +210,9 @@ export class ExpoPushService {
           // incluso cuando el dispositivo está en modo "No molestar" (iOS 15+)
           // Para llamadas, usar "timeSensitive" para máxima prioridad
           interruptionLevel: channelId === "calls" ? "timeSensitive" : "active",
+          // mutableContent: true permite que las extensiones modifiquen el contenido de la notificación
+          // Esto puede ayudar a mejorar la entrega cuando la app está cerrada
+          mutableContent: true,
         },
       };
     });
