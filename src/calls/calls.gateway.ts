@@ -374,16 +374,26 @@ export class CallsGateway
     data: { callId: string; fromUserId: string; toUserId: string },
     @ConnectedSocket() client: AuthenticatedSocket
   ) {
-    const { callId, fromUserId } = data;
-    this.logger.log(`Call ${callId} accepted`);
+    const { callId, fromUserId, toUserId } = data;
+    this.logger.log(`Call ${callId} accepted by ${toUserId}`);
 
     // Notificar al llamador que la llamada fue aceptada
     const fromSocketId = this.connectedUsers.get(fromUserId);
     if (fromSocketId) {
+      this.logger.log(
+        `Sending call:accepted to caller ${fromUserId} (socket ${fromSocketId})`
+      );
       this.server.to(fromSocketId).emit("call:accepted", {
         callId,
+        fromUserId,
+        toUserId,
         toSocketId: client.id,
       });
+      this.logger.log(`call:accepted event sent successfully to caller ${fromUserId}`);
+    } else {
+      this.logger.warn(
+        `Caller ${fromUserId} not found in connected users, cannot notify call:accepted`
+      );
     }
 
     return { success: true };
