@@ -181,12 +181,14 @@ export class NotificationsService {
 
   /**
    * Enviar notificación de mensaje
+   * @param title Título de la notificación (opcional, por defecto "Nuevo mensaje")
    */
   async sendMessageNotification(
     toUserId: string,
     fromUserName: string,
     messageContent: string,
-    messageData: any
+    messageData: any,
+    title?: string
   ): Promise<void> {
     // Verificar preferencias del usuario
     const preferences = await this.getUserPreferences(toUserId);
@@ -212,7 +214,8 @@ export class NotificationsService {
       toUserId,
       fromUserName,
       messageContent,
-      messageData
+      messageData,
+      title
     );
   }
 

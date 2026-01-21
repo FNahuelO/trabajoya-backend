@@ -323,22 +323,28 @@ export class ExpoPushService {
 
   /**
    * Enviar notificación de mensaje
+   * @param title Título de la notificación (opcional, por defecto "Nuevo mensaje")
    */
   async sendMessageNotification(
     toUserId: string,
     fromUserName: string,
     messageContent: string,
-    messageData: any
+    messageData: any,
+    title?: string
   ): Promise<void> {
     const truncatedMessage =
       messageContent.length > 100
         ? messageContent.substring(0, 100) + "..."
         : messageContent;
 
+    // Usar el título proporcionado o "Nuevo mensaje" por defecto
+    const notificationTitle = title || "Nuevo mensaje";
+    const body = `${fromUserName}: ${truncatedMessage}`;
+
     await this.sendToUser(
       toUserId,
-      fromUserName,
-      truncatedMessage,
+      notificationTitle,
+      body,
       {
         ...messageData,
         type: "message",
