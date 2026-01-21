@@ -215,12 +215,17 @@ export class ExpoPushService {
           mutableContent: true,
           // subtitle ayuda a que las notificaciones se muestren correctamente en iOS
           subtitle: channelId === "messages" ? "Nuevo mensaje" : undefined,
+          // contentAvailable: true permite que iOS despierte la app en background para procesar la notificación
+          // Esto es necesario para que las notificaciones funcionen cuando la app está completamente cerrada
+          contentAvailable: true,
         },
       };
     });
 
     try {
       this.logger.log(`[ExpoPushService] Sending ${messages.length} push notification(s) to Expo Push API`);
+      this.logger.log(`[ExpoPushService] Tokens:`, tokens.map(t => t.substring(0, 30) + '...'));
+      this.logger.log(`[ExpoPushService] Messages payload (first message):`, JSON.stringify(messages[0], null, 2));
       
       const response = await fetch(this.EXPO_PUSH_ENDPOINT, {
         method: "POST",
@@ -236,10 +241,13 @@ export class ExpoPushService {
 
       if (!response.ok) {
         this.logger.error("[ExpoPushService] Expo push notification error:", result);
+        this.logger.error("[ExpoPushService] Response status:", response.status);
+        this.logger.error("[ExpoPushService] Response body:", JSON.stringify(result, null, 2));
         return;
       }
 
       this.logger.log(`[ExpoPushService] Expo Push API responded successfully. Processing ${result.data?.length || 0} ticket(s)`);
+      this.logger.log(`[ExpoPushService] Response details:`, JSON.stringify(result, null, 2));
 
       // Procesar tickets
       const tickets: ExpoPushTicket[] = result.data || [];
