@@ -199,20 +199,22 @@ export class ExpoPushService {
           sticky: channelId === "calls", // Solo para llamadas
         },
         // Configuraciones específicas para iOS para asegurar que funcionen en background
-        // IMPORTANTE: Cuando el certificado APNs está en Firebase, Expo actúa como intermediario
-        // pero estas configuraciones aseguran que el mensaje se entregue correctamente
+        // IMPORTANTE: Para que las notificaciones funcionen cuando la app está cerrada,
+        // necesitamos configurar correctamente los campos de iOS
         ios: {
           sound: "default",
           badge: options?.badge,
-          priority, // "high" es necesario para notificaciones en background
+          priority: "high", // "high" es CRÍTICO para notificaciones en background/cerrada
           categoryId: channelId === "messages" ? "message" : undefined,
           // interruptionLevel: "timeSensitive" permite que las notificaciones se muestren
           // incluso cuando el dispositivo está en modo "No molestar" (iOS 15+)
-          // Para llamadas, usar "timeSensitive" para máxima prioridad
+          // Para mensajes, usar "active" (por defecto). Para llamadas, usar "timeSensitive"
           interruptionLevel: channelId === "calls" ? "timeSensitive" : "active",
           // mutableContent: true permite que las extensiones modifiquen el contenido de la notificación
           // Esto puede ayudar a mejorar la entrega cuando la app está cerrada
           mutableContent: true,
+          // subtitle ayuda a que las notificaciones se muestren correctamente en iOS
+          subtitle: channelId === "messages" ? "Nuevo mensaje" : undefined,
         },
       };
     });
