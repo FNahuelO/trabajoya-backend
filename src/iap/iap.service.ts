@@ -93,15 +93,45 @@ export class IapService {
 
     try {
       // Verificar que el transactionId no haya sido usado (anti-replay)
+      // PERO: Si existe pero el entitlement está en un estado inválido o no tiene job asociado,
+      // permitir reprocesarlo
       const existing = await this.prisma.jobPostEntitlement.findUnique({
         where: { transactionId: dto.transactionId },
+        include: {
+          job: {
+            select: { id: true },
+          },
+        },
       });
 
       if (existing) {
-        console.warn('[IAP] Transacción duplicada detectada:', dto.transactionId);
-        throw new BadRequestException(
-          'Esta transacción ya ha sido procesada (replay attack prevenido)',
-        );
+        // Verificar si el entitlement es válido (tiene un job válido)
+        const jobExists = existing.job && existing.job.id;
+        
+        if (jobExists) {
+          console.warn('[IAP] Transacción duplicada detectada con entitlement válido:', {
+            transactionId: dto.transactionId,
+            entitlementId: existing.id,
+            jobId: existing.jobPostId,
+          });
+          throw new BadRequestException(
+            'Esta transacción ya ha sido procesada (replay attack prevenido)',
+          );
+        } else {
+          // El entitlement existe pero el job no existe (probablemente fue eliminado)
+          // Eliminar el entitlement inválido y permitir reprocesar
+          console.warn('[IAP] Transacción encontrada pero con job inválido, eliminando entitlement y reprocesando:', {
+            transactionId: dto.transactionId,
+            entitlementId: existing.id,
+            jobId: existing.jobPostId,
+          });
+          
+          await this.prisma.jobPostEntitlement.delete({
+            where: { id: existing.id },
+          });
+          
+          console.log('[IAP] Entitlement inválido eliminado, continuando con el procesamiento...');
+        }
       }
 
       // Obtener planKey del productId
