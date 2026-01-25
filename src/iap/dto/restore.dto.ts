@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsEnum, IsObject, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsArray, IsOptional } from 'class-validator';
 
 export enum RestorePlatform {
   IOS = 'IOS',
@@ -10,8 +10,13 @@ export class RestoreDto {
   @IsNotEmpty()
   platform: RestorePlatform;
 
-  @IsObject()
+  @IsArray()
   @IsOptional()
-  receipts?: any; // Para iOS: array de signedTransactionInfo
+  purchases?: Array<{
+    productId: string;
+    transactionId: string;
+    signedTransactionInfo?: string; // iOS
+    purchaseToken?: string; // Android
+  }>;
 }
 

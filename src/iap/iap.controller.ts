@@ -9,6 +9,7 @@ import {
   Patch,
   Delete,
   Param,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -28,7 +29,17 @@ export class IapController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Verificar compra de Apple IAP' })
-  async verifyApple(@Req() req: any, @Body() dto: VerifyAppleDto) {
+  async verifyApple(
+    @Req() req: any,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: false, // Permitir propiedades desconocidas (se ignoran)
+        transform: true,
+      }),
+    )
+    dto: VerifyAppleDto,
+  ) {
     const result = await this.iapService.verifyApplePurchase(
       req.user?.sub,
       dto,
@@ -44,7 +55,17 @@ export class IapController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Verificar compra de Google Play Billing' })
-  async verifyGoogle(@Req() req: any, @Body() dto: VerifyGoogleDto) {
+  async verifyGoogle(
+    @Req() req: any,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: false, // Permitir propiedades desconocidas (se ignoran)
+        transform: true,
+      }),
+    )
+    dto: VerifyGoogleDto,
+  ) {
     const result = await this.iapService.verifyGooglePurchase(
       req.user?.sub,
       dto,
@@ -60,7 +81,17 @@ export class IapController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Restaurar compras (iOS) o sincronizar (Android)' })
-  async restore(@Req() req: any, @Body() dto: RestoreDto) {
+  async restore(
+    @Req() req: any,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: false, // Permitir propiedades desconocidas (se ignoran)
+        transform: true,
+      }),
+    )
+    dto: RestoreDto,
+  ) {
     const result = await this.iapService.restorePurchases(
       req.user?.sub,
       dto,
