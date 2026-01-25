@@ -16,7 +16,7 @@ import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { PaymentMethod, PaymentStatus } from "@prisma/client";
+import { PaymentMethod, PaymentStatus, SubscriptionPlan } from "@prisma/client";
 
 @ApiTags("payments")
 @Controller("api/payments")
@@ -47,7 +47,7 @@ export class PaymentsController {
       });
 
       // Buscar el plan por código si se proporciona planType (que es el código del plan)
-      let planTypeEnum: "BASIC" | "PREMIUM" | "ENTERPRISE" | null = null;
+      let planTypeEnum: "URGENT" | "STANDARD" | "PREMIUM" | "CRYSTAL" | "BASIC" | "ENTERPRISE" | null = null;
       let foundPlanId: string | null = null;
 
       if (body.planType) {
@@ -59,18 +59,11 @@ export class PaymentsController {
 
           if (plan) {
             foundPlanId = plan.id;
-            // Mapear código del plan al tipo de suscripción
-            const planCodeLower = plan.code.toLowerCase();
-            if (
-              planCodeLower.includes("basic") ||
-              planCodeLower.includes("base")
-            ) {
-              planTypeEnum = "BASIC";
-            } else if (planCodeLower.includes("enterprise")) {
-              planTypeEnum = "ENTERPRISE";
+            // Usar directamente el subscriptionPlan del plan
+            if (plan.subscriptionPlan) {
+              planTypeEnum = plan.subscriptionPlan as SubscriptionPlan;
             } else {
-              // Por defecto, cualquier otro plan es PREMIUM (incluye urgent, standard, premium, etc.)
-              planTypeEnum = "PREMIUM";
+              planTypeEnum = "PREMIUM" as SubscriptionPlan;
             }
             console.log(
               `Plan found by code: ${plan.code} (${plan.name}), mapped to subscription type: ${planTypeEnum}`
@@ -94,7 +87,7 @@ export class PaymentsController {
           paymentMethod: PaymentMethod.PAYPAL,
           description:
             body.description || `Pago de plan ${body.planType || "premium"}`,
-          planType: planTypeEnum,
+          planType: planTypeEnum as SubscriptionPlan,
           planId: foundPlanId,
         },
       });
@@ -156,7 +149,7 @@ export class PaymentsController {
       });
 
       // Buscar el plan por código si se proporciona planType (que es el código del plan)
-      let planTypeEnum: "BASIC" | "PREMIUM" | "ENTERPRISE" | null = null;
+      let planTypeEnum: SubscriptionPlan | null = null;
       let foundPlanId: string | null = body.planId || null;
 
       if (body.planType) {
@@ -219,7 +212,7 @@ export class PaymentsController {
           status: paymentStatus,
           paymentMethod: PaymentMethod.PAYPAL,
           description,
-          planType: planTypeEnum,
+          planType: planTypeEnum as SubscriptionPlan,
           planId: foundPlanId,
           paypalData: capture as any,
         },
@@ -228,7 +221,7 @@ export class PaymentsController {
       // Si se capturó exitosamente, SIEMPRE crear suscripción
       if (capture.status === "COMPLETED" && empresa) {
         try {
-          let finalPlanType: "BASIC" | "PREMIUM" | "ENTERPRISE" = "PREMIUM"; // Default
+          let finalPlanType: SubscriptionPlan = "PREMIUM"; // Default
           let planDurationDays = 30; // Default
 
           // Prioridad 1: Obtener información del plan desde planId (body.planId o foundPlanId)

@@ -412,8 +412,11 @@ model Subscription {
 }
 
 enum SubscriptionPlan {
-  BASIC
+  URGENT
+  STANDARD
   PREMIUM
+  CRYSTAL
+  BASIC
   ENTERPRISE
 }
 

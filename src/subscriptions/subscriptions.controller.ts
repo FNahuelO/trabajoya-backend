@@ -14,6 +14,7 @@ import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
 import { PrismaService } from "../prisma/prisma.service";
+import { SubscriptionPlan } from "@prisma/client";
 
 @ApiTags("subscriptions")
 @Controller("api/subscriptions")
@@ -57,7 +58,7 @@ export class SubscriptionsController {
     @Req() req: any,
     @Body()
     body: {
-      planType: "BASIC" | "PREMIUM" | "ENTERPRISE";
+      planType: SubscriptionPlan;
       paypalOrderId?: string;
     }
   ) {
@@ -105,7 +106,7 @@ export class SubscriptionsController {
   @Post("upgrade")
   async upgradePlan(
     @Req() req: any,
-    @Body() body: { planType: "BASIC" | "PREMIUM" | "ENTERPRISE" }
+    @Body() body: { planType: SubscriptionPlan }
   ) {
     const empresa = await this.getEmpresaFromUser(req.user?.sub);
 

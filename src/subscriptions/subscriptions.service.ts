@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { SubscriptionPlan } from "@prisma/client";
 
 @Injectable()
 export class SubscriptionsService {
@@ -55,7 +56,7 @@ export class SubscriptionsService {
    */
   async createOrUpdateSubscription(
     empresaId: string,
-    planType: "BASIC" | "PREMIUM" | "ENTERPRISE",
+    planType: SubscriptionPlan,
     paypalOrderId?: string,
     paypalSubscriptionId?: string,
     durationDays: number = 30
@@ -138,7 +139,7 @@ export class SubscriptionsService {
    */
   async updateSubscriptionPlan(
     empresaId: string,
-    newPlanType: "BASIC" | "PREMIUM" | "ENTERPRISE"
+    newPlanType: SubscriptionPlan
   ) {
     const currentSubscription = await this.getActiveSubscription(empresaId);
 
@@ -159,14 +160,13 @@ export class SubscriptionsService {
   /**
    * Obtener límites según el plan
    */
-  getPlanLimits(planType: "BASIC" | "PREMIUM" | "ENTERPRISE") {
-    switch (planType) {
-      case "BASIC":
-        return {
-          maxJobs: 3,
-          features: ["basic"],
-        };
+  getPlanLimits(planType: SubscriptionPlan) {
+    const planTypeStr = planType as string;
+    switch (planTypeStr) {
+      case "URGENT":
+      case "STANDARD":
       case "PREMIUM":
+      case "CRYSTAL":
         return {
           maxJobs: -1, // Ilimitado
           features: [
@@ -175,6 +175,11 @@ export class SubscriptionsService {
             "analytics",
             "advanced_messaging",
           ],
+        };
+      case "BASIC":
+        return {
+          maxJobs: 3,
+          features: ["basic"],
         };
       case "ENTERPRISE":
         return {
