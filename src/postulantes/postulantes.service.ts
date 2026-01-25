@@ -140,6 +140,25 @@ export class PostulantesService {
       }
     }
 
+    // Transformar el cvUrl key en una URL válida (GCP CDN o Storage directo)
+    let cvUrl = profile.cvUrl;
+    if (cvUrl && !cvUrl.startsWith("http")) {
+      try {
+        // Usar GCP CDN si está configurado, si no usar URL firmada
+        if (this.gcpCdnService.isCdnConfigured()) {
+          cvUrl = await this.gcpCdnService.getCdnUrl(profile.cvUrl);
+        } else {
+          cvUrl = await this.gcsUploadService.getObjectUrl(
+            profile.cvUrl,
+            3600
+          );
+        }
+      } catch (error) {
+        console.error("Error generando URL para CV:", error);
+        // Si falla, mantener el key original para que el frontend pueda intentar construirla
+      }
+    }
+
     return {
       id: profile.id,
       userId: profile.userId,
@@ -150,7 +169,8 @@ export class PostulantesService {
       country: profile.country,
       skills: profile.skills,
       avatar: avatarUrl,
-      cv: profile.cvUrl,
+      cv: cvUrl,
+      cvUrl: cvUrl, // También incluir cvUrl para compatibilidad
       videoUrl: videoUrl,
       experiences: (profile as any).experiences || [],
       education: (profile as any).education || [],
