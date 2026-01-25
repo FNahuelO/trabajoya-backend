@@ -361,95 +361,315 @@ export class IapService {
     userId: string,
     dto: VerifyGoogleDto,
   ): Promise<{ ok: boolean; entitlement: any; expiresAt: Date }> {
-    // Verificar que el purchaseToken no haya sido usado
-    const existing = await this.prisma.jobPostEntitlement.findFirst({
-      where: {
-        rawPayload: {
-          path: ['purchaseToken'],
-          equals: dto.purchaseToken,
-        },
-      },
-    });
-
-    if (existing) {
+    // Validar que userId existe
+    if (!userId) {
+      console.error('[IAP] Error: userId es undefined o null');
       throw new BadRequestException(
-        'Este purchase token ya ha sido procesado (replay attack prevenido)',
+        'Usuario no autenticado. Por favor, inicia sesión nuevamente.',
       );
     }
 
-    // Obtener planKey del productId
-    const planKey = await this.getPlanKeyFromProductId(dto.productId, 'ANDROID');
-
-    // Obtener plan
-    const plan = await this.prisma.plan.findUnique({
-      where: { code: planKey },
+    console.log('[IAP] Verificando compra Google Play:', {
+      userId,
+      productId: dto.productId,
+      purchaseToken: dto.purchaseToken,
+      orderId: dto.orderId,
+      hasJobPostDraftId: !!dto.jobPostDraftId,
     });
 
-    if (!plan) {
-      throw new NotFoundException(`Plan no encontrado: ${planKey}`);
-    }
-
-    // TODO: Verificar con Google Play Developer API
-    // En producción:
-    // const googleApiUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/purchases/products/${dto.productId}/tokens/${dto.purchaseToken}`;
-    // const response = await axios.get(googleApiUrl, {
-    //   headers: {
-    //     Authorization: `Bearer ${accessToken}`,
-    //   },
-    // });
-
-    const publishedAt = new Date();
-    const expiresAt = new Date(publishedAt);
-    expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
-
-    // Si hay jobPostDraftId, crear el entitlement asociado
-    let jobPostId: string | null = null;
-    if (dto.jobPostDraftId) {
-      const draft = await this.prisma.job.findFirst({
+    try {
+      // Verificar que el purchaseToken no haya sido usado (anti-replay)
+      // PERO: Si existe pero el entitlement está en un estado inválido o no tiene job asociado,
+      // permitir reprocesarlo
+      const existing = await this.prisma.jobPostEntitlement.findFirst({
         where: {
-          id: dto.jobPostDraftId,
-          empresa: {
-            userId,
+          rawPayload: {
+            path: ['purchaseToken'],
+            equals: dto.purchaseToken,
+          },
+        },
+        include: {
+          job: {
+            select: { id: true },
           },
         },
       });
 
-      if (!draft) {
-        throw new NotFoundException('Draft de aviso no encontrado');
+      if (existing) {
+        // Verificar si el entitlement es válido (tiene un job válido)
+        const jobExists = existing.job && existing.job.id;
+        
+        if (jobExists) {
+          console.warn('[IAP] Purchase token duplicado detectado con entitlement válido:', {
+            purchaseToken: dto.purchaseToken,
+            entitlementId: existing.id,
+            jobId: existing.jobPostId,
+          });
+          throw new BadRequestException(
+            'Este purchase token ya ha sido procesado (replay attack prevenido)',
+          );
+        } else {
+          // El entitlement existe pero el job no existe (probablemente fue eliminado)
+          // Eliminar el entitlement inválido y permitir reprocesar
+          console.warn('[IAP] Purchase token encontrado pero con job inválido, eliminando entitlement y reprocesando:', {
+            purchaseToken: dto.purchaseToken,
+            entitlementId: existing.id,
+            jobId: existing.jobPostId,
+          });
+          
+          await this.prisma.jobPostEntitlement.delete({
+            where: { id: existing.id },
+          });
+          
+          console.log('[IAP] Entitlement inválido eliminado, continuando con el procesamiento...');
+        }
       }
 
-      jobPostId = draft.id;
-    }
+      // Obtener planKey del productId
+      console.log('[IAP] Obteniendo planKey para productId:', dto.productId);
+      const planKey = await this.getPlanKeyFromProductId(dto.productId, 'ANDROID');
+      console.log('[IAP] PlanKey obtenido:', planKey);
 
-    // Crear entitlement
-    const entitlement = await this.prisma.jobPostEntitlement.create({
-      data: {
-        userId,
-        jobPostId: jobPostId || '',
-        source: 'GOOGLE_PLAY',
-        planKey,
+      // Obtener plan para configurar entitlement
+      const plan = await this.prisma.plan.findUnique({
+        where: { code: planKey },
+      });
+
+      if (!plan) {
+        console.error('[IAP] Plan no encontrado:', planKey);
+        throw new NotFoundException(`Plan no encontrado: ${planKey}`);
+      }
+
+      console.log('[IAP] Plan encontrado:', {
+        code: plan.code,
+        name: plan.name,
+        durationDays: plan.durationDays,
+      });
+
+      // TODO: Verificar con Google Play Developer API
+      // En producción, usar la API real. Aquí implementamos verificación básica.
+      // Para habilitar verificación real:
+      // 1. Configurar GOOGLE_PLAY_SERVICE_ACCOUNT_KEY (JSON de cuenta de servicio)
+      // 2. Configurar GOOGLE_PLAY_PACKAGE_NAME (com.trabajoya.app)
+      // 3. Descomentar y configurar el código de verificación abajo
+      
+      const packageName = this.configService.get<string>('GOOGLE_PLAY_PACKAGE_NAME') || 'com.trabajoya.app';
+      const serviceAccountKey = this.configService.get<string>('GOOGLE_PLAY_SERVICE_ACCOUNT_KEY');
+      
+      if (serviceAccountKey) {
+        try {
+          // Verificación real con Google Play Developer API
+          // NOTA: Requiere configuración de cuenta de servicio de Google Cloud
+          // Ver: https://developer.android.com/google/play/billing/security
+          console.log('[IAP] Verificando compra con Google Play Developer API...');
+          
+          // TODO: Implementar verificación real cuando tengas las credenciales
+          // const googleApiUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/purchases/products/${dto.productId}/tokens/${dto.purchaseToken}`;
+          // const accessToken = await this.getGooglePlayAccessToken(serviceAccountKey);
+          // const response = await axios.get(googleApiUrl, {
+          //   headers: {
+          //     Authorization: `Bearer ${accessToken}`,
+          //   },
+          // });
+          // 
+          // if (response.data.purchaseState !== 0) { // 0 = Purchased
+          //   throw new BadRequestException('La compra no está en estado válido');
+          // }
+          
+          console.log('[IAP] Verificación con Google Play Developer API configurada pero no implementada aún');
+        } catch (error) {
+          console.error('[IAP] Error al verificar con Google Play Developer API:', error);
+          // En desarrollo, continuar sin verificación real
+          console.warn('[IAP] Continuando sin verificación real (modo desarrollo)');
+        }
+      } else {
+        console.log('[IAP] GOOGLE_PLAY_SERVICE_ACCOUNT_KEY no configurado, usando verificación básica (modo desarrollo)');
+      }
+
+      const publishedAt = new Date();
+      const expiresAt = new Date(publishedAt);
+      expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
+
+      // Si hay jobPostDraftId, verificar que existe y pertenece al usuario
+      let jobPostId: string;
+      if (dto.jobPostDraftId) {
+        console.log('[IAP] Verificando draft de aviso:', dto.jobPostDraftId);
+        // Verificar que el draft existe y pertenece al usuario
+        const draft = await this.prisma.job.findFirst({
+          where: {
+            id: dto.jobPostDraftId,
+            empresa: {
+              userId,
+            },
+          },
+        });
+
+        if (!draft) {
+          console.error('[IAP] Draft no encontrado o no pertenece al usuario:', {
+            jobPostDraftId: dto.jobPostDraftId,
+            userId,
+          });
+          throw new NotFoundException('Draft de aviso no encontrado');
+        }
+
+        jobPostId = draft.id;
+        console.log('[IAP] Draft verificado:', jobPostId);
+      } else {
+        // Si no hay jobPostDraftId, crear un job temporal/draft para asociar el entitlement
+        // Este job será usado cuando el usuario publique un aviso
+        console.log('[IAP] No hay draft, creando job temporal para el entitlement...');
+        
+        // Obtener el perfil de empresa del usuario
+        const empresaProfile = await this.prisma.empresaProfile.findUnique({
+          where: { userId },
+        });
+
+        if (!empresaProfile) {
+          console.error('[IAP] Usuario no tiene perfil de empresa:', userId);
+          throw new BadRequestException('Usuario no tiene perfil de empresa configurado');
+        }
+
+        // Crear un job temporal/draft con todos los campos requeridos
+        console.log('[IAP] Creando job temporal con empresaId:', empresaProfile.id);
+        try {
+          const tempJob = await this.prisma.job.create({
+            data: {
+              empresaId: empresaProfile.id,
+              title: 'Draft temporal - Pendiente de publicación',
+              description: 'Este es un draft temporal creado para asociar un entitlement de compra IAP. Se actualizará cuando publiques un aviso.',
+              requirements: 'Pendiente de completar',
+              location: 'Pendiente de completar',
+              jobType: 'TIEMPO_COMPLETO', // Valor por defecto
+              category: 'General', // Valor por defecto
+              experienceLevel: 'JUNIOR', // Valor por defecto
+              status: 'draft', // Estado de draft
+              moderationStatus: 'PENDING',
+            },
+          });
+
+          jobPostId = tempJob.id;
+          console.log('[IAP] ✅ Job temporal creado exitosamente:', jobPostId);
+          
+          // Verificar que el job existe antes de continuar
+          const verifyJob = await this.prisma.job.findUnique({
+            where: { id: jobPostId },
+          });
+          
+          if (!verifyJob) {
+            console.error('[IAP] ❌ ERROR: El job temporal no se encontró después de crearlo:', jobPostId);
+            throw new InternalServerErrorException('Error al crear job temporal para el entitlement');
+          }
+          
+          console.log('[IAP] ✅ Job temporal verificado:', verifyJob.id);
+        } catch (error: any) {
+          console.error('[IAP] ❌ Error al crear job temporal:', {
+            message: error?.message,
+            code: error?.code,
+            meta: error?.meta,
+            empresaId: empresaProfile.id,
+            userId,
+          });
+          throw new InternalServerErrorException(
+            `Error al crear job temporal: ${error?.message || 'Error desconocido'}`
+          );
+        }
+      }
+
+      // Verificar que el jobPostId existe antes de crear el entitlement
+      console.log('[IAP] Verificando que jobPostId existe antes de crear entitlement:', jobPostId);
+      const verifyJobExists = await this.prisma.job.findUnique({
+        where: { id: jobPostId },
+        select: { id: true },
+      });
+
+      if (!verifyJobExists) {
+        console.error('[IAP] ❌ ERROR CRÍTICO: El jobPostId no existe en la base de datos:', jobPostId);
+        throw new InternalServerErrorException(
+          `El job con id ${jobPostId} no existe en la base de datos. No se puede crear el entitlement.`
+        );
+      }
+
+      console.log('[IAP] ✅ Job verificado, existe en la base de datos:', verifyJobExists.id);
+
+      // Crear entitlement
+      console.log('[IAP] Creando entitlement con jobPostId:', jobPostId);
+      let entitlement;
+      try {
+        entitlement = await this.prisma.jobPostEntitlement.create({
+          data: {
+            userId,
+            jobPostId: jobPostId, // Ahora siempre tiene un valor válido
+            source: 'GOOGLE_PLAY',
+            planKey,
+            expiresAt,
+            status: 'ACTIVE',
+            maxEdits: plan.allowedModifications,
+            editsUsed: 0,
+            allowCategoryChange: plan.canModifyCategory,
+            maxCategoryChanges: plan.categoryModifications || 0,
+            categoryChangesUsed: 0,
+            transactionId: dto.orderId || dto.purchaseToken, // Usar orderId si existe
+            originalTransactionId: dto.orderId,
+            rawPayload: {
+              productId: dto.productId,
+              purchaseToken: dto.purchaseToken,
+              orderId: dto.orderId,
+            },
+          },
+        });
+
+        console.log('[IAP] ✅ Entitlement creado exitosamente:', entitlement.id);
+      } catch (createError: any) {
+        console.error('[IAP] ❌ Error al crear entitlement:', {
+          message: createError?.message,
+          code: createError?.code,
+          meta: createError?.meta,
+          jobPostId,
+          userId,
+          planKey,
+        });
+        
+        // Si el error es de foreign key, dar un mensaje más específico
+        if (createError?.code === 'P2003' || createError?.message?.includes('Foreign key constraint')) {
+          throw new InternalServerErrorException(
+            `Error de foreign key: El job con id ${jobPostId} no existe en la base de datos. ` +
+            `Esto puede ocurrir si el job fue eliminado o no se creó correctamente.`
+          );
+        }
+        
+        throw createError;
+      }
+
+      return {
+        ok: true,
+        entitlement,
         expiresAt,
-        status: 'ACTIVE',
-        maxEdits: plan.allowedModifications,
-        editsUsed: 0,
-        allowCategoryChange: plan.canModifyCategory,
-        maxCategoryChanges: plan.categoryModifications || 0,
-        categoryChangesUsed: 0,
-        transactionId: dto.orderId || dto.purchaseToken, // Usar orderId si existe
-        originalTransactionId: dto.orderId,
-        rawPayload: {
-          productId: dto.productId,
-          purchaseToken: dto.purchaseToken,
-          orderId: dto.orderId,
-        },
-      },
-    });
+      };
+    } catch (error: any) {
+      // Si es una excepción de NestJS (BadRequestException, NotFoundException, etc.), relanzarla
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        console.error('[IAP] Error de validación:', error.message);
+        throw error;
+      }
 
-    return {
-      ok: true,
-      entitlement,
-      expiresAt,
-    };
+      // Para otros errores, loguear y lanzar InternalServerErrorException con detalles
+      console.error('[IAP] Error inesperado al verificar compra Google Play:', {
+        message: error?.message,
+        stack: error?.stack,
+        userId,
+        productId: dto.productId,
+        purchaseToken: dto.purchaseToken,
+        errorName: error?.name,
+        errorCode: error?.code,
+      });
+
+      throw new InternalServerErrorException(
+        `Error al procesar la compra: ${error?.message || 'Error desconocido'}`,
+      );
+    }
   }
 
   /**

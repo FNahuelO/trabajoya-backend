@@ -221,7 +221,7 @@ export class PaymentsController {
       // Si se capturó exitosamente, SIEMPRE crear suscripción
       if (capture.status === "COMPLETED" && empresa) {
         try {
-          let finalPlanType: SubscriptionPlan = "PREMIUM"; // Default
+          let finalPlanType: SubscriptionPlan | null = null;
           let planDurationDays = 30; // Default
 
           // Prioridad 1: Obtener información del plan desde planId (body.planId o foundPlanId)
@@ -245,7 +245,7 @@ export class PaymentsController {
           }
 
           // Prioridad 2: Si no tenemos planId, buscar plan por código (planType es el código del plan)
-          if (finalPlanType === "PREMIUM" && body.planType && !planIdToUse) {
+          if (!finalPlanType && body.planType && !planIdToUse) {
             try {
               const plan = await this.prisma.plan.findUnique({
                 where: { code: body.planType.toUpperCase() },
@@ -264,7 +264,7 @@ export class PaymentsController {
           }
 
           // Prioridad 3: Si aún no tenemos, buscar en la transacción
-          if (finalPlanType === "PREMIUM") {
+          if (!finalPlanType) {
             try {
               const transaction =
                 await this.prisma.paymentTransaction.findUnique({
@@ -279,6 +279,24 @@ export class PaymentsController {
             } catch (error) {
               console.error("Error fetching transaction:", error);
             }
+          }
+
+          // Validar que se determinó el planType antes de crear la suscripción
+          if (!finalPlanType) {
+            console.error(
+              `❌ No se pudo determinar el planType para crear la suscripción. ` +
+              `orderId: ${orderId}, planId: ${planIdToUse}, body.planType: ${body.planType}`
+            );
+            // No lanzar error para no fallar el pago, pero loguear el error detallado
+            console.error(
+              `⚠️ Se omitió la creación de suscripción porque no se pudo determinar el planType. ` +
+              `El pago fue procesado correctamente, pero la suscripción debe crearse manualmente.`
+            );
+            return createResponse({
+              success: true,
+              message: "Pago capturado exitosamente, pero no se pudo crear la suscripción automáticamente",
+              data: capture,
+            });
           }
 
           console.log(
