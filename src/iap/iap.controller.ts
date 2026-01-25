@@ -10,6 +10,7 @@ import {
   Delete,
   Param,
   ValidationPipe,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -40,8 +41,13 @@ export class IapController {
     )
     dto: VerifyAppleDto,
   ) {
+    // Validar que el usuario está autenticado
+    if (!req.user?.sub) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+
     const result = await this.iapService.verifyApplePurchase(
-      req.user?.sub,
+      req.user.sub,
       dto,
     );
     return createResponse({

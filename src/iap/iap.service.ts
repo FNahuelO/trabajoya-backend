@@ -25,6 +25,8 @@ export class IapService {
     productId: string,
     platform: 'IOS' | 'ANDROID',
   ): Promise<string> {
+    console.log('[IAP] Buscando producto IAP:', { productId, platform });
+    
     const iapProduct = await this.prisma.iapProduct.findFirst({
       where: {
         productId,
@@ -34,10 +36,34 @@ export class IapService {
     });
 
     if (!iapProduct) {
+      // Buscar todos los productos activos para esta plataforma para ayudar en debugging
+      const allProducts = await this.prisma.iapProduct.findMany({
+        where: {
+          platform,
+          active: true,
+        },
+        select: {
+          productId: true,
+          planKey: true,
+        },
+      });
+      
+      console.error('[IAP] Producto IAP no encontrado:', {
+        productId,
+        platform,
+        productosDisponibles: allProducts,
+      });
+      
       throw new NotFoundException(
-        `Producto IAP no encontrado: ${productId} para plataforma ${platform}`,
+        `Producto IAP no encontrado: ${productId} para plataforma ${platform}. ` +
+        `Productos disponibles: ${allProducts.map(p => p.productId).join(', ') || 'ninguno'}`,
       );
     }
+
+    console.log('[IAP] Producto IAP encontrado:', {
+      productId: iapProduct.productId,
+      planKey: iapProduct.planKey,
+    });
 
     return iapProduct.planKey;
   }
@@ -50,95 +76,252 @@ export class IapService {
     userId: string,
     dto: VerifyAppleDto,
   ): Promise<{ ok: boolean; entitlement: any; expiresAt: Date }> {
-    // Verificar que el transactionId no haya sido usado (anti-replay)
-    const existing = await this.prisma.jobPostEntitlement.findUnique({
-      where: { transactionId: dto.transactionId },
-    });
-
-    if (existing) {
+    // Validar que userId existe
+    if (!userId) {
+      console.error('[IAP] Error: userId es undefined o null');
       throw new BadRequestException(
-        'Esta transacción ya ha sido procesada (replay attack prevenido)',
+        'Usuario no autenticado. Por favor, inicia sesión nuevamente.',
       );
     }
 
-    // Obtener planKey del productId
-    const planKey = await this.getPlanKeyFromProductId(dto.productId, 'IOS');
-
-    // Obtener plan para configurar entitlement
-    const plan = await this.prisma.plan.findUnique({
-      where: { code: planKey },
+    console.log('[IAP] Verificando compra Apple:', {
+      userId,
+      productId: dto.productId,
+      transactionId: dto.transactionId,
+      hasJobPostDraftId: !!dto.jobPostDraftId,
     });
 
-    if (!plan) {
-      throw new NotFoundException(`Plan no encontrado: ${planKey}`);
-    }
-
-    // TODO: Verificar con Apple App Store Server API
-    // Por ahora, validación básica. En producción:
-    // 1. Verificar signedTransactionInfo con Apple
-    // 2. Validar que la compra esté en estado válido
-    // 3. Obtener originalTransactionId si existe
-
-    // Para desarrollo/testing, aceptamos la transacción
-    // En producción, usar:
-    // const appleApiUrl = this.configService.get('APPLE_IAP_API_URL');
-    // const response = await axios.post(appleApiUrl, {
-    //   signedTransactionInfo: dto.signedTransactionInfo,
-    // });
-
-    const publishedAt = new Date();
-    const expiresAt = new Date(publishedAt);
-    expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
-
-    // Si hay jobPostDraftId, crear el entitlement asociado
-    let jobPostId: string | null = null;
-    if (dto.jobPostDraftId) {
-      // Verificar que el draft existe y pertenece al usuario
-      const draft = await this.prisma.job.findFirst({
-        where: {
-          id: dto.jobPostDraftId,
-          empresa: {
-            userId,
-          },
-        },
+    try {
+      // Verificar que el transactionId no haya sido usado (anti-replay)
+      const existing = await this.prisma.jobPostEntitlement.findUnique({
+        where: { transactionId: dto.transactionId },
       });
 
-      if (!draft) {
-        throw new NotFoundException('Draft de aviso no encontrado');
+      if (existing) {
+        console.warn('[IAP] Transacción duplicada detectada:', dto.transactionId);
+        throw new BadRequestException(
+          'Esta transacción ya ha sido procesada (replay attack prevenido)',
+        );
       }
 
-      jobPostId = draft.id;
-    }
+      // Obtener planKey del productId
+      console.log('[IAP] Obteniendo planKey para productId:', dto.productId);
+      const planKey = await this.getPlanKeyFromProductId(dto.productId, 'IOS');
+      console.log('[IAP] PlanKey obtenido:', planKey);
 
-    // Crear entitlement
-    const entitlement = await this.prisma.jobPostEntitlement.create({
-      data: {
-        userId,
-        jobPostId: jobPostId || '', // Si no hay draft, se asignará después
-        source: 'APPLE_IAP',
-        planKey,
+      // Obtener plan para configurar entitlement
+      const plan = await this.prisma.plan.findUnique({
+        where: { code: planKey },
+      });
+
+      if (!plan) {
+        console.error('[IAP] Plan no encontrado:', planKey);
+        throw new NotFoundException(`Plan no encontrado: ${planKey}`);
+      }
+
+      console.log('[IAP] Plan encontrado:', {
+        code: plan.code,
+        name: plan.name,
+        durationDays: plan.durationDays,
+      });
+
+      // TODO: Verificar con Apple App Store Server API
+      // Por ahora, validación básica. En producción:
+      // 1. Verificar signedTransactionInfo con Apple
+      // 2. Validar que la compra esté en estado válido
+      // 3. Obtener originalTransactionId si existe
+
+      // Para desarrollo/testing, aceptamos la transacción
+      // En producción, usar:
+      // const appleApiUrl = this.configService.get('APPLE_IAP_API_URL');
+      // const response = await axios.post(appleApiUrl, {
+      //   signedTransactionInfo: dto.signedTransactionInfo,
+      // });
+
+      const publishedAt = new Date();
+      const expiresAt = new Date(publishedAt);
+      expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
+
+      // Si hay jobPostDraftId, verificar que existe y pertenece al usuario
+      let jobPostId: string;
+      if (dto.jobPostDraftId) {
+        console.log('[IAP] Verificando draft de aviso:', dto.jobPostDraftId);
+        // Verificar que el draft existe y pertenece al usuario
+        const draft = await this.prisma.job.findFirst({
+          where: {
+            id: dto.jobPostDraftId,
+            empresa: {
+              userId,
+            },
+          },
+        });
+
+        if (!draft) {
+          console.error('[IAP] Draft no encontrado o no pertenece al usuario:', {
+            jobPostDraftId: dto.jobPostDraftId,
+            userId,
+          });
+          throw new NotFoundException('Draft de aviso no encontrado');
+        }
+
+        jobPostId = draft.id;
+        console.log('[IAP] Draft verificado:', jobPostId);
+      } else {
+        // Si no hay jobPostDraftId, crear un job temporal/draft para asociar el entitlement
+        // Este job será usado cuando el usuario publique un aviso
+        console.log('[IAP] No hay draft, creando job temporal para el entitlement...');
+        
+        // Obtener el perfil de empresa del usuario
+        const empresaProfile = await this.prisma.empresaProfile.findUnique({
+          where: { userId },
+        });
+
+        if (!empresaProfile) {
+          console.error('[IAP] Usuario no tiene perfil de empresa:', userId);
+          throw new BadRequestException('Usuario no tiene perfil de empresa configurado');
+        }
+
+        // Crear un job temporal/draft con todos los campos requeridos
+        console.log('[IAP] Creando job temporal con empresaId:', empresaProfile.id);
+        try {
+          const tempJob = await this.prisma.job.create({
+            data: {
+              empresaId: empresaProfile.id,
+              title: 'Draft temporal - Pendiente de publicación',
+              description: 'Este es un draft temporal creado para asociar un entitlement de compra IAP. Se actualizará cuando publiques un aviso.',
+              requirements: 'Pendiente de completar',
+              location: 'Pendiente de completar',
+              jobType: 'TIEMPO_COMPLETO', // Valor por defecto
+              category: 'General', // Valor por defecto
+              experienceLevel: 'JUNIOR', // Valor por defecto
+              status: 'draft', // Estado de draft
+              moderationStatus: 'PENDING',
+            },
+          });
+
+          jobPostId = tempJob.id;
+          console.log('[IAP] ✅ Job temporal creado exitosamente:', jobPostId);
+          
+          // Verificar que el job existe antes de continuar
+          const verifyJob = await this.prisma.job.findUnique({
+            where: { id: jobPostId },
+          });
+          
+          if (!verifyJob) {
+            console.error('[IAP] ❌ ERROR: El job temporal no se encontró después de crearlo:', jobPostId);
+            throw new InternalServerErrorException('Error al crear job temporal para el entitlement');
+          }
+          
+          console.log('[IAP] ✅ Job temporal verificado:', verifyJob.id);
+        } catch (error: any) {
+          console.error('[IAP] ❌ Error al crear job temporal:', {
+            message: error?.message,
+            code: error?.code,
+            meta: error?.meta,
+            empresaId: empresaProfile.id,
+            userId,
+          });
+          throw new InternalServerErrorException(
+            `Error al crear job temporal: ${error?.message || 'Error desconocido'}`
+          );
+        }
+      }
+
+      // Verificar que el jobPostId existe antes de crear el entitlement
+      console.log('[IAP] Verificando que jobPostId existe antes de crear entitlement:', jobPostId);
+      const verifyJobExists = await this.prisma.job.findUnique({
+        where: { id: jobPostId },
+        select: { id: true },
+      });
+
+      if (!verifyJobExists) {
+        console.error('[IAP] ❌ ERROR CRÍTICO: El jobPostId no existe en la base de datos:', jobPostId);
+        throw new InternalServerErrorException(
+          `El job con id ${jobPostId} no existe en la base de datos. No se puede crear el entitlement.`
+        );
+      }
+
+      console.log('[IAP] ✅ Job verificado, existe en la base de datos:', verifyJobExists.id);
+
+      // Crear entitlement
+      console.log('[IAP] Creando entitlement con jobPostId:', jobPostId);
+      let entitlement;
+      try {
+        entitlement = await this.prisma.jobPostEntitlement.create({
+          data: {
+            userId,
+            jobPostId: jobPostId, // Ahora siempre tiene un valor válido
+            source: 'APPLE_IAP',
+            planKey,
+            expiresAt,
+            status: 'ACTIVE',
+            maxEdits: plan.allowedModifications,
+            editsUsed: 0,
+            allowCategoryChange: plan.canModifyCategory,
+            maxCategoryChanges: plan.categoryModifications || 0,
+            categoryChangesUsed: 0,
+            transactionId: dto.transactionId,
+            originalTransactionId: dto.transactionId, // En producción, obtener de Apple
+            rawPayload: {
+              productId: dto.productId,
+              signedTransactionInfo: dto.signedTransactionInfo,
+              signedRenewalInfo: dto.signedRenewalInfo,
+            },
+          },
+        });
+
+        console.log('[IAP] ✅ Entitlement creado exitosamente:', entitlement.id);
+      } catch (createError: any) {
+        console.error('[IAP] ❌ Error al crear entitlement:', {
+          message: createError?.message,
+          code: createError?.code,
+          meta: createError?.meta,
+          jobPostId,
+          userId,
+          planKey,
+        });
+        
+        // Si el error es de foreign key, dar un mensaje más específico
+        if (createError?.code === 'P2003' || createError?.message?.includes('Foreign key constraint')) {
+          throw new InternalServerErrorException(
+            `Error de foreign key: El job con id ${jobPostId} no existe en la base de datos. ` +
+            `Esto puede ocurrir si el job fue eliminado o no se creó correctamente.`
+          );
+        }
+        
+        throw createError;
+      }
+
+      return {
+        ok: true,
+        entitlement,
         expiresAt,
-        status: 'ACTIVE',
-        maxEdits: plan.allowedModifications,
-        editsUsed: 0,
-        allowCategoryChange: plan.canModifyCategory,
-        maxCategoryChanges: plan.categoryModifications || 0,
-        categoryChangesUsed: 0,
-        transactionId: dto.transactionId,
-        originalTransactionId: dto.transactionId, // En producción, obtener de Apple
-        rawPayload: {
-          productId: dto.productId,
-          signedTransactionInfo: dto.signedTransactionInfo,
-          signedRenewalInfo: dto.signedRenewalInfo,
-        },
-      },
-    });
+      };
+    } catch (error: any) {
+      // Si es una excepción de NestJS (BadRequestException, NotFoundException, etc.), relanzarla
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        console.error('[IAP] Error de validación:', error.message);
+        throw error;
+      }
 
-    return {
-      ok: true,
-      entitlement,
-      expiresAt,
-    };
+      // Para otros errores, loguear y lanzar InternalServerErrorException con detalles
+      console.error('[IAP] Error inesperado al verificar compra Apple:', {
+        message: error?.message,
+        stack: error?.stack,
+        userId,
+        productId: dto.productId,
+        transactionId: dto.transactionId,
+        errorName: error?.name,
+        errorCode: error?.code,
+      });
+
+      throw new InternalServerErrorException(
+        `Error al procesar la compra: ${error?.message || 'Error desconocido'}`,
+      );
+    }
   }
 
   /**

@@ -1401,32 +1401,32 @@ async function main() {
   // Crear productos IAP
   const iapProducts = [
     {
-      productId: "job_urgent_7d",
+      productId: "job_urgent",
       platform: "IOS",
       planKey: "URGENT",
     },
     {
-      productId: "job_urgent_7d",
+      productId: "job_urgent",
       platform: "ANDROID",
       planKey: "URGENT",
     },
     {
-      productId: "job_standard_30d",
+      productId: "job_standard",
       platform: "IOS",
       planKey: "STANDARD",
     },
     {
-      productId: "job_standard_30d",
+      productId: "job_standard",
       platform: "ANDROID",
       planKey: "STANDARD",
     },
     {
-      productId: "job_premium_60d",
+      productId: "job_premium",
       platform: "IOS",
       planKey: "CRYSTAL",
     },
     {
-      productId: "job_premium_60d",
+      productId: "job_premium",
       platform: "ANDROID",
       planKey: "CRYSTAL",
     },

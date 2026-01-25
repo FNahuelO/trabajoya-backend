@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { PlansService } from "./plans.service";
-import { CreatePlanDto, UpdatePlanDto } from "./dto";
+import { CreatePlanDto, UpdatePlanDto, ReorderPlanDto } from "./dto";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { AdminGuard } from "../common/guards/admin.guard";
 import { Public } from "../common/decorators/public.decorator";
@@ -119,10 +119,8 @@ export class PlansController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   async reorder(
-    @Body(
-      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: false })
-    )
-    dto: { items: { id: string; order: number }[] }
+    @Body(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: false }))
+    dto: ReorderPlanDto
   ) {
     const data = await this.plansService.reorder(dto.items);
     return createResponse({
