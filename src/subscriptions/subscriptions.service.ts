@@ -87,6 +87,15 @@ export class SubscriptionsService {
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + durationDays);
 
+    console.log('[SubscriptionsService] 📝 Creando suscripción con datos:', {
+      empresaId,
+      planType,
+      planTypeType: typeof planType,
+      paypalOrderId,
+      durationDays,
+      endDate,
+    });
+
     // Crear nueva suscripción
     const subscription = await this.prisma.subscription.create({
       data: {
@@ -100,9 +109,15 @@ export class SubscriptionsService {
       },
     });
 
-    console.log(
-      `Subscription created: ${subscription.id} for empresa ${empresaId}, planType: ${planType}, duration: ${durationDays} days, endDate: ${endDate}`
-    );
+    console.log('[SubscriptionsService] ✅ Suscripción creada en BD:', {
+      subscriptionId: subscription.id,
+      planType: subscription.planType,
+      planTypeFromDB: subscription.planType,
+      status: subscription.status,
+      empresaId: subscription.empresaId,
+      duration: `${durationDays} days`,
+      endDate,
+    });
 
     return subscription;
   }

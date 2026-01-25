@@ -86,6 +86,13 @@ export class PlansService {
       throw new NotFoundException(`Plan con código ${code} no encontrado`);
     }
 
+    console.log('[PlansService] Plan encontrado por código:', {
+      code: plan.code,
+      name: plan.name,
+      subscriptionPlan: plan.subscriptionPlan,
+      subscriptionPlanType: typeof plan.subscriptionPlan,
+    });
+
     return plan;
   }
 

@@ -62,7 +62,19 @@ export class SubscriptionsController {
       paypalOrderId?: string;
     }
   ) {
+    console.log('[SubscriptionsController] 📥 Recibida solicitud para crear suscripción:', {
+      planType: body.planType,
+      planTypeType: typeof body.planType,
+      paypalOrderId: body.paypalOrderId,
+      userId: req.user?.sub,
+    });
+
     const empresa = await this.getEmpresaFromUser(req.user?.sub);
+
+    console.log('[SubscriptionsController] 🏢 Empresa encontrada:', {
+      empresaId: empresa.id,
+      companyName: empresa.companyName,
+    });
 
     const subscription =
       await this.subscriptionsService.createOrUpdateSubscription(
@@ -70,6 +82,12 @@ export class SubscriptionsController {
         body.planType,
         body.paypalOrderId
       );
+
+    console.log('[SubscriptionsController] ✅ Suscripción creada:', {
+      subscriptionId: subscription.id,
+      planType: subscription.planType,
+      status: subscription.status,
+    });
 
     return createResponse({
       success: true,
