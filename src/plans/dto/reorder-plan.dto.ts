@@ -10,6 +10,7 @@ class ReorderItemDto {
   id: string;
 
   @ApiProperty({ example: 10 })
+  @Type(() => Number)
   @IsNotEmpty({ message: i18nValidationMessage("validation.isNotEmpty") })
   @IsInt({ message: i18nValidationMessage("validation.isNumber") })
   order: number;

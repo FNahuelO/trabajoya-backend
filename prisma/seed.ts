@@ -1470,7 +1470,7 @@ async function main() {
       allowedModifications: 3,
       canModifyCategory: true,
       categoryModifications: 1,
-      order: 30,
+      order: 25,
       description: "Plan Premium: 45 días, 3 ediciones, 1 cambio de rubro",
     },
     {
@@ -1492,7 +1492,17 @@ async function main() {
     const plan = await prisma.plan.upsert({
       where: { code: planData.code },
       update: {
-        subscriptionPlan: planData.subscriptionPlan, // Actualizar también el subscriptionPlan si el plan ya existe
+        // Actualizar todos los campos del plan, especialmente subscriptionPlan
+        subscriptionPlan: planData.subscriptionPlan,
+        name: planData.name,
+        price: planData.price,
+        currency: planData.currency,
+        durationDays: planData.durationDays,
+        allowedModifications: planData.allowedModifications,
+        canModifyCategory: planData.canModifyCategory,
+        categoryModifications: planData.categoryModifications,
+        order: planData.order,
+        description: planData.description,
       },
       create: planData,
     });

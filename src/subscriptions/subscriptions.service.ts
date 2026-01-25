@@ -59,7 +59,7 @@ export class SubscriptionsService {
     planType: SubscriptionPlan,
     paypalOrderId?: string,
     paypalSubscriptionId?: string,
-    durationDays: number = 30
+    durationDays?: number
   ) {
     // Verificar que la empresa existe
     const empresa = await this.prisma.empresaProfile.findUnique({
@@ -68,6 +68,40 @@ export class SubscriptionsService {
 
     if (!empresa) {
       throw new NotFoundException("Empresa no encontrada");
+    }
+
+    // Si no se proporciona durationDays, buscar el plan activo con el mismo subscriptionPlan
+    let finalDurationDays = durationDays;
+    if (!finalDurationDays) {
+      try {
+        // Buscar un plan activo que tenga el mismo subscriptionPlan que el planType
+        const plan = await this.prisma.plan.findFirst({
+          where: {
+            subscriptionPlan: planType,
+            isActive: true,
+          },
+          orderBy: {
+            order: 'asc', // Priorizar por orden (menor order = más prioritario)
+          },
+        });
+
+        if (plan && plan.durationDays) {
+          finalDurationDays = plan.durationDays;
+          console.log('[SubscriptionsService] 📋 Plan encontrado para determinar duración:', {
+            planCode: plan.code,
+            planName: plan.name,
+            subscriptionPlan: plan.subscriptionPlan,
+            durationDays: plan.durationDays,
+          });
+        } else {
+          // Si no se encuentra plan, usar valor por defecto
+          finalDurationDays = 30;
+          console.warn('[SubscriptionsService] ⚠️ No se encontró plan activo con subscriptionPlan:', planType, '- Usando duración por defecto: 30 días');
+        }
+      } catch (error) {
+        console.error('[SubscriptionsService] ❌ Error al buscar plan para determinar duración:', error);
+        finalDurationDays = 30; // Fallback a 30 días en caso de error
+      }
     }
 
     // Cancelar suscripción activa previa si existe
@@ -85,14 +119,14 @@ export class SubscriptionsService {
 
     // Calcular fecha de expiración usando la duración del plan
     const endDate = new Date();
-    endDate.setDate(endDate.getDate() + durationDays);
+    endDate.setDate(endDate.getDate() + finalDurationDays);
 
     console.log('[SubscriptionsService] 📝 Creando suscripción con datos:', {
       empresaId,
       planType,
       planTypeType: typeof planType,
       paypalOrderId,
-      durationDays,
+      durationDays: finalDurationDays,
       endDate,
     });
 
@@ -115,7 +149,7 @@ export class SubscriptionsService {
       planTypeFromDB: subscription.planType,
       status: subscription.status,
       empresaId: subscription.empresaId,
-      duration: `${durationDays} days`,
+      duration: `${finalDurationDays} days`,
       endDate,
     });
 
