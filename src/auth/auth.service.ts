@@ -1418,6 +1418,17 @@ export class AuthService {
       );
     }
 
+    // Verificar si el usuario ya está verificado
+    if (user.isVerified) {
+      return {
+        message: await this.getTranslation(
+          "auth.alreadyVerified",
+          "Tu email ya está verificado. Puedes iniciar sesión normalmente."
+        ),
+        alreadyVerified: true,
+      };
+    }
+
     // Verificar expiración del token
     if (!user.verificationTokenExpiry || user.verificationTokenExpiry < new Date()) {
       // Invalidar el token expirado para forzar reenvío
@@ -1451,6 +1462,7 @@ export class AuthService {
         "auth.emailVerified",
         "Email verificado exitosamente"
       ),
+      alreadyVerified: false,
     };
   }
 

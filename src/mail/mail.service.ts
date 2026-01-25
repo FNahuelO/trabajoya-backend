@@ -126,18 +126,27 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
 ¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com
     `;
 
+    // Generar un Message-ID único para mejor tracking
+    const messageId = `<${Date.now()}-${Math.random().toString(36).substring(7)}@trabajo-ya.com>`;
+    const unsubscribeUrl = process.env.APP_WEB_URL 
+      ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
+      : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+
     await this.provider.send({
       to: email,
-      subject: "✨ Verifica tu email - TrabajoYa",
+      subject: "Verifica tu email - TrabajoYa",
       html,
       text,
       from: process.env.MAIL_FROM,
       headers: {
         // Headers para mejorar deliverability y evitar spam
-        "List-Unsubscribe": "<mailto:unsubscribe@trabajo-ya.com>",
-        "X-Priority": "3",
-        "X-MSMail-Priority": "Normal",
-        Precedence: "bulk",
+        "Message-ID": messageId,
+        "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
+        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "X-Mailer": "TrabajoYa Mail Service",
+        "X-Auto-Response-Suppress": "All",
+        "Precedence": "auto_reply",
       },
     });
 
@@ -253,12 +262,28 @@ Este email fue enviado automáticamente por TrabajoYa
 Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
     `;
 
+    // Generar un Message-ID único para mejor tracking
+    const messageId = `<${Date.now()}-${Math.random().toString(36).substring(7)}@trabajo-ya.com>`;
+    const unsubscribeUrl = process.env.APP_WEB_URL 
+      ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
+      : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+
     await this.provider.send({
       to: email,
-      subject: "🔒 Restablecer contraseña - TrabajoYa",
+      subject: "Restablecer contraseña - TrabajoYa",
       html,
       text,
       from: process.env.MAIL_FROM,
+      headers: {
+        // Headers para mejorar deliverability y evitar spam
+        "Message-ID": messageId,
+        "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
+        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "X-Mailer": "TrabajoYa Mail Service",
+        "X-Auto-Response-Suppress": "All",
+        "Precedence": "auto_reply",
+      },
     });
   }
 }

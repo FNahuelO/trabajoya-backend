@@ -29,13 +29,48 @@ export class JobsService {
     };
 
     if (q.q) {
-      where.AND.push({
-        OR: [
-          { title: { contains: q.q, mode: "insensitive" } },
-          { description: { contains: q.q, mode: "insensitive" } },
-          { requirements: { contains: q.q, mode: "insensitive" } },
-        ],
-      });
+      const searchQuery = q.q.trim();
+      
+      // Dividir la búsqueda en palabras clave individuales
+      const keywords = searchQuery
+        .split(/\s+/)
+        .filter((word: string) => word.length > 0)
+        .map((word: string) => word.trim());
+
+      if (keywords.length > 0) {
+        // Si hay múltiples palabras, buscar que al menos una palabra aparezca en cada campo
+        // Esto permite búsqueda flexible: "desarrollador react" encontrará trabajos que tengan
+        // "desarrollador" O "react" en cualquier campo
+        const keywordConditions = keywords.map((keyword: string) => ({
+          OR: [
+            { title: { contains: keyword, mode: "insensitive" } },
+            { description: { contains: keyword, mode: "insensitive" } },
+            { requirements: { contains: keyword, mode: "insensitive" } },
+            // También buscar en el nombre de la empresa
+            { empresa: { companyName: { contains: keyword, mode: "insensitive" } } },
+          ],
+        }));
+
+        // Si hay una sola palabra, usar búsqueda exacta o parcial
+        // Si hay múltiples palabras, buscar que al menos una coincida (OR entre palabras)
+        if (keywords.length === 1) {
+          // Una palabra: buscar coincidencias exactas o parciales
+          where.AND.push({
+            OR: [
+              { title: { contains: keywords[0], mode: "insensitive" } },
+              { description: { contains: keywords[0], mode: "insensitive" } },
+              { requirements: { contains: keywords[0], mode: "insensitive" } },
+              { empresa: { companyName: { contains: keywords[0], mode: "insensitive" } } },
+            ],
+          });
+        } else {
+          // Múltiples palabras: buscar que al menos una palabra coincida
+          // Esto hace la búsqueda más flexible y trae resultados similares
+          where.AND.push({
+            OR: keywordConditions,
+          });
+        }
+      }
     }
 
     if (q.location) {
@@ -82,30 +117,160 @@ export class JobsService {
     const pageSize = Number(q.pageSize || 20);
     const skip = (page - 1) * pageSize;
 
-    const [jobs, total] = await Promise.all([
-      this.prisma.job.findMany({
-        where,
-        take: pageSize,
-        skip,
-        orderBy: { publishedAt: "desc" },
-        include: {
-          empresa: {
-            select: {
-              id: true,
-              companyName: true,
-              ciudad: true,
-              provincia: true,
-              pais: true,
-              logo: true,
-            } as any,
+    let jobs: any[] = [];
+    let total = 0;
+
+    // Si hay búsqueda por texto, intentar primero búsqueda exacta (todas las palabras)
+    // Si no hay resultados, usar búsqueda flexible (al menos una palabra)
+    if (q.q) {
+      const searchQuery = q.q.trim();
+      const keywords = searchQuery
+        .split(/\s+/)
+        .filter((word: string) => word.length > 0)
+        .map((word: string) => word.trim());
+
+      if (keywords.length > 1) {
+        // Para múltiples palabras: primero intentar búsqueda exacta (todas las palabras deben aparecer)
+        const exactWhere = {
+          ...where,
+          AND: [
+            ...where.AND.filter((condition: any) => {
+              // Filtrar condiciones de búsqueda de texto existentes
+              if (!condition.OR) return true;
+              return !condition.OR.some((c: any) => c.title || c.description || c.requirements || c.empresa);
+            }),
+            {
+              AND: keywords.map((keyword: string) => ({
+                OR: [
+                  { title: { contains: keyword, mode: "insensitive" } },
+                  { description: { contains: keyword, mode: "insensitive" } },
+                  { requirements: { contains: keyword, mode: "insensitive" } },
+                  { empresa: { companyName: { contains: keyword, mode: "insensitive" } } },
+                ],
+              })),
+            },
+          ],
+        };
+
+        const [exactJobs, exactTotal] = await Promise.all([
+          this.prisma.job.findMany({
+            where: exactWhere,
+            take: pageSize,
+            skip,
+            orderBy: { publishedAt: "desc" },
+            include: {
+              empresa: {
+                select: {
+                  id: true,
+                  companyName: true,
+                  ciudad: true,
+                  provincia: true,
+                  pais: true,
+                  logo: true,
+                } as any,
+              },
+              _count: {
+                select: { applications: true },
+              },
+            },
+          }),
+          this.prisma.job.count({ where: exactWhere }),
+        ]);
+
+        // Si hay resultados exactos, usarlos
+        if (exactTotal > 0) {
+          jobs = exactJobs;
+          total = exactTotal;
+        } else {
+          // Si no hay resultados exactos, usar búsqueda flexible (ya definida en where)
+          const [flexibleJobs, flexibleTotal] = await Promise.all([
+            this.prisma.job.findMany({
+              where,
+              take: pageSize,
+              skip,
+              orderBy: { publishedAt: "desc" },
+              include: {
+                empresa: {
+                  select: {
+                    id: true,
+                    companyName: true,
+                    ciudad: true,
+                    provincia: true,
+                    pais: true,
+                    logo: true,
+                  } as any,
+                },
+                _count: {
+                  select: { applications: true },
+                },
+              },
+            }),
+            this.prisma.job.count({ where }),
+          ]);
+
+          jobs = flexibleJobs;
+          total = flexibleTotal;
+        }
+      } else {
+        // Una sola palabra: usar búsqueda normal (ya definida en where)
+        const [normalJobs, normalTotal] = await Promise.all([
+          this.prisma.job.findMany({
+            where,
+            take: pageSize,
+            skip,
+            orderBy: { publishedAt: "desc" },
+            include: {
+              empresa: {
+                select: {
+                  id: true,
+                  companyName: true,
+                  ciudad: true,
+                  provincia: true,
+                  pais: true,
+                  logo: true,
+                } as any,
+              },
+              _count: {
+                select: { applications: true },
+              },
+            },
+          }),
+          this.prisma.job.count({ where }),
+        ]);
+
+        jobs = normalJobs;
+        total = normalTotal;
+      }
+    } else {
+      // Sin búsqueda de texto, usar búsqueda normal
+      const [normalJobs, normalTotal] = await Promise.all([
+        this.prisma.job.findMany({
+          where,
+          take: pageSize,
+          skip,
+          orderBy: { publishedAt: "desc" },
+          include: {
+            empresa: {
+              select: {
+                id: true,
+                companyName: true,
+                ciudad: true,
+                provincia: true,
+                pais: true,
+                logo: true,
+              } as any,
+            },
+            _count: {
+              select: { applications: true },
+            },
           },
-          _count: {
-            select: { applications: true },
-          },
-        },
-      }),
-      this.prisma.job.count({ where }),
-    ]);
+        }),
+        this.prisma.job.count({ where }),
+      ]);
+
+      jobs = normalJobs;
+      total = normalTotal;
+    }
 
     // Transformar logos a URLs (CloudFront o S3 presigned)
     const jobsWithProcessedLogos = await Promise.all(

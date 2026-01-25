@@ -42,26 +42,32 @@ export class LocationService {
     if (countryCode === "AR") {
       try {
         const provinces = await this.georefService.getProvinces();
-        return provinces.map((province) => ({
-          code: province.id,
-          name: province.nombre,
-        }));
+        return provinces
+          .map((province) => ({
+            code: province.id,
+            name: province.nombre,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
       } catch (error) {
         // Fallback a country-state-city si falla Georef
         const states = State.getStatesOfCountry(countryCode);
-        return states.map((state) => ({
-          code: state.isoCode,
-          name: translateProvince(countryCode, state.name),
-        }));
+        return states
+          .map((state) => ({
+            code: state.isoCode,
+            name: translateProvince(countryCode, state.name),
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
       }
     }
 
     // Para otros países, usar country-state-city
     const states = State.getStatesOfCountry(countryCode);
-    return states.map((state) => ({
-      code: state.isoCode,
-      name: translateProvince(countryCode, state.name),
-    }));
+    return states
+      .map((state) => ({
+        code: state.isoCode,
+        name: translateProvince(countryCode, state.name),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
   }
 
   /**
@@ -78,10 +84,12 @@ export class LocationService {
           provinceCode
         );
         if (localities && localities.length > 0) {
-          return localities.map((locality) => ({
-            id: locality.id,
-            name: locality.nombre,
-          }));
+          return localities
+            .map((locality) => ({
+              id: locality.id,
+              name: locality.nombre,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
         }
       } catch (error: any) {
         // Log del error pero continuar con fallback
@@ -95,10 +103,12 @@ export class LocationService {
       try {
         const cities = City.getCitiesOfState(countryCode, provinceCode);
         if (cities && cities.length > 0) {
-          return cities.map((city, index) => ({
-            id: `${countryCode}-${provinceCode}-${index}`,
-            name: city.name,
-          }));
+          return cities
+            .map((city, index) => ({
+              id: `${countryCode}-${provinceCode}-${index}`,
+              name: city.name,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
         }
       } catch (error: any) {
         console.warn(
@@ -113,9 +123,11 @@ export class LocationService {
 
     // Para otros países, usar country-state-city
     const cities = City.getCitiesOfState(countryCode, provinceCode);
-    return cities.map((city, index) => ({
-      id: `${countryCode}-${provinceCode}-${index}`,
-      name: city.name,
-    }));
+    return cities
+      .map((city, index) => ({
+        id: `${countryCode}-${provinceCode}-${index}`,
+        name: city.name,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
   }
 }
