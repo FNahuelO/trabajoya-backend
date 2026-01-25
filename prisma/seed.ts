@@ -1437,8 +1437,9 @@ async function main() {
     {
       name: "URGENT",
       code: "URGENT",
-      price: 25000,
-      currency: "ARS",
+      subscriptionPlan: "URGENT" as const,
+      price: 19.99,
+      currency: "USD",
       durationDays: 7,
       allowedModifications: 0,
       canModifyCategory: false,
@@ -1449,8 +1450,9 @@ async function main() {
     {
       name: "STANDARD",
       code: "STANDARD",
-      price: 40000,
-      currency: "ARS",
+      subscriptionPlan: "STANDARD" as const,
+      price: 29.99,
+      currency: "USD",
       durationDays: 30,
       allowedModifications: 2,
       canModifyCategory: false,
@@ -1459,10 +1461,24 @@ async function main() {
       description: "Plan Estándar: 30 días, 2 ediciones, sin cambio de rubro",
     },
     {
+      name: "PREMIUM",
+      code: "PREMIUM",
+      subscriptionPlan: "PREMIUM" as const,
+      price: 59.99,
+      currency: "USD",
+      durationDays: 45,
+      allowedModifications: 3,
+      canModifyCategory: true,
+      categoryModifications: 1,
+      order: 30,
+      description: "Plan Premium: 45 días, 3 ediciones, 1 cambio de rubro",
+    },
+    {
       name: "CRYSTAL",
       code: "CRYSTAL",
-      price: 90000,
-      currency: "ARS",
+      subscriptionPlan: "CRYSTAL" as const,
+      price: 99.99,
+      currency: "USD",
       durationDays: 60,
       allowedModifications: 4,
       canModifyCategory: true,
@@ -1475,7 +1491,9 @@ async function main() {
   for (const planData of plans) {
     const plan = await prisma.plan.upsert({
       where: { code: planData.code },
-      update: {},
+      update: {
+        subscriptionPlan: planData.subscriptionPlan, // Actualizar también el subscriptionPlan si el plan ya existe
+      },
       create: planData,
     });
 

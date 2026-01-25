@@ -147,6 +147,7 @@ export class PlansService {
         isActive: dto.isActive ?? true,
         order,
         description: dto.description,
+        subscriptionPlan: dto.subscriptionPlan || "BASIC", // Usar el valor proporcionado o PREMIUM por defecto
       },
     });
   }

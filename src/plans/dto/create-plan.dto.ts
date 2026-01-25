@@ -93,5 +93,16 @@ export class CreatePlanDto {
   @IsOptional()
   @IsString({ message: i18nValidationMessage("validation.isString") })
   description?: string;
+
+  @ApiProperty({ 
+    example: "URGENT", 
+    required: false, 
+    default: "PREMIUM",
+    enum: ["URGENT", "STANDARD", "PREMIUM", "CRYSTAL", "BASIC", "ENTERPRISE"],
+    description: "Tipo de suscripción al que pertenece este plan" 
+  })
+  @IsOptional()
+  @IsString({ message: i18nValidationMessage("validation.isString") })
+  subscriptionPlan?: "URGENT" | "STANDARD" | "PREMIUM" | "CRYSTAL" | "BASIC" | "ENTERPRISE";
 }
 
