@@ -24,6 +24,8 @@ import { PlansModule } from "./plans/plans.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { PromotionsModule } from "./promotions/promotions.module";
 import { IapModule } from "./iap/iap.module";
+import { BlockedUsersModule } from "./blocked-users/blocked-users.module";
+import { ReportsModule } from "./reports/reports.module";
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { IapModule } from "./iap/iap.module";
     NotificationsModule,
     PromotionsModule,
     IapModule,
+    BlockedUsersModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

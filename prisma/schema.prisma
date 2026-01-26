@@ -39,6 +39,10 @@ model User {
   pushTokens           PushToken[]
   promotions           UserPromotion[]
   JobPostEntitlement   JobPostEntitlement[]
+  blockedUsers         BlockedUser[]         @relation("UserBlocked")
+  blockedByUsers       BlockedUser[]         @relation("UserBlockedBy")
+  reportsMade          Report[]              @relation("Reporter")
+  reportsReceived      Report[]              @relation("Reported")
 }
 
 model RefreshToken {
@@ -285,6 +289,7 @@ model Message {
   createdAt  DateTime @default(now())
   fromUser   User     @relation("SentMessages", fields: [fromUserId], references: [id], onDelete: Cascade)
   toUser     User     @relation("ReceivedMessages", fields: [toUserId], references: [id], onDelete: Cascade)
+  reports    Report[] // Denuncias relacionadas a este mensaje
 }
 
 enum UserType {
@@ -725,4 +730,60 @@ enum EntitlementStatus {
   EXPIRED
   REVOKED
   REFUNDED
+}
+
+// Bloqueo de usuarios - Requerido por Google Play
+// Permite que los usuarios bloqueen a otros usuarios para prevenir comunicación no deseada
+model BlockedUser {
+  id            String   @id @default(uuid())
+  blockerUserId String   // Usuario que bloquea
+  blockedUserId String   // Usuario bloqueado
+  createdAt     DateTime @default(now())
+  blockerUser   User     @relation("UserBlocked", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blockedUser   User     @relation("UserBlockedBy", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockerUserId])
+  @@index([blockedUserId])
+}
+
+// Denuncias de usuarios o mensajes - Requerido por Google Play
+// Permite que los usuarios denuncien contenido inapropiado o comportamiento abusivo
+model Report {
+  id            String      @id @default(uuid())
+  reporterId    String      // Usuario que hace la denuncia
+  reportedId    String      // Usuario denunciado
+  messageId     String?     // ID del mensaje denunciado (opcional)
+  reason        ReportReason // Motivo de la denuncia
+  description   String?     // Descripción adicional (opcional)
+  status        ReportStatus @default(PENDING) // Estado de la denuncia
+  reviewedBy    String?     // ID del admin que revisó la denuncia
+  reviewedAt    DateTime?   // Fecha de revisión
+  adminNotes    String?     // Notas del administrador
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  reporter      User        @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported      User        @relation("Reported", fields: [reportedId], references: [id], onDelete: Cascade)
+  message       Message?    @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([reporterId])
+  @@index([reportedId])
+  @@index([messageId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum ReportReason {
+  SPAM              // Spam o mensajes repetitivos
+  INAPPROPRIATE     // Contenido inapropiado
+  FRAUD             // Fraude o estafa
+  HARASSMENT        // Acoso
+  OTHER             // Otro motivo
+}
+
+enum ReportStatus {
+  PENDING   // Pendiente de revisión
+  REVIEWED  // Revisada
+  RESOLVED  // Resuelta
+  DISMISSED // Desestimada
 }

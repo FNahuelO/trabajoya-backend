@@ -11,26 +11,45 @@ export class MailService {
 
   /**
    * Genera un botón HTML compatible con todas las plataformas (Outlook, Gmail, Apple Mail, etc.)
-   * Usa tablas para máxima compatibilidad
+   * Usa tablas anidadas para máxima compatibilidad con Outlook
    */
   private createEmailButton(text: string, url: string, backgroundColor: string = "#2563eb"): string {
     return `
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 40px auto;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 40px auto;">
         <tr>
-          <td align="center" style="background-color: ${backgroundColor}; border-radius: 8px; padding: 0;">
-            <a href="${url}" 
-               style="display: block; padding: 16px 40px; 
-                      background-color: ${backgroundColor}; color: #ffffff; 
-                      text-decoration: none; font-size: 16px; font-weight: 600; 
-                      font-family: Arial, Helvetica, sans-serif; line-height: 1.5;
-                      border-radius: 8px;">
-              ${text}
-            </a>
+          <td align="center">
+            <!--[if mso]>
+            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" 
+                         href="${url}" style="height:50px;v-text-anchor:middle;width:200px;" 
+                         arcsize="8%" stroke="f" fillcolor="${backgroundColor}">
+              <w:anchorlock/>
+              <center style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:600;">
+                ${text}
+              </center>
+            </v:roundrect>
+            <![endif]-->
+            <!--[if !mso]><!-->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+              <tr>
+                <td align="center" style="background-color: ${backgroundColor}; border-radius: 8px; padding: 0;">
+                  <a href="${url}" 
+                     style="display: inline-block; padding: 16px 40px; 
+                            background-color: ${backgroundColor}; color: #ffffff; 
+                            text-decoration: none; font-size: 16px; font-weight: 600; 
+                            font-family: Arial, Helvetica, sans-serif; line-height: 1.5;
+                            border-radius: 8px;">
+                    ${text}
+                  </a>
+                </td>
+              </tr>
+            </table>
+            <!--<![endif]-->
           </td>
         </tr>
       </table>
     `;
   }
+
   async sendVerificationEmail(email: string, token: string): Promise<void> {
     // URL para deep linking a la app móvil
     const appUrl = `trabajoya://verify-email?token=${token}`;
@@ -41,13 +60,23 @@ export class MailService {
 
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="es">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
         <title>Verifica tu email - TrabajoYa</title>
+        <!--[if !mso]><!-->
+        <style type="text/css">
+          .preheader { display: none !important; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0; }
+        </style>
+        <!--<![endif]-->
       </head>
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
+        <!-- Preheader text for email clients -->
+        <div class="preheader" style="display: none; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0;">
+          Verifica tu dirección de correo electrónico para activar tu cuenta en TrabajoYa
+        </div>
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
           <!-- Header -->
           <div style="background-color: #2563eb; padding: 40px 20px; text-align: center;">
@@ -66,7 +95,6 @@ export class MailService {
             
             <!-- Primary Button -->
             ${this.createEmailButton("✅ Verificar mi Email", appUrl, "#2563eb")}
-            
             
             <!-- Benefits -->
             <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin: 30px 0; border-radius: 4px;">
@@ -133,8 +161,9 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
 
 ¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com`;
 
-    // Generar un Message-ID único para mejor tracking
-    const messageId = `<${Date.now()}-${Math.random().toString(36).substring(7)}@trabajo-ya.com>`;
+    // Generar un Message-ID único y bien formateado (RFC 5322)
+    const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
+    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
     const unsubscribeUrl = process.env.APP_WEB_URL 
       ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
@@ -153,10 +182,10 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "X-Priority": "1",
         "Importance": "normal",
-        // Removido "Precedence: auto_reply" y "Content-Type" ya que pueden causar problemas
-        // El proveedor de email maneja estos headers automáticamente
+        "MIME-Version": "1.0",
+        // Removido X-Priority ya que puede ser visto como spam
+        // El proveedor de email maneja Content-Type automáticamente
       },
     });
 
@@ -173,13 +202,23 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
 
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="es">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
         <title>Restablecer contraseña - TrabajoYa</title>
+        <!--[if !mso]><!-->
+        <style type="text/css">
+          .preheader { display: none !important; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0; }
+        </style>
+        <!--<![endif]-->
       </head>
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
+        <!-- Preheader text for email clients -->
+        <div class="preheader" style="display: none; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0;">
+          Restablece la contraseña de tu cuenta en TrabajoYa usando el enlace seguro
+        </div>
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
           <!-- Header -->
           <div style="background-color: #2563eb; padding: 40px 20px; text-align: center;">
@@ -199,7 +238,6 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
             
             <!-- Primary Button -->
             ${this.createEmailButton("🔑 Restablecer Contraseña", appUrl, "#2563eb")}
-            
             
             <!-- Security Warning -->
             <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 30px 0; border-radius: 4px;">
@@ -258,8 +296,9 @@ Si tienes problemas o no solicitaste este cambio, contáctanos inmediatamente en
 Este correo fue enviado automáticamente por TrabajoYa.
 Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
 
-    // Generar un Message-ID único para mejor tracking
-    const messageId = `<${Date.now()}-${Math.random().toString(36).substring(7)}@trabajo-ya.com>`;
+    // Generar un Message-ID único y bien formateado (RFC 5322)
+    const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
+    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
     const unsubscribeUrl = process.env.APP_WEB_URL 
       ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
@@ -278,10 +317,10 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "X-Priority": "1",
         "Importance": "normal",
-        // Removido "Precedence: auto_reply" y "Content-Type" ya que pueden causar problemas
-        // El proveedor de email maneja estos headers automáticamente
+        "MIME-Version": "1.0",
+        // Removido X-Priority ya que puede ser visto como spam
+        // El proveedor de email maneja Content-Type automáticamente
       },
     });
   }
@@ -395,8 +434,9 @@ Si tienes alguna pregunta o necesitas ayuda, no dudes en contactarnos en soporte
 ---
 Este correo fue enviado automáticamente por TrabajoYa.`;
 
-    // Generar un Message-ID único para mejor tracking
-    const messageId = `<${Date.now()}-${Math.random().toString(36).substring(7)}@trabajo-ya.com>`;
+    // Generar un Message-ID único y bien formateado (RFC 5322)
+    const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
+    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
     const unsubscribeUrl = process.env.APP_WEB_URL 
       ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
@@ -415,8 +455,10 @@ Este correo fue enviado automáticamente por TrabajoYa.`;
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "X-Priority": "1",
         "Importance": "normal",
+        "MIME-Version": "1.0",
+        // Removido X-Priority ya que puede ser visto como spam
+        // El proveedor de email maneja Content-Type automáticamente
       },
     });
   }

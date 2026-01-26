@@ -92,4 +92,51 @@ export class ModerationController {
       data,
     });
   }
+
+  @Get("reports/pending")
+  @ApiOperation({
+    summary: "Obtener denuncias pendientes",
+    description: "Retorna las denuncias pendientes de revisión. Requerido por Google Play.",
+  })
+  async getPendingReports(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 10;
+    const data = await this.moderationService.getPendingReports(page, pageSize);
+    return createResponse({
+      success: true,
+      message: "Denuncias pendientes obtenidas correctamente",
+      data,
+    });
+  }
+
+  @Get("reports")
+  @ApiOperation({
+    summary: "Obtener todas las denuncias",
+    description: "Retorna todas las denuncias, opcionalmente filtradas por estado",
+  })
+  async getAllReports(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 10;
+    const status = query.status;
+    const data = await this.moderationService.getAllReports(page, pageSize, status);
+    return createResponse({
+      success: true,
+      message: "Denuncias obtenidas correctamente",
+      data,
+    });
+  }
+
+  @Get("reports/stats")
+  @ApiOperation({
+    summary: "Obtener estadísticas de denuncias",
+    description: "Retorna estadísticas de denuncias",
+  })
+  async getReportStats() {
+    const data = await this.moderationService.getReportStats();
+    return createResponse({
+      success: true,
+      message: "Estadísticas de denuncias obtenidas correctamente",
+      data,
+    });
+  }
 }

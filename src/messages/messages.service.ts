@@ -12,6 +12,7 @@ import {
 } from "./dto";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
+import { BlockedUsersService } from "../blocked-users/blocked-users.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -19,7 +20,8 @@ export class MessagesService {
   constructor(
     private prisma: PrismaService,
     private gcpCdnService: GcpCdnService,
-    private gcsUploadService: GCSUploadService
+    private gcsUploadService: GCSUploadService,
+    private blockedUsersService: BlockedUsersService
   ) {}
 
   async sendMessage(
@@ -49,6 +51,29 @@ export class MessagesService {
 
     if (!fromUser) {
       throw new NotFoundException("Usuario remitente no encontrado");
+    }
+
+    // Verificar bloqueos - Requerido por Google Play
+    // Si el destinatario bloqueó al remitente, no permitir enviar mensaje
+    const isBlockedByRecipient = await this.blockedUsersService.isBlocked(
+      toUserId,
+      fromUserId
+    );
+    if (isBlockedByRecipient) {
+      throw new ForbiddenException(
+        "No puedes enviar mensajes a este usuario. Has sido bloqueado."
+      );
+    }
+
+    // Si el remitente bloqueó al destinatario, no permitir enviar mensaje
+    const isBlockedBySender = await this.blockedUsersService.isBlocked(
+      fromUserId,
+      toUserId
+    );
+    if (isBlockedBySender) {
+      throw new ForbiddenException(
+        "No puedes enviar mensajes a este usuario. Lo has bloqueado."
+      );
     }
 
     // Crear el mensaje
