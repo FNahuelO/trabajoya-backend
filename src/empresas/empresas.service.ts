@@ -11,6 +11,7 @@ import { PaymentsService } from "../payments/payments.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 import { PromotionsService } from "../promotions/promotions.service";
+import { MailService } from "../mail/mail.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -23,7 +24,8 @@ export class EmpresasService {
     private gcpCdnService: GcpCdnService,
     private gcsUploadService: GCSUploadService,
     private configService: ConfigService,
-    private promotionsService: PromotionsService
+    private promotionsService: PromotionsService,
+    private mailService: MailService
   ) {}
 
   async getByUser(userId: string) {
@@ -612,21 +614,50 @@ export class EmpresasService {
   async approveJob(jobId: string, moderatorId: string, reason?: string) {
     const job = await this.prisma.job.findUnique({
       where: { id: jobId },
+      include: {
+        empresa: {
+          include: {
+            user: {
+              select: {
+                email: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!job) {
       throw new NotFoundException("Empleo no encontrado");
     }
 
-    return this.prisma.job.update({
+    const updatedJob = await this.prisma.job.update({
       where: { id: jobId },
       data: {
         moderationStatus: "APPROVED" as any,
         moderationReason: reason || null,
         moderatedBy: moderatorId,
         moderatedAt: new Date(),
+        status: "active", // Activar el empleo cuando se aprueba
       } as any,
     });
+
+    // Enviar correo de aprobación a la empresa
+    if (job.empresa?.user?.email) {
+      try {
+        await this.mailService.sendJobApprovalEmail(
+          job.empresa.user.email,
+          job.title,
+          job.empresa.companyName || "",
+          job.id
+        );
+      } catch (error) {
+        // Log el error pero no fallar la aprobación si el correo falla
+        console.error("Error enviando correo de aprobación:", error);
+      }
+    }
+
+    return updatedJob;
   }
 
   async rejectJob(jobId: string, moderatorId: string, reason: string) {

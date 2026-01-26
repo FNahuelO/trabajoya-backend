@@ -7,9 +7,10 @@ import { PaymentsModule } from "../payments/payments.module";
 import { UploadModule } from "../upload/upload.module";
 import { JobsModule } from "../jobs/jobs.module";
 import { PromotionsModule } from "../promotions/promotions.module";
+import { MailModule } from "../mail/mail.module";
 
 @Module({
-  imports: [SubscriptionsModule, PaymentsModule, UploadModule, JobsModule, PromotionsModule],
+  imports: [SubscriptionsModule, PaymentsModule, UploadModule, JobsModule, PromotionsModule, MailModule],
   controllers: [EmpresasController],
   providers: [EmpresasService, ContentModerationService],
   exports: [EmpresasService],

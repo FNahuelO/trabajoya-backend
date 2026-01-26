@@ -1,12 +1,14 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { ContentModerationService } from "../common/services/content-moderation.service";
+import { MailService } from "../mail/mail.service";
 
 @Injectable()
 export class ModerationService {
   constructor(
     private prisma: PrismaService,
-    private contentModeration: ContentModerationService
+    private contentModeration: ContentModerationService,
+    private mailService: MailService
   ) {}
 
   async getPendingJobs(page: number = 1, pageSize: number = 10) {
@@ -129,13 +131,24 @@ export class ModerationService {
   async approveJob(jobId: string, moderatorId: string) {
     const job = await this.prisma.job.findUnique({
       where: { id: jobId },
+      include: {
+        empresa: {
+          include: {
+            user: {
+              select: {
+                email: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!job) {
       throw new NotFoundException("Empleo no encontrado");
     }
 
-    return this.prisma.job.update({
+    const updatedJob = await this.prisma.job.update({
       where: { id: jobId },
       data: {
         moderationStatus: "APPROVED",
@@ -146,6 +159,23 @@ export class ModerationService {
         status: "active",
       },
     });
+
+    // Enviar correo de aprobación a la empresa
+    if (job.empresa?.user?.email) {
+      try {
+        await this.mailService.sendJobApprovalEmail(
+          job.empresa.user.email,
+          job.title,
+          job.empresa.companyName || "",
+          job.id
+        );
+      } catch (error) {
+        // Log el error pero no fallar la aprobación si el correo falla
+        console.error("Error enviando correo de aprobación:", error);
+      }
+    }
+
+    return updatedJob;
   }
 
   async rejectJob(jobId: string, reason: string, moderatorId: string) {

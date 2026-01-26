@@ -285,4 +285,139 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
       },
     });
   }
+
+  async sendJobApprovalEmail(
+    email: string,
+    jobTitle: string,
+    companyName: string,
+    jobId: string
+  ): Promise<void> {
+    // URL para ver el empleo en la app móvil
+    const appUrl = `trabajoya://job/${jobId}`;
+    // URL para web como fallback
+    const webUrl = `${
+      process.env.APP_WEB_URL ?? "http://localhost:3000"
+    }/empresa/empleos/${jobId}`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Publicación Aprobada - TrabajoYa</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
+          <!-- Header -->
+          <div style="background-color: #10b981; padding: 40px 20px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">✅ ¡Tu publicación ha sido aprobada!</h1>
+          </div>
+          
+          <!-- Content -->
+          <div style="padding: 40px 30px;">
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Hola${companyName ? ` ${companyName}` : ""},
+            </p>
+            
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+              Nos complace informarte que tu publicación de empleo <strong>"${jobTitle}"</strong> ha sido revisada y <strong>aprobada</strong>.
+            </p>
+            
+            <div style="background-color: #d1fae5; border-left: 4px solid #10b981; padding: 20px; margin: 30px 0; border-radius: 4px;">
+              <p style="color: #065f46; font-size: 16px; margin: 0 0 12px 0; font-weight: 600;">
+                🎉 ¡Tu empleo ya está activo!
+              </p>
+              <p style="color: #065f46; font-size: 14px; margin: 0; line-height: 1.6;">
+                Los postulantes ahora pueden ver y aplicar a tu oferta de trabajo. Tu publicación está visible en la plataforma y comenzará a recibir aplicaciones.
+              </p>
+            </div>
+            
+            <!-- Primary Button -->
+            ${this.createEmailButton("Ver mi Publicación", appUrl, "#10b981")}
+            
+            <!-- Next Steps -->
+            <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin: 30px 0; border-radius: 4px;">
+              <p style="color: #1e40af; font-size: 14px; margin: 0 0 12px 0; font-weight: 600;">
+                📋 Próximos pasos:
+              </p>
+              <ul style="color: #1e40af; font-size: 14px; margin: 0; padding-left: 20px; line-height: 1.8;">
+                <li>Revisa las aplicaciones que recibas</li>
+                <li>Contacta a los candidatos que más te interesen</li>
+                <li>Gestiona tu publicación desde tu panel de empresa</li>
+                <li>Considera promocionar tu empleo para mayor visibilidad</li>
+              </ul>
+            </div>
+            
+            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+              Si tienes alguna pregunta o necesitas ayuda, no dudes en contactarnos.
+            </p>
+          </div>
+          
+          <!-- Footer -->
+          <div style="background-color: #f9fafb; border-top: 1px solid #e5e7eb; padding: 30px 20px; text-align: center;">
+            <p style="color: #9ca3af; font-size: 12px; margin: 0 0 10px 0;">
+              Este email fue enviado automáticamente por TrabajoYa
+            </p>
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+              <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                ¿Necesitas ayuda? Contáctanos en 
+                <a href="mailto:soporte@trabajo-ya.com" style="color: #2563eb; text-decoration: none;">soporte@trabajo-ya.com</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `Publicación Aprobada - TrabajoYa
+
+Hola${companyName ? ` ${companyName}` : ""},
+
+Nos complace informarte que tu publicación de empleo "${jobTitle}" ha sido revisada y aprobada.
+
+🎉 ¡Tu empleo ya está activo!
+
+Los postulantes ahora pueden ver y aplicar a tu oferta de trabajo. Tu publicación está visible en la plataforma y comenzará a recibir aplicaciones.
+
+Ver tu publicación:
+${webUrl}
+
+Próximos pasos:
+- Revisa las aplicaciones que recibas
+- Contacta a los candidatos que más te interesen
+- Gestiona tu publicación desde tu panel de empresa
+- Considera promocionar tu empleo para mayor visibilidad
+
+Si tienes alguna pregunta o necesitas ayuda, no dudes en contactarnos en soporte@trabajo-ya.com
+
+---
+Este correo fue enviado automáticamente por TrabajoYa.`;
+
+    // Generar un Message-ID único para mejor tracking
+    const messageId = `<${Date.now()}-${Math.random().toString(36).substring(7)}@trabajo-ya.com>`;
+    const unsubscribeUrl = process.env.APP_WEB_URL 
+      ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
+      : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+
+    await this.provider.send({
+      to: email,
+      subject: `✅ Tu publicación "${jobTitle}" ha sido aprobada`,
+      html,
+      text,
+      from: process.env.MAIL_FROM,
+      headers: {
+        // Headers para mejorar deliverability y evitar spam
+        "Message-ID": messageId,
+        "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
+        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "X-Mailer": "TrabajoYa",
+        "X-Auto-Response-Suppress": "All",
+        "X-Priority": "1",
+        "Importance": "normal",
+      },
+    });
+  }
 }
