@@ -16,6 +16,7 @@ import {
 } from "./dto/video-meeting.dto";
 import { MessagesService } from "../messages/messages.service";
 import { GoogleMeetService } from "./google-meet.service";
+import { ICalendarService } from "../common/services/icalendar.service";
 
 @Injectable()
 export class VideoMeetingsService {
@@ -23,7 +24,8 @@ export class VideoMeetingsService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => MessagesService))
     private messagesService: MessagesService,
-    @Optional() private googleMeetService?: GoogleMeetService
+    @Optional() private googleMeetService?: GoogleMeetService,
+    private icalendarService: ICalendarService
   ) {}
 
   private async getValidAccessToken(params: {
@@ -197,6 +199,34 @@ export class VideoMeetingsService {
         status: VideoMeetingStatus.SCHEDULED,
       },
     });
+
+    // Generar archivos .ics para ambos usuarios (siempre, independientemente de Google Calendar)
+    // Esto permite que los usuarios puedan importar el evento a cualquier calendario
+    try {
+      // Obtener información completa de los usuarios para el .ics
+      const [creatorFull, invitedFull] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: createdById },
+          select: { email: true, name: true },
+        }),
+        this.prisma.user.findUnique({
+          where: { id: invitedUserId },
+          select: { email: true, name: true },
+        }),
+      ]);
+
+      // Los archivos .ics se generan bajo demanda cuando el usuario los solicita
+      // No los almacenamos en la base de datos, solo los generamos cuando se necesitan
+      console.log(
+        `[VideoMeetings] Videollamada creada. Archivos .ics disponibles para descarga para ambos usuarios.`
+      );
+    } catch (error) {
+      console.error(
+        "[VideoMeetings] Error preparando información para .ics:",
+        error
+      );
+      // No fallar la creación de la reunión si hay error con .ics
+    }
 
     // Enviar mensaje de invitación automáticamente
     try {
@@ -753,6 +783,79 @@ export class VideoMeetingsService {
     });
 
     return this.mapMeetingToResponse(updatedMeeting);
+  }
+
+  /**
+   * Genera un archivo .ics (iCalendar) para una reunión
+   * Permite que cualquier usuario pueda importar el evento a su calendario
+   *
+   * @param userId ID del usuario que solicita el archivo
+   * @param meetingId ID de la reunión
+   * @returns Contenido del archivo .ics como string
+   */
+  async generateICSFile(
+    userId: string,
+    meetingId: string
+  ): Promise<string> {
+    const meeting = await this.prisma.videoMeeting.findUnique({
+      where: { id: meetingId },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
+        invitedUser: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!meeting) {
+      throw new NotFoundException("Reunión no encontrada");
+    }
+
+    // Verificar que el usuario tenga acceso
+    if (meeting.createdById !== userId && meeting.invitedUserId !== userId) {
+      throw new ForbiddenException(
+        "No tienes permisos para acceder a esta reunión"
+      );
+    }
+
+    // Calcular fecha de fin
+    const startTime = new Date(meeting.scheduledAt);
+    const durationMinutes = meeting.duration || 30;
+    const endTime = new Date(
+      startTime.getTime() + durationMinutes * 60 * 1000
+    );
+
+    // Determinar quién es el organizador y quién el invitado
+    const isCreator = meeting.createdById === userId;
+    const organizerEmail = isCreator
+      ? meeting.createdBy.email
+      : meeting.invitedUser.email;
+    const otherUserEmail = isCreator
+      ? meeting.invitedUser.email
+      : meeting.createdBy.email;
+
+    // Generar el archivo .ics
+    const icsContent = this.icalendarService.generateVideoMeetingICS(
+      meeting.title || "Videollamada",
+      meeting.description || "",
+      startTime,
+      endTime,
+      meeting.meetingUrl,
+      organizerEmail,
+      otherUserEmail
+    );
+
+    return icsContent;
   }
 
   /**

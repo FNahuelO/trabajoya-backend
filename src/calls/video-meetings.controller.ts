@@ -7,6 +7,7 @@ import {
   Body,
   Req,
   UseGuards,
+  Res,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -14,6 +15,7 @@ import {
   ApiOperation,
   ApiResponse,
 } from "@nestjs/swagger";
+import { Response } from "express";
 import { VideoMeetingsService } from "./video-meetings.service";
 import {
   CreateVideoMeetingDto,
@@ -175,5 +177,44 @@ export class VideoMeetingsController {
       message: "Reunión finalizada exitosamente",
       data: meeting,
     });
+  }
+
+  @Get(":id/ics")
+  @ApiOperation({
+    summary: "Descargar archivo .ics (iCalendar) de una reunión",
+    description:
+      "Genera y descarga un archivo .ics que puede ser importado a cualquier calendario (Google Calendar, Outlook, Apple Calendar, etc.)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Archivo .ics descargado exitosamente",
+    content: {
+      "text/calendar": {
+        schema: {
+          type: "string",
+          format: "binary",
+        },
+      },
+    },
+  })
+  async downloadICS(
+    @Req() req: any,
+    @Param("id") meetingId: string,
+    @Res() res: Response
+  ) {
+    const icsContent = await this.videoMeetingsService.generateICSFile(
+      req.user?.sub,
+      meetingId
+    );
+
+    // Configurar headers para descarga de archivo
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="videollamada-${meetingId}.ics"`
+    );
+    res.setHeader("Content-Length", Buffer.byteLength(icsContent, "utf-8"));
+
+    res.send(icsContent);
   }
 }

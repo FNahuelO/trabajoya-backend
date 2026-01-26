@@ -12,6 +12,7 @@ import { MessagesModule } from "../messages/messages.module";
 import { ConfigModule } from "@nestjs/config";
 import { WebSocketAuthService } from "../common/services/websocket-auth.service";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { ICalendarService } from "../common/services/icalendar.service";
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     VideoMeetingsService,
     GoogleMeetService,
     WebSocketAuthService,
+    ICalendarService,
   ],
   exports: [
     CallsService,

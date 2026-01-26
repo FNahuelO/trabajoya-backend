@@ -10,32 +10,25 @@ export class MailService {
   ) {}
 
   /**
-   * Genera un botón HTML compatible con Outlook
-   * Outlook no soporta gradientes, box-shadow ni algunos estilos modernos
+   * Genera un botón HTML compatible con todas las plataformas (Outlook, Gmail, Apple Mail, etc.)
+   * Usa tablas para máxima compatibilidad
    */
   private createEmailButton(text: string, url: string, backgroundColor: string = "#2563eb"): string {
     return `
-      <!--[if mso]>
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 40px auto;">
         <tr>
-          <td style="background-color: ${backgroundColor}; border-radius: 8px; padding: 16px 40px;">
-            <a href="${url}" style="color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600; font-family: Arial, sans-serif; display: block;">
+          <td align="center" style="background-color: ${backgroundColor}; border-radius: 8px; padding: 0;">
+            <a href="${url}" 
+               style="display: block; padding: 16px 40px; 
+                      background-color: ${backgroundColor}; color: #ffffff; 
+                      text-decoration: none; font-size: 16px; font-weight: 600; 
+                      font-family: Arial, Helvetica, sans-serif; line-height: 1.5;
+                      border-radius: 8px;">
               ${text}
             </a>
           </td>
         </tr>
       </table>
-      <![endif]-->
-      <!--[if !mso]><!-->
-      <div style="text-align: center; margin: 40px 0;">
-        <a href="${url}" 
-           style="display: inline-block; background-color: ${backgroundColor}; 
-                  color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; 
-                  font-size: 16px; font-weight: 600; font-family: Arial, sans-serif;">
-          ${text}
-        </a>
-      </div>
-      <!--<![endif]-->
     `;
   }
   async sendVerificationEmail(email: string, token: string): Promise<void> {
@@ -68,20 +61,12 @@ export class MailService {
             </p>
             
             <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-              ¡Gracias por registrarte en TrabajoYa! Estamos emocionados de tenerte como parte de nuestra comunidad. 
-              Para completar tu registro y comenzar a buscar oportunidades laborales, necesitamos verificar tu dirección de email.
+              Gracias por registrarte en TrabajoYa. Para completar tu registro y comenzar a buscar oportunidades laborales, necesitamos verificar tu dirección de correo electrónico.
             </p>
             
             <!-- Primary Button -->
             ${this.createEmailButton("✅ Verificar mi Email", appUrl, "#2563eb")}
             
-            <!-- Fallback link para clientes que no soportan HTML -->
-            <div style="text-align: center; margin: 20px 0;">
-              <p style="color: #6b7280; font-size: 14px; margin: 0;">
-                O copia este enlace: <a href="${webUrl}" style="color: #2563eb; text-decoration: underline;">${webUrl}</a>
-              </p>
-            </div>
-          
             
             <!-- Benefits -->
             <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin: 30px 0; border-radius: 4px;">
@@ -125,35 +110,28 @@ export class MailService {
       </html>
     `;
 
-    const text = `
-✨ ¡Bienvenido a TrabajoYa!
+    const text = `Bienvenido a TrabajoYa
 
 Hola,
 
-¡Gracias por registrarte en TrabajoYa! Estamos emocionados de tenerte como parte de nuestra comunidad. 
-Para completar tu registro y comenzar a buscar oportunidades laborales, necesitamos verificar tu dirección de email.
+Gracias por registrarte en TrabajoYa. Para completar tu registro y comenzar a buscar oportunidades laborales, necesitamos verificar tu dirección de correo electrónico.
 
-📱 Para abrir en la app móvil:
-${appUrl}
-
-🌐 O copia este enlace en tu navegador:
+Para verificar tu cuenta, visita:
 ${webUrl}
 
-🚀 Una vez verificado, podrás:
+Una vez verificado, podrás:
 - Buscar y aplicar a ofertas de trabajo
 - Completar tu perfil profesional
 - Recibir notificaciones de nuevas oportunidades
 - Conectar con empresas de tu interés
 
-💡 IMPORTANTE: Este enlace de verificación expirará en 24 horas por seguridad. 
-Si necesitas un nuevo enlace, puedes solicitarlo desde la aplicación.
+Este enlace de verificación expirará en 24 horas por seguridad.
 
 ---
-Este email fue enviado automáticamente por TrabajoYa
+Este correo fue enviado automáticamente por TrabajoYa.
 Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
 
-¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com
-    `;
+¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com`;
 
     // Generar un Message-ID único para mejor tracking
     const messageId = `<${Date.now()}-${Math.random().toString(36).substring(7)}@trabajo-ya.com>`;
@@ -163,7 +141,7 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
 
     await this.provider.send({
       to: email,
-      subject: "Verifica tu email - TrabajoYa",
+      subject: "Verifica tu cuenta de TrabajoYa",
       html,
       text,
       from: process.env.MAIL_FROM,
@@ -173,11 +151,12 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
         "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
         "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        "X-Mailer": "TrabajoYa Mail Service",
+        "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "Content-Type": "text/html; charset=UTF-8",
-        "MIME-Version": "1.0",
-        // Removido "Precedence: auto_reply" ya que puede causar que los correos se marquen como spam
+        "X-Priority": "1",
+        "Importance": "normal",
+        // Removido "Precedence: auto_reply" y "Content-Type" ya que pueden causar problemas
+        // El proveedor de email maneja estos headers automáticamente
       },
     });
 
@@ -215,18 +194,11 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
             
             <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
               Recibimos una solicitud para restablecer la contraseña de tu cuenta en TrabajoYa. 
-              Si solicitaste este cambio, haz clic en el botón de abajo para continuar.
+              Si solicitaste este cambio, haz clic en el botón para continuar.
             </p>
             
             <!-- Primary Button -->
             ${this.createEmailButton("🔑 Restablecer Contraseña", appUrl, "#2563eb")}
-            
-            <!-- Fallback link para clientes que no soportan HTML -->
-            <div style="text-align: center; margin: 20px 0;">
-              <p style="color: #6b7280; font-size: 14px; margin: 0;">
-                O copia este enlace: <a href="${webUrl}" style="color: #2563eb; text-decoration: underline;">${webUrl}</a>
-              </p>
-            </div>
             
             
             <!-- Security Warning -->
@@ -266,31 +238,25 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
       </html>
     `;
 
-    const text = `
-🔒 Restablecer Contraseña - TrabajoYa
+    const text = `Restablecer Contraseña - TrabajoYa
 
 Hola,
 
 Recibimos una solicitud para restablecer la contraseña de tu cuenta en TrabajoYa. 
 Si solicitaste este cambio, usa el siguiente enlace para continuar:
 
-📱 Para abrir en la app móvil:
-${appUrl}
-
-🌐 O copia este enlace en tu navegador:
 ${webUrl}
 
-⚠️ INFORMACIÓN IMPORTANTE:
+INFORMACIÓN IMPORTANTE:
 - Este enlace expirará en 1 hora por seguridad
-- Si no solicitaste este cambio, puedes ignorar este email
+- Si no solicitaste este cambio, puedes ignorar este correo
 - Tu contraseña no cambiará hasta que completes el proceso
 
 Si tienes problemas o no solicitaste este cambio, contáctanos inmediatamente en soporte@trabajo-ya.com
 
 ---
-Este email fue enviado automáticamente por TrabajoYa
-Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
-    `;
+Este correo fue enviado automáticamente por TrabajoYa.
+Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
 
     // Generar un Message-ID único para mejor tracking
     const messageId = `<${Date.now()}-${Math.random().toString(36).substring(7)}@trabajo-ya.com>`;
@@ -300,7 +266,7 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
 
     await this.provider.send({
       to: email,
-      subject: "Restablecer contraseña - TrabajoYa",
+      subject: "Restablecer contraseña de TrabajoYa",
       html,
       text,
       from: process.env.MAIL_FROM,
@@ -310,11 +276,12 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
         "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
         "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        "X-Mailer": "TrabajoYa Mail Service",
+        "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "Content-Type": "text/html; charset=UTF-8",
-        "MIME-Version": "1.0",
-        // Removido "Precedence: auto_reply" ya que puede causar que los correos se marquen como spam
+        "X-Priority": "1",
+        "Importance": "normal",
+        // Removido "Precedence: auto_reply" y "Content-Type" ya que pueden causar problemas
+        // El proveedor de email maneja estos headers automáticamente
       },
     });
   }
