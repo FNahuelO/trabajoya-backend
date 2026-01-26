@@ -8,6 +8,36 @@ export class MailService {
   constructor(
     @Inject(MAIL_PROVIDER_TOKEN) private readonly provider: MailProvider
   ) {}
+
+  /**
+   * Genera un botón HTML compatible con Outlook
+   * Outlook no soporta gradientes, box-shadow ni algunos estilos modernos
+   */
+  private createEmailButton(text: string, url: string, backgroundColor: string = "#2563eb"): string {
+    return `
+      <!--[if mso]>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+        <tr>
+          <td style="background-color: ${backgroundColor}; border-radius: 8px; padding: 16px 40px;">
+            <a href="${url}" style="color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600; font-family: Arial, sans-serif; display: block;">
+              ${text}
+            </a>
+          </td>
+        </tr>
+      </table>
+      <![endif]-->
+      <!--[if !mso]><!-->
+      <div style="text-align: center; margin: 40px 0;">
+        <a href="${url}" 
+           style="display: inline-block; background-color: ${backgroundColor}; 
+                  color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; 
+                  font-size: 16px; font-weight: 600; font-family: Arial, sans-serif;">
+          ${text}
+        </a>
+      </div>
+      <!--<![endif]-->
+    `;
+  }
   async sendVerificationEmail(email: string, token: string): Promise<void> {
     // URL para deep linking a la app móvil
     const appUrl = `trabajoya://verify-email?token=${token}`;
@@ -27,7 +57,7 @@ export class MailService {
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
           <!-- Header -->
-          <div style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); padding: 40px 20px; text-align: center;">
+          <div style="background-color: #2563eb; padding: 40px 20px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">✨ ¡Bienvenido a TrabajoYa!</h1>
           </div>
           
@@ -43,14 +73,13 @@ export class MailService {
             </p>
             
             <!-- Primary Button -->
-            <div style="text-align: center; margin: 40px 0;">
-              <a href="${appUrl}" 
-                 style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); 
-                        color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; 
-                        font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-                        transition: transform 0.2s;">
-                ✅ Verificar mi Email
-              </a>
+            ${this.createEmailButton("✅ Verificar mi Email", appUrl, "#2563eb")}
+            
+            <!-- Fallback link para clientes que no soportan HTML -->
+            <div style="text-align: center; margin: 20px 0;">
+              <p style="color: #6b7280; font-size: 14px; margin: 0;">
+                O copia este enlace: <a href="${webUrl}" style="color: #2563eb; text-decoration: underline;">${webUrl}</a>
+              </p>
             </div>
           
             
@@ -146,7 +175,9 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa Mail Service",
         "X-Auto-Response-Suppress": "All",
-        "Precedence": "auto_reply",
+        "Content-Type": "text/html; charset=UTF-8",
+        "MIME-Version": "1.0",
+        // Removido "Precedence: auto_reply" ya que puede causar que los correos se marquen como spam
       },
     });
 
@@ -172,7 +203,7 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
           <!-- Header -->
-          <div style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); padding: 40px 20px; text-align: center;">
+          <div style="background-color: #2563eb; padding: 40px 20px; text-align: center;">
             <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">🔒 Restablecer Contraseña</h1>
           </div>
           
@@ -188,14 +219,13 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
             </p>
             
             <!-- Primary Button -->
-            <div style="text-align: center; margin: 40px 0;">
-              <a href="${appUrl}" 
-                 style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); 
-                        color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; 
-                        font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-                        transition: transform 0.2s;">
-                🔑 Restablecer Contraseña
-              </a>
+            ${this.createEmailButton("🔑 Restablecer Contraseña", appUrl, "#2563eb")}
+            
+            <!-- Fallback link para clientes que no soportan HTML -->
+            <div style="text-align: center; margin: 20px 0;">
+              <p style="color: #6b7280; font-size: 14px; margin: 0;">
+                O copia este enlace: <a href="${webUrl}" style="color: #2563eb; text-decoration: underline;">${webUrl}</a>
+              </p>
             </div>
             
             
@@ -282,7 +312,9 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa Mail Service",
         "X-Auto-Response-Suppress": "All",
-        "Precedence": "auto_reply",
+        "Content-Type": "text/html; charset=UTF-8",
+        "MIME-Version": "1.0",
+        // Removido "Precedence: auto_reply" ya que puede causar que los correos se marquen como spam
       },
     });
   }
