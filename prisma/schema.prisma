@@ -41,6 +41,8 @@ model User {
   JobPostEntitlement   JobPostEntitlement[]
   reportsMade          Report[]              @relation("ReportsMade")
   reportsReceived      Report[]              @relation("ReportsReceived")
+  usersBlocked         BlockedUser[]         @relation("UsersBlocked")
+  usersBlockedBy       BlockedUser[]         @relation("UsersBlockedBy")
 }
 
 model RefreshToken {
@@ -768,4 +770,17 @@ enum ReportStatus {
   REVIEWED
   RESOLVED
   DISMISSED
+}
+
+model BlockedUser {
+  id            String   @id @default(uuid())
+  blockerUserId String // Usuario que bloquea
+  blockedUserId String // Usuario bloqueado
+  createdAt     DateTime @default(now())
+  blocker       User     @relation("UsersBlocked", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blockedUser   User     @relation("UsersBlockedBy", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockerUserId])
+  @@index([blockedUserId])
 }

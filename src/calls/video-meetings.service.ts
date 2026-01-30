@@ -24,8 +24,8 @@ export class VideoMeetingsService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => MessagesService))
     private messagesService: MessagesService,
-    @Optional() private googleMeetService?: GoogleMeetService,
-    private icalendarService: ICalendarService
+    private icalendarService: ICalendarService,
+    @Optional() private googleMeetService?: GoogleMeetService
   ) {}
 
   private async getValidAccessToken(params: {
@@ -207,11 +207,11 @@ export class VideoMeetingsService {
       const [creatorFull, invitedFull] = await Promise.all([
         this.prisma.user.findUnique({
           where: { id: createdById },
-          select: { email: true, name: true },
+          select: { email: true },
         }),
         this.prisma.user.findUnique({
           where: { id: invitedUserId },
-          select: { email: true, name: true },
+          select: { email: true },
         }),
       ]);
 
