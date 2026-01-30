@@ -39,6 +39,8 @@ model User {
   pushTokens           PushToken[]
   promotions           UserPromotion[]
   JobPostEntitlement   JobPostEntitlement[]
+  reportsMade          Report[]              @relation("ReportsMade")
+  reportsReceived      Report[]              @relation("ReportsReceived")
 }
 
 model RefreshToken {
@@ -285,6 +287,7 @@ model Message {
   createdAt  DateTime @default(now())
   fromUser   User     @relation("SentMessages", fields: [fromUserId], references: [id], onDelete: Cascade)
   toUser     User     @relation("ReceivedMessages", fields: [toUserId], references: [id], onDelete: Cascade)
+  reports    Report[]
 }
 
 enum UserType {
@@ -725,4 +728,44 @@ enum EntitlementStatus {
   EXPIRED
   REVOKED
   REFUNDED
+}
+
+model Report {
+  id          String        @id @default(uuid())
+  reporterId  String // Usuario que hace la denuncia
+  reportedId  String // Usuario denunciado
+  messageId   String? // Mensaje denunciado (opcional)
+  reason      ReportReason
+  description String? // Descripción adicional
+  status      ReportStatus  @default(PENDING)
+  reviewedBy  String? // ID del admin que revisó
+  reviewedAt  DateTime?
+  adminNotes  String? // Notas del admin
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  reporter    User          @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported    User          @relation("ReportsReceived", fields: [reportedId], references: [id], onDelete: Cascade)
+  message     Message?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([reporterId])
+  @@index([reportedId])
+  @@index([messageId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  INAPPROPRIATE_CONTENT
+  FAKE_PROFILE
+  SCAM
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
 }

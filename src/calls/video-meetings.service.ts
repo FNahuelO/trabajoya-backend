@@ -804,14 +804,12 @@ export class VideoMeetingsService {
           select: {
             id: true,
             email: true,
-            name: true,
           },
         },
         invitedUser: {
           select: {
             id: true,
             email: true,
-            name: true,
           },
         },
       },
