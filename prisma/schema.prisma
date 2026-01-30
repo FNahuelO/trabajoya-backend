@@ -221,6 +221,9 @@ model Job {
   experienceLevel     ExperienceLevel
   status              String               @default("active")
   publishedAt         DateTime             @default(now())
+  // Salary fields
+  minSalary           Float?
+  maxSalary           Float?
   // Payment fields
   isPaid              Boolean              @default(false)
   paymentOrderId      String?

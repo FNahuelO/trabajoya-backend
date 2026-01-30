@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Job" ADD COLUMN "minSalary" DOUBLE PRECISION,
+ADD COLUMN "maxSalary" DOUBLE PRECISION;
+
