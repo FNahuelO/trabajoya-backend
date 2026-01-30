@@ -224,6 +224,9 @@ model Job {
   // Salary fields
   minSalary           Float?
   maxSalary           Float?
+  // Additional fields
+  benefits            String?
+  company             String?
   // Payment fields
   isPaid              Boolean              @default(false)
   paymentOrderId      String?

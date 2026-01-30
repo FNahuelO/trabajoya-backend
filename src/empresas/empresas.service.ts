@@ -246,9 +246,12 @@ export class EmpresasService {
       const expiresAt = new Date(publishedAt);
       expiresAt.setDate(expiresAt.getDate() + 4); // 4 días desde publicación
 
+      // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
+      const { planId, ...jobData } = dto;
+      
       const job = await this.prisma.job.create({
         data: {
-          ...dto,
+          ...jobData,
           title: dto.title.trim(), // Asegurar que el título original se preserve
           empresaId: profile.id,
           moderationStatus: moderationStatus as any,
@@ -314,9 +317,12 @@ export class EmpresasService {
         throw new BadRequestException("El título del empleo es requerido");
       }
       
+      // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
+      const { planId, ...jobData } = dto;
+      
       return this.prisma.job.create({
         data: {
-          ...dto,
+          ...jobData,
           title: dto.title.trim(), // Asegurar que el título original se preserve
           empresaId: profile.id,
           moderationStatus: "PENDING_PAYMENT" as any,
@@ -363,9 +369,12 @@ export class EmpresasService {
       throw new BadRequestException("El título del empleo es requerido");
     }
     
+    // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
+    const { planId, ...jobData } = dto;
+    
     return this.prisma.job.create({
       data: {
-        ...dto,
+        ...jobData,
         title: dto.title.trim(), // Asegurar que el título original se preserve
         empresaId: profile.id,
         moderationStatus: moderationStatus as any,
