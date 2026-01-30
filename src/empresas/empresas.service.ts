@@ -236,6 +236,11 @@ export class EmpresasService {
         status = "inactive";
       }
 
+      // Asegurar que el título original se preserve siempre
+      if (!dto.title || dto.title.trim() === '') {
+        throw new BadRequestException("El título del empleo es requerido");
+      }
+      
       // Crear el aviso
       const publishedAt = new Date();
       const expiresAt = new Date(publishedAt);
@@ -244,6 +249,7 @@ export class EmpresasService {
       const job = await this.prisma.job.create({
         data: {
           ...dto,
+          title: dto.title.trim(), // Asegurar que el título original se preserve
           empresaId: profile.id,
           moderationStatus: moderationStatus as any,
           status: status,
@@ -302,9 +308,16 @@ export class EmpresasService {
 
     // Si NO incluye publicaciones gratis, requiere pago
     if (!planIncludesFreeJobs) {
+      // Asegurar que el título original se preserve siempre
+      // Si el título viene vacío o no viene, no crear el job (debe fallar la validación)
+      if (!dto.title || dto.title.trim() === '') {
+        throw new BadRequestException("El título del empleo es requerido");
+      }
+      
       return this.prisma.job.create({
         data: {
           ...dto,
+          title: dto.title.trim(), // Asegurar que el título original se preserve
           empresaId: profile.id,
           moderationStatus: "PENDING_PAYMENT" as any,
           status: "inactive",
@@ -345,9 +358,15 @@ export class EmpresasService {
       status = "inactive";
     }
 
+    // Asegurar que el título original se preserve siempre
+    if (!dto.title || dto.title.trim() === '') {
+      throw new BadRequestException("El título del empleo es requerido");
+    }
+    
     return this.prisma.job.create({
       data: {
         ...dto,
+        title: dto.title.trim(), // Asegurar que el título original se preserve
         empresaId: profile.id,
         moderationStatus: moderationStatus as any,
         status: status,
