@@ -374,6 +374,15 @@ export class EmpresasService {
         _count: {
           select: { applications: true },
         },
+        entitlements: {
+          where: {
+            status: 'ACTIVE',
+          },
+          take: 1,
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
       },
     });
   }

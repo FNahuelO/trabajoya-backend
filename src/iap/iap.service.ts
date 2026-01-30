@@ -197,64 +197,13 @@ export class IapService {
         jobPostId = draft.id;
         console.log('[IAP] Draft verificado:', jobPostId);
       } else {
-        // Si no hay jobPostDraftId, crear un job temporal/draft para asociar el entitlement
-        // Este job será usado cuando el usuario publique un aviso
-        console.log('[IAP] No hay draft, creando job temporal para el entitlement...');
-        
-        // Obtener el perfil de empresa del usuario
-        const empresaProfile = await this.prisma.empresaProfile.findUnique({
-          where: { userId },
-        });
-
-        if (!empresaProfile) {
-          console.error('[IAP] Usuario no tiene perfil de empresa:', userId);
-          throw new BadRequestException('Usuario no tiene perfil de empresa configurado');
-        }
-
-        // Crear un job temporal/draft con todos los campos requeridos
-        console.log('[IAP] Creando job temporal con empresaId:', empresaProfile.id);
-        try {
-          const tempJob = await this.prisma.job.create({
-            data: {
-              empresaId: empresaProfile.id,
-              title: 'Draft temporal - Pendiente de publicación',
-              description: 'Este es un draft temporal creado para asociar un entitlement de compra IAP. Se actualizará cuando publiques un aviso.',
-              requirements: 'Pendiente de completar',
-              location: 'Pendiente de completar',
-              jobType: 'TIEMPO_COMPLETO', // Valor por defecto
-              category: 'General', // Valor por defecto
-              experienceLevel: 'JUNIOR', // Valor por defecto
-              status: 'draft', // Estado de draft
-              moderationStatus: 'PENDING',
-            },
-          });
-
-          jobPostId = tempJob.id;
-          console.log('[IAP] ✅ Job temporal creado exitosamente:', jobPostId);
-          
-          // Verificar que el job existe antes de continuar
-          const verifyJob = await this.prisma.job.findUnique({
-            where: { id: jobPostId },
-          });
-          
-          if (!verifyJob) {
-            console.error('[IAP] ❌ ERROR: El job temporal no se encontró después de crearlo:', jobPostId);
-            throw new InternalServerErrorException('Error al crear job temporal para el entitlement');
-          }
-          
-          console.log('[IAP] ✅ Job temporal verificado:', verifyJob.id);
-        } catch (error: any) {
-          console.error('[IAP] ❌ Error al crear job temporal:', {
-            message: error?.message,
-            code: error?.code,
-            meta: error?.meta,
-            empresaId: empresaProfile.id,
-            userId,
-          });
-          throw new InternalServerErrorException(
-            `Error al crear job temporal: ${error?.message || 'Error desconocido'}`
-          );
-        }
+        // NUEVO FLUJO: No se permite comprar un plan sin una publicación asociada
+        // El usuario debe crear primero la publicación y luego comprar el plan
+        console.error('[IAP] ❌ Intento de compra sin jobPostDraftId');
+        throw new BadRequestException(
+          'No se puede comprar un plan sin una publicación asociada. ' +
+          'Por favor, crea primero una publicación y luego selecciona un plan.'
+        );
       }
 
       // Verificar que el jobPostId existe antes de crear el entitlement
