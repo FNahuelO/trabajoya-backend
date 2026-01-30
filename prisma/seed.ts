@@ -1399,6 +1399,7 @@ async function main() {
   }
 
   // Crear productos IAP
+  // IMPORTANTE: Estos Product IDs deben coincidir EXACTAMENTE con los de App Store Connect
   const iapProducts = [
     {
       productId: "job_urgent",
@@ -1423,10 +1424,20 @@ async function main() {
     {
       productId: "job_premium",
       platform: "IOS",
-      planKey: "CRYSTAL",
+      planKey: "PREMIUM",
     },
     {
       productId: "job_premium",
+      platform: "ANDROID",
+      planKey: "PREMIUM",
+    },
+    {
+      productId: "job_crystal",
+      platform: "IOS",
+      planKey: "CRYSTAL",
+    },
+    {
+      productId: "job_crystal",
       platform: "ANDROID",
       planKey: "CRYSTAL",
     },
