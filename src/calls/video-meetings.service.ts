@@ -835,12 +835,14 @@ export class VideoMeetingsService {
 
     // Determinar quién es el organizador y quién el invitado
     const isCreator = meeting.createdById === userId;
+    // Type assertion needed due to Prisma type inference limitation with nested select
+    const meetingWithRelations = meeting as any;
     const organizerEmail = isCreator
-      ? meeting.createdBy.email
-      : meeting.invitedUser.email;
+      ? meetingWithRelations.createdBy.email
+      : meetingWithRelations.invitedUser.email;
     const otherUserEmail = isCreator
-      ? meeting.invitedUser.email
-      : meeting.createdBy.email;
+      ? meetingWithRelations.invitedUser.email
+      : meetingWithRelations.createdBy.email;
 
     // Generar el archivo .ics
     const icsContent = this.icalendarService.generateVideoMeetingICS(
