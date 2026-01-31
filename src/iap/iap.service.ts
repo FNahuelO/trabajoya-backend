@@ -127,8 +127,9 @@ export class IapService {
       }
 
       // Verificar que el transactionId no haya sido usado para ESTA publicación específica (anti-replay)
-      // PERO: Permitir que la misma transacción se use para DIFERENTES publicaciones
-      // (esto es necesario porque los productos no consumibles en iOS devuelven la misma transacción)
+      // NOTA: Con productos consumibles, cada compra genera una nueva transacción única
+      // Por lo tanto, no deberíamos tener el problema de transacciones duplicadas
+      // PERO: Mantenemos la verificación por seguridad (anti-replay attack)
       const existingForThisJob = await this.prisma.jobPostEntitlement.findFirst({
         where: {
           transactionId: dto.transactionId,
@@ -279,14 +280,14 @@ export class IapService {
           await this.prisma.job.update({
             where: { id: jobPostId },
             data: {
-              moderationStatus: 'APPROVED',
+              moderationStatus: 'PENDING',
               paymentStatus: 'PAID',
               paidAt: new Date(),
               isPaid: true,
               status: 'active',
             },
           });
-          console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED');
+          console.log('[IAP] ✅ Estado del job actualizado a PAID y PENDING (pendiente de revisión)');
         } catch (updateError: any) {
           console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
           // No lanzar error, el entitlement ya fue creado
@@ -340,12 +341,60 @@ export class IapService {
               console.error('[IAP] ⚠️ Intentando eliminar el constraint automáticamente...');
               
               try {
-                // Intentar eliminar el constraint automáticamente
-                await this.prisma.$executeRawUnsafe(`
-                  ALTER TABLE "JobPostEntitlement" 
-                  DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key";
-                `);
-                console.log('[IAP] ✅ Constraint eliminado exitosamente, reintentando crear entitlement...');
+                // Intentar eliminar el constraint o índice único automáticamente
+                // Primero intentar como constraint
+                try {
+                  await this.prisma.$executeRawUnsafe(`
+                    ALTER TABLE "JobPostEntitlement" 
+                    DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key";
+                  `);
+                  console.log('[IAP] ✅ Constraint eliminado exitosamente');
+                } catch (constraintError: any) {
+                  // Si falla como constraint, intentar como índice único
+                  console.log('[IAP] Intentando eliminar como índice único...');
+                  try {
+                    await this.prisma.$executeRawUnsafe(`
+                      DROP INDEX IF EXISTS "JobPostEntitlement_transactionId_key";
+                    `);
+                    console.log('[IAP] ✅ Índice único eliminado exitosamente');
+                  } catch (indexError: any) {
+                    // Si ambos fallan, verificar si realmente existe
+                    console.log('[IAP] Verificando si el constraint/índice realmente existe...');
+                    const constraintExists = await this.prisma.$queryRawUnsafe<Array<{conname: string}>>(`
+                      SELECT conname 
+                      FROM pg_constraint 
+                      WHERE conname = 'JobPostEntitlement_transactionId_key'
+                      UNION ALL
+                      SELECT indexname::text as conname
+                      FROM pg_indexes 
+                      WHERE indexname = 'JobPostEntitlement_transactionId_key';
+                    `);
+                    
+                    if (constraintExists && constraintExists.length > 0) {
+                      // Intentar con el nombre exacto encontrado
+                      for (const constraint of constraintExists) {
+                        try {
+                          await this.prisma.$executeRawUnsafe(`
+                            ALTER TABLE "JobPostEntitlement" 
+                            DROP CONSTRAINT IF EXISTS "${constraint.conname}";
+                          `);
+                          console.log(`[IAP] ✅ Constraint ${constraint.conname} eliminado`);
+                        } catch (e) {
+                          try {
+                            await this.prisma.$executeRawUnsafe(`
+                              DROP INDEX IF EXISTS "${constraint.conname}";
+                            `);
+                            console.log(`[IAP] ✅ Índice ${constraint.conname} eliminado`);
+                          } catch (e2) {
+                            console.error(`[IAP] ⚠️ No se pudo eliminar ${constraint.conname}`);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                
+                console.log('[IAP] Reintentando crear entitlement...');
                 
                 // Reintentar crear el entitlement
                 entitlement = await this.prisma.jobPostEntitlement.create({
@@ -378,14 +427,14 @@ export class IapService {
                   await this.prisma.job.update({
                     where: { id: jobPostId },
                     data: {
-                      moderationStatus: 'APPROVED',
+                      moderationStatus: 'PENDING',
                       paymentStatus: 'PAID',
                       paidAt: new Date(),
                       isPaid: true,
                       status: 'active',
                     },
                   });
-                  console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED');
+                  console.log('[IAP] ✅ Estado del job actualizado a PAID y PENDING (pendiente de revisión)');
                 } catch (updateError: any) {
                   console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
                 }
@@ -398,10 +447,12 @@ export class IapService {
                 };
               } catch (dropError: any) {
                 console.error('[IAP] ❌ Error al eliminar constraint automáticamente:', dropError?.message);
+                console.error('[IAP] ❌ Stack:', dropError?.stack);
                 throw new InternalServerErrorException(
                   `Error al crear entitlement: El constraint único de transactionId todavía existe en la base de datos. ` +
-                  `Por favor, ejecuta la migración para eliminarlo: ` +
-                  `ALTER TABLE "JobPostEntitlement" DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key";`
+                  `Por favor, ejecuta la migración manualmente: ` +
+                  `ALTER TABLE "JobPostEntitlement" DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key"; ` +
+                  `DROP INDEX IF EXISTS "JobPostEntitlement_transactionId_key";`
                 );
               }
             }
@@ -615,14 +666,14 @@ export class IapService {
       await this.prisma.job.update({
         where: { id: jobPostId },
         data: {
-          moderationStatus: 'APPROVED',
+          moderationStatus: 'PENDING',
           paymentStatus: 'PAID',
           paidAt: new Date(),
           isPaid: true,
           status: 'active',
         },
       });
-      console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (Google)');
+      console.log('[IAP] ✅ Estado del job actualizado a PAID y PENDING (pendiente de revisión) (Google)');
     } catch (updateError: any) {
       console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
       // No lanzar error, el entitlement ya fue creado

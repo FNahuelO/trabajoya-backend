@@ -26,6 +26,7 @@ import { PromotionsModule } from "./promotions/promotions.module";
 import { IapModule } from "./iap/iap.module";
 import { BlockedUsersModule } from "./blocked-users/blocked-users.module";
 import { ReportsModule } from "./reports/reports.module";
+import { CronJobsModule } from "./cron-jobs/cron-jobs.module";
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { ReportsModule } from "./reports/reports.module";
     IapModule,
     BlockedUsersModule,
     ReportsModule,
+    CronJobsModule,
   ],
 })
 export class AppModule {}
