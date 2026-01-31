@@ -10,6 +10,23 @@ export class MailService {
   ) {}
 
   /**
+   * Construye una URL HTTPS para la aplicación web
+   * Centraliza la generación de URLs usando APP_WEB_URL como base
+   */
+  private buildAppLink(path: string, query?: Record<string, string>): string {
+    const baseUrl = process.env.APP_WEB_URL ?? "http://localhost:3000";
+    const url = new URL(path, baseUrl);
+    
+    if (query) {
+      Object.entries(query).forEach(([key, value]) => {
+        url.searchParams.append(key, value);
+      });
+    }
+    
+    return url.toString();
+  }
+
+  /**
    * Genera un botón HTML compatible con todas las plataformas (Outlook, Gmail, Apple Mail, etc.)
    * Usa tablas anidadas para máxima compatibilidad con Outlook
    */
@@ -51,12 +68,8 @@ export class MailService {
   }
 
   async sendVerificationEmail(email: string, token: string): Promise<void> {
-    // URL para deep linking a la app móvil
-    const appUrl = `trabajoya://verify-email?token=${token}`;
-    // URL para web como fallback
-    const webUrl = `${
-      process.env.APP_WEB_URL ?? "http://localhost:3000"
-    }/verify-email?token=${token}`;
+    // URL HTTPS unificada para botón HTML y versión texto plano
+    const actionUrl = this.buildAppLink("/app/verify-email", { token });
 
     const html = `
       <!DOCTYPE html>
@@ -94,7 +107,7 @@ export class MailService {
             </p>
             
             <!-- Primary Button -->
-            ${this.createEmailButton("✅ Verificar mi Email", appUrl, "#2563eb")}
+            ${this.createEmailButton("✅ Verificar mi Email", actionUrl, "#2563eb")}
             
             <!-- Benefits -->
             <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin: 30px 0; border-radius: 4px;">
@@ -145,7 +158,7 @@ Hola,
 Gracias por registrarte en TrabajoYa. Para completar tu registro y comenzar a buscar oportunidades laborales, necesitamos verificar tu dirección de correo electrónico.
 
 Para verificar tu cuenta, visita:
-${webUrl}
+${actionUrl}
 
 Una vez verificado, podrás:
 - Buscar y aplicar a ofertas de trabajo
@@ -182,9 +195,9 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "Importance": "normal",
         "MIME-Version": "1.0",
         // Removido X-Priority ya que puede ser visto como spam
+        // Removido Importance para mejorar deliverability
         // El proveedor de email maneja Content-Type automáticamente
       },
     });
@@ -193,12 +206,8 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
   }
 
   async sendPasswordResetEmail(email: string, token: string): Promise<void> {
-    // URL para deep linking a la app móvil
-    const appUrl = `trabajoya://reset-password?token=${token}`;
-    // URL para web como fallback
-    const webUrl = `${
-      process.env.APP_WEB_URL ?? "http://localhost:3000"
-    }/reset?token=${token}`;
+    // URL HTTPS unificada para botón HTML y versión texto plano
+    const actionUrl = this.buildAppLink("/app/reset-password", { token });
 
     const html = `
       <!DOCTYPE html>
@@ -237,7 +246,7 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
             </p>
             
             <!-- Primary Button -->
-            ${this.createEmailButton("🔑 Restablecer Contraseña", appUrl, "#2563eb")}
+            ${this.createEmailButton("🔑 Restablecer Contraseña", actionUrl, "#2563eb")}
             
             <!-- Security Warning -->
             <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 30px 0; border-radius: 4px;">
@@ -283,7 +292,7 @@ Hola,
 Recibimos una solicitud para restablecer la contraseña de tu cuenta en TrabajoYa. 
 Si solicitaste este cambio, usa el siguiente enlace para continuar:
 
-${webUrl}
+${actionUrl}
 
 INFORMACIÓN IMPORTANTE:
 - Este enlace expirará en 1 hora por seguridad
@@ -317,9 +326,9 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "Importance": "normal",
         "MIME-Version": "1.0",
         // Removido X-Priority ya que puede ser visto como spam
+        // Removido Importance para mejorar deliverability
         // El proveedor de email maneja Content-Type automáticamente
       },
     });
@@ -331,12 +340,8 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
     companyName: string,
     jobId: string
   ): Promise<void> {
-    // URL para ver el empleo en la app móvil
-    const appUrl = `trabajoya://job/${jobId}`;
-    // URL para web como fallback
-    const webUrl = `${
-      process.env.APP_WEB_URL ?? "http://localhost:3000"
-    }/empresa/empleos/${jobId}`;
+    // URL HTTPS unificada para botón HTML y versión texto plano
+    const actionUrl = this.buildAppLink(`/app/job/${jobId}`);
 
     const html = `
       <!DOCTYPE html>
@@ -373,7 +378,7 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
             </div>
             
             <!-- Primary Button -->
-            ${this.createEmailButton("Ver mi Publicación", appUrl, "#10b981")}
+            ${this.createEmailButton("Ver mi Publicación", actionUrl, "#10b981")}
             
             <!-- Next Steps -->
             <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin: 30px 0; border-radius: 4px;">
@@ -421,7 +426,7 @@ Nos complace informarte que tu publicación de empleo "${jobTitle}" ha sido revi
 Los postulantes ahora pueden ver y aplicar a tu oferta de trabajo. Tu publicación está visible en la plataforma y comenzará a recibir aplicaciones.
 
 Ver tu publicación:
-${webUrl}
+${actionUrl}
 
 Próximos pasos:
 - Revisa las aplicaciones que recibas
@@ -443,7 +448,7 @@ Este correo fue enviado automáticamente por TrabajoYa.`;
 
     await this.provider.send({
       to: email,
-      subject: `✅ Tu publicación "${jobTitle}" ha sido aprobada`,
+      subject: `Tu publicación "${jobTitle}" ha sido aprobada`,
       html,
       text,
       from: process.env.MAIL_FROM,
@@ -455,9 +460,9 @@ Este correo fue enviado automáticamente por TrabajoYa.`;
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "Importance": "normal",
         "MIME-Version": "1.0",
         // Removido X-Priority ya que puede ser visto como spam
+        // Removido Importance para mejorar deliverability
         // El proveedor de email maneja Content-Type automáticamente
       },
     });
