@@ -692,7 +692,8 @@ model JobPostEntitlement {
   user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([jobPostId])
-  @@unique([transactionId]) // Prevenir replay attacks
+  // NOTA: transactionId NO es único porque la misma transacción puede usarse para múltiples publicaciones
+  // La verificación de replay attack se hace manualmente verificando transactionId + jobPostId
   @@index([userId])
   @@index([jobPostId])
   @@index([planKey])

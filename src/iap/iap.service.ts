@@ -92,11 +92,48 @@ export class IapService {
     });
 
     try {
-      // Verificar que el transactionId no haya sido usado (anti-replay)
-      // PERO: Si existe pero el entitlement está en un estado inválido o no tiene job asociado,
-      // permitir reprocesarlo
-      const existing = await this.prisma.jobPostEntitlement.findUnique({
-        where: { transactionId: dto.transactionId },
+      // Obtener el jobPostId primero para verificar si la transacción ya fue usada para ESTA publicación
+      let jobPostId: string;
+      if (dto.jobPostDraftId) {
+        console.log('[IAP] Verificando draft de aviso:', dto.jobPostDraftId);
+        // Verificar que el draft existe y pertenece al usuario
+        const draft = await this.prisma.job.findFirst({
+          where: {
+            id: dto.jobPostDraftId,
+            empresa: {
+              userId,
+            },
+          },
+        });
+
+        if (!draft) {
+          console.error('[IAP] Draft no encontrado o no pertenece al usuario:', {
+            jobPostDraftId: dto.jobPostDraftId,
+            userId,
+          });
+          throw new NotFoundException('Draft de aviso no encontrado');
+        }
+
+        jobPostId = draft.id;
+        console.log('[IAP] Draft verificado:', jobPostId);
+      } else {
+        // NUEVO FLUJO: No se permite comprar un plan sin una publicación asociada
+        // El usuario debe crear primero la publicación y luego comprar el plan
+        console.error('[IAP] ❌ Intento de compra sin jobPostDraftId');
+        throw new BadRequestException(
+          'No se puede comprar un plan sin una publicación asociada. ' +
+          'Por favor, crea primero una publicación y luego selecciona un plan.'
+        );
+      }
+
+      // Verificar que el transactionId no haya sido usado para ESTA publicación específica (anti-replay)
+      // PERO: Permitir que la misma transacción se use para DIFERENTES publicaciones
+      // (esto es necesario porque los productos no consumibles en iOS devuelven la misma transacción)
+      const existingForThisJob = await this.prisma.jobPostEntitlement.findFirst({
+        where: {
+          transactionId: dto.transactionId,
+          jobPostId: jobPostId,
+        },
         include: {
           job: {
             select: { id: true },
@@ -104,33 +141,51 @@ export class IapService {
         },
       });
 
-      if (existing) {
+      if (existingForThisJob) {
         // Verificar si el entitlement es válido (tiene un job válido)
-        const jobExists = existing.job && existing.job.id;
+        const jobExists = existingForThisJob.job && existingForThisJob.job.id;
         
         if (jobExists) {
-          console.warn('[IAP] Transacción duplicada detectada con entitlement válido:', {
+          console.warn('[IAP] Transacción duplicada detectada para esta publicación:', {
             transactionId: dto.transactionId,
-            entitlementId: existing.id,
-            jobId: existing.jobPostId,
+            entitlementId: existingForThisJob.id,
+            jobId: existingForThisJob.jobPostId,
           });
           throw new BadRequestException(
-            'Esta transacción ya ha sido procesada (replay attack prevenido)',
+            'Esta transacción ya ha sido procesada para esta publicación (replay attack prevenido)',
           );
         } else {
           // El entitlement existe pero el job no existe (probablemente fue eliminado)
           // Eliminar el entitlement inválido y permitir reprocesar
           console.warn('[IAP] Transacción encontrada pero con job inválido, eliminando entitlement y reprocesando:', {
             transactionId: dto.transactionId,
-            entitlementId: existing.id,
-            jobId: existing.jobPostId,
+            entitlementId: existingForThisJob.id,
+            jobId: existingForThisJob.jobPostId,
           });
           
           await this.prisma.jobPostEntitlement.delete({
-            where: { id: existing.id },
+            where: { id: existingForThisJob.id },
           });
           
           console.log('[IAP] Entitlement inválido eliminado, continuando con el procesamiento...');
+        }
+      } else {
+        // La transacción no fue usada para esta publicación
+        // Verificar si fue usada para otra publicación (esto es válido y permitido)
+        const existingForOtherJob = await this.prisma.jobPostEntitlement.findFirst({
+          where: {
+            transactionId: dto.transactionId,
+            jobPostId: { not: jobPostId },
+          },
+        });
+
+        if (existingForOtherJob) {
+          console.log('[IAP] Transacción ya usada para otra publicación, pero permitida para esta nueva publicación:', {
+            transactionId: dto.transactionId,
+            previousJobId: existingForOtherJob.jobPostId,
+            newJobId: jobPostId,
+          });
+          // Esto es válido: la misma transacción puede usarse para múltiples publicaciones
         }
       }
 
@@ -172,39 +227,7 @@ export class IapService {
       const expiresAt = new Date(publishedAt);
       expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
 
-      // Si hay jobPostDraftId, verificar que existe y pertenece al usuario
-      let jobPostId: string;
-      if (dto.jobPostDraftId) {
-        console.log('[IAP] Verificando draft de aviso:', dto.jobPostDraftId);
-        // Verificar que el draft existe y pertenece al usuario
-        const draft = await this.prisma.job.findFirst({
-          where: {
-            id: dto.jobPostDraftId,
-            empresa: {
-              userId,
-            },
-          },
-        });
-
-        if (!draft) {
-          console.error('[IAP] Draft no encontrado o no pertenece al usuario:', {
-            jobPostDraftId: dto.jobPostDraftId,
-            userId,
-          });
-          throw new NotFoundException('Draft de aviso no encontrado');
-        }
-
-        jobPostId = draft.id;
-        console.log('[IAP] Draft verificado:', jobPostId);
-      } else {
-        // NUEVO FLUJO: No se permite comprar un plan sin una publicación asociada
-        // El usuario debe crear primero la publicación y luego comprar el plan
-        console.error('[IAP] ❌ Intento de compra sin jobPostDraftId');
-        throw new BadRequestException(
-          'No se puede comprar un plan sin una publicación asociada. ' +
-          'Por favor, crea primero una publicación y luego selecciona un plan.'
-        );
-      }
+      // jobPostId ya fue obtenido arriba durante la verificación de replay attack
 
       // Verificar que el jobPostId existe antes de crear el entitlement
       console.log('[IAP] Verificando que jobPostId existe antes de crear entitlement:', jobPostId);
@@ -310,9 +333,43 @@ export class IapService {
     userId: string,
     dto: VerifyGoogleDto,
   ): Promise<{ ok: boolean; entitlement: any; expiresAt: Date }> {
-    // Verificar que el purchaseToken no haya sido usado
-    const existing = await this.prisma.jobPostEntitlement.findFirst({
+    // Obtener el jobPostId primero para verificar si el purchaseToken ya fue usada para ESTA publicación
+    let jobPostId: string;
+    if (dto.jobPostDraftId) {
+      console.log('[IAP] Verificando draft de aviso (Google):', dto.jobPostDraftId);
+      const draft = await this.prisma.job.findFirst({
+        where: {
+          id: dto.jobPostDraftId,
+          empresa: {
+            userId,
+          },
+        },
+      });
+
+      if (!draft) {
+        console.error('[IAP] Draft no encontrado o no pertenece al usuario (Google):', {
+          jobPostDraftId: dto.jobPostDraftId,
+          userId,
+        });
+        throw new NotFoundException('Draft de aviso no encontrado');
+      }
+
+      jobPostId = draft.id;
+      console.log('[IAP] Draft verificado (Google):', jobPostId);
+    } else {
+      // NUEVO FLUJO: No se permite comprar un plan sin una publicación asociada
+      console.error('[IAP] ❌ Intento de compra sin jobPostDraftId (Google)');
+      throw new BadRequestException(
+        'No se puede comprar un plan sin una publicación asociada. ' +
+        'Por favor, crea primero una publicación y luego selecciona un plan.'
+      );
+    }
+
+    // Verificar que el purchaseToken no haya sido usado para ESTA publicación específica (anti-replay)
+    // PERO: Permitir que el mismo purchaseToken se use para DIFERENTES publicaciones
+    const existingForThisJob = await this.prisma.jobPostEntitlement.findFirst({
       where: {
+        jobPostId: jobPostId,
         rawPayload: {
           path: ['purchaseToken'],
           equals: dto.purchaseToken,
@@ -320,10 +377,36 @@ export class IapService {
       },
     });
 
-    if (existing) {
+    if (existingForThisJob) {
+      console.warn('[IAP] Purchase token duplicado detectado para esta publicación (Google):', {
+        purchaseToken: dto.purchaseToken,
+        entitlementId: existingForThisJob.id,
+        jobId: existingForThisJob.jobPostId,
+      });
       throw new BadRequestException(
-        'Este purchase token ya ha sido procesado (replay attack prevenido)',
+        'Este purchase token ya ha sido procesado para esta publicación (replay attack prevenido)',
       );
+    } else {
+      // El purchaseToken no fue usado para esta publicación
+      // Verificar si fue usado para otra publicación (esto es válido y permitido)
+      const existingForOtherJob = await this.prisma.jobPostEntitlement.findFirst({
+        where: {
+          jobPostId: { not: jobPostId },
+          rawPayload: {
+            path: ['purchaseToken'],
+            equals: dto.purchaseToken,
+          },
+        },
+      });
+
+      if (existingForOtherJob) {
+        console.log('[IAP] Purchase token ya usado para otra publicación, pero permitido para esta nueva publicación (Google):', {
+          purchaseToken: dto.purchaseToken,
+          previousJobId: existingForOtherJob.jobPostId,
+          newJobId: jobPostId,
+        });
+        // Esto es válido: el mismo purchaseToken puede usarse para múltiples publicaciones
+      }
     }
 
     // Obtener planKey del productId
@@ -351,30 +434,28 @@ export class IapService {
     const expiresAt = new Date(publishedAt);
     expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
 
-    // Si hay jobPostDraftId, crear el entitlement asociado
-    let jobPostId: string | null = null;
-    if (dto.jobPostDraftId) {
-      const draft = await this.prisma.job.findFirst({
-        where: {
-          id: dto.jobPostDraftId,
-          empresa: {
-            userId,
-          },
-        },
-      });
+    // Verificar que el jobPostId existe antes de crear el entitlement
+    console.log('[IAP] Verificando que jobPostId existe antes de crear entitlement (Google):', jobPostId);
+    const verifyJobExists = await this.prisma.job.findUnique({
+      where: { id: jobPostId },
+      select: { id: true },
+    });
 
-      if (!draft) {
-        throw new NotFoundException('Draft de aviso no encontrado');
-      }
-
-      jobPostId = draft.id;
+    if (!verifyJobExists) {
+      console.error('[IAP] ❌ ERROR CRÍTICO: El jobPostId no existe en la base de datos (Google):', jobPostId);
+      throw new InternalServerErrorException(
+        `El job con id ${jobPostId} no existe en la base de datos. No se puede crear el entitlement.`
+      );
     }
 
+    console.log('[IAP] ✅ Job verificado, existe en la base de datos (Google):', verifyJobExists.id);
+
     // Crear entitlement
+    console.log('[IAP] Creando entitlement con jobPostId (Google):', jobPostId);
     const entitlement = await this.prisma.jobPostEntitlement.create({
       data: {
         userId,
-        jobPostId: jobPostId || '',
+        jobPostId: jobPostId, // Ahora siempre tiene un valor válido
         source: 'GOOGLE_PLAY',
         planKey,
         expiresAt,
