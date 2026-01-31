@@ -273,6 +273,24 @@ export class IapService {
         });
 
         console.log('[IAP] ✅ Entitlement creado exitosamente:', entitlement.id);
+        
+        // Actualizar el estado del job después de crear el entitlement exitosamente
+        try {
+          await this.prisma.job.update({
+            where: { id: jobPostId },
+            data: {
+              moderationStatus: 'APPROVED',
+              paymentStatus: 'PAID',
+              paidAt: new Date(),
+              isPaid: true,
+              status: 'active',
+            },
+          });
+          console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED');
+        } catch (updateError: any) {
+          console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
+          // No lanzar error, el entitlement ya fue creado
+        }
       } catch (createError: any) {
         console.error('[IAP] ❌ Error al crear entitlement:', {
           message: createError?.message,
@@ -281,7 +299,122 @@ export class IapService {
           jobPostId,
           userId,
           planKey,
+          transactionId: dto.transactionId,
         });
+        
+        // Si el error es de unique constraint en transactionId, verificar si realmente existe
+        if (
+          createError?.code === 'P2002' && 
+          createError?.meta?.target?.includes('transactionId')
+        ) {
+          console.error('[IAP] ⚠️ Error de constraint único en transactionId detectado');
+          console.error('[IAP] Verificando si el constraint realmente existe en la BD...');
+          
+          try {
+            // Verificar si existe un entitlement con esta transacción para este job específico
+            const existingForThisJob = await this.prisma.jobPostEntitlement.findFirst({
+              where: {
+                transactionId: dto.transactionId,
+                jobPostId: jobPostId,
+              },
+            });
+            
+            if (existingForThisJob) {
+              console.error('[IAP] ⚠️ Entitlement existente encontrado para esta transacción y este job:', existingForThisJob.id);
+              throw new BadRequestException(
+                'Esta transacción ya ha sido procesada para esta publicación (replay attack prevenido)',
+              );
+            }
+            
+            // Verificar si existe para otro job (esto es válido)
+            const existingForOtherJob = await this.prisma.jobPostEntitlement.findFirst({
+              where: {
+                transactionId: dto.transactionId,
+                jobPostId: { not: jobPostId },
+              },
+            });
+            
+            if (existingForOtherJob) {
+              console.log('[IAP] ✅ Transacción ya usada para otro job, pero esto es válido.');
+              console.error('[IAP] ⚠️ ERROR: El constraint único de transactionId todavía existe en la base de datos.');
+              console.error('[IAP] ⚠️ Intentando eliminar el constraint automáticamente...');
+              
+              try {
+                // Intentar eliminar el constraint automáticamente
+                await this.prisma.$executeRawUnsafe(`
+                  ALTER TABLE "JobPostEntitlement" 
+                  DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key";
+                `);
+                console.log('[IAP] ✅ Constraint eliminado exitosamente, reintentando crear entitlement...');
+                
+                // Reintentar crear el entitlement
+                entitlement = await this.prisma.jobPostEntitlement.create({
+                  data: {
+                    userId,
+                    jobPostId: jobPostId,
+                    source: 'APPLE_IAP',
+                    planKey,
+                    expiresAt,
+                    status: 'ACTIVE',
+                    maxEdits: plan.allowedModifications,
+                    editsUsed: 0,
+                    allowCategoryChange: plan.canModifyCategory,
+                    maxCategoryChanges: plan.categoryModifications || 0,
+                    categoryChangesUsed: 0,
+                    transactionId: dto.transactionId,
+                    originalTransactionId: dto.transactionId,
+                    rawPayload: {
+                      productId: dto.productId,
+                      signedTransactionInfo: dto.signedTransactionInfo,
+                      signedRenewalInfo: dto.signedRenewalInfo,
+                    },
+                  },
+                });
+                
+                console.log('[IAP] ✅ Entitlement creado exitosamente después de eliminar constraint:', entitlement.id);
+                
+                // Actualizar el estado del job
+                try {
+                  await this.prisma.job.update({
+                    where: { id: jobPostId },
+                    data: {
+                      moderationStatus: 'APPROVED',
+                      paymentStatus: 'PAID',
+                      paidAt: new Date(),
+                      isPaid: true,
+                      status: 'active',
+                    },
+                  });
+                  console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED');
+                } catch (updateError: any) {
+                  console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
+                }
+                
+                // Salir del catch y retornar el entitlement
+                return {
+                  ok: true,
+                  entitlement,
+                  expiresAt,
+                };
+              } catch (dropError: any) {
+                console.error('[IAP] ❌ Error al eliminar constraint automáticamente:', dropError?.message);
+                throw new InternalServerErrorException(
+                  `Error al crear entitlement: El constraint único de transactionId todavía existe en la base de datos. ` +
+                  `Por favor, ejecuta la migración para eliminarlo: ` +
+                  `ALTER TABLE "JobPostEntitlement" DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key";`
+                );
+              }
+            }
+          } catch (checkError: any) {
+            console.error('[IAP] Error al verificar entitlements existentes:', checkError);
+          }
+          
+          throw new InternalServerErrorException(
+            `Error al crear entitlement: El constraint único de transactionId todavía existe en la base de datos. ` +
+            `Por favor, ejecuta la migración para eliminarlo: ` +
+            `ALTER TABLE "JobPostEntitlement" DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key";`
+          );
+        }
         
         // Si el error es de foreign key, dar un mensaje más específico
         if (createError?.code === 'P2003' || createError?.message?.includes('Foreign key constraint')) {
@@ -474,6 +607,26 @@ export class IapService {
         },
       },
     });
+
+    console.log('[IAP] ✅ Entitlement creado exitosamente (Google):', entitlement.id);
+
+    // Actualizar el estado del job después de crear el entitlement exitosamente
+    try {
+      await this.prisma.job.update({
+        where: { id: jobPostId },
+        data: {
+          moderationStatus: 'APPROVED',
+          paymentStatus: 'PAID',
+          paidAt: new Date(),
+          isPaid: true,
+          status: 'active',
+        },
+      });
+      console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (Google)');
+    } catch (updateError: any) {
+      console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
+      // No lanzar error, el entitlement ya fue creado
+    }
 
     return {
       ok: true,
