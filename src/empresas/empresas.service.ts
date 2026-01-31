@@ -432,6 +432,52 @@ export class EmpresasService {
       throw new NotFoundException("Mensaje de error");
     }
 
+    // Verificar si hay cambios reales (excluyendo campos que no cuentan como modificación)
+    const hasChanges =
+      (dto.title && dto.title !== job.title) ||
+      (dto.description && dto.description !== job.description) ||
+      (dto.requirements && dto.requirements !== job.requirements) ||
+      (dto.benefits !== undefined && dto.benefits !== job.benefits) ||
+      (dto.location !== undefined && dto.location !== job.location) ||
+      (dto.city !== undefined && dto.city !== job.city) ||
+      (dto.state !== undefined && dto.state !== job.state) ||
+      (dto.jobType !== undefined && dto.jobType !== job.jobType) ||
+      (dto.workMode !== undefined && dto.workMode !== job.workMode) ||
+      (dto.minSalary !== undefined && dto.minSalary !== job.minSalary) ||
+      (dto.maxSalary !== undefined && dto.maxSalary !== job.maxSalary);
+
+    // Si hay cambios, incrementar el contador de modificaciones
+    if (hasChanges) {
+      // Buscar el entitlement activo para este job
+      const activeEntitlement = await this.prisma.jobPostEntitlement.findFirst({
+        where: {
+          jobPostId: jobId,
+          status: "ACTIVE",
+        },
+      });
+
+      if (activeEntitlement) {
+        // Solo verificar límite si maxEdits > 0 (si es 0, son modificaciones ilimitadas)
+        if (activeEntitlement.maxEdits > 0) {
+          const editsUsed = activeEntitlement.editsUsed || 0;
+          if (editsUsed >= activeEntitlement.maxEdits) {
+            throw new BadRequestException(
+              "Has alcanzado el límite de modificaciones permitidas para este empleo."
+            );
+          }
+
+          // Incrementar el contador de modificaciones solo si hay límite
+          await this.prisma.jobPostEntitlement.update({
+            where: { id: activeEntitlement.id },
+            data: {
+              editsUsed: editsUsed + 1,
+            },
+          });
+        }
+        // Si maxEdits es 0, no incrementamos el contador (modificaciones ilimitadas)
+      }
+    }
+
     // Si se actualizan campos de contenido, aplicar moderación automática nuevamente
     const contentChanged =
       (dto.title && dto.title !== job.title) ||
@@ -466,9 +512,17 @@ export class EmpresasService {
       }
     }
 
+    // Remover campos que no existen en el modelo Prisma
+    const { ciudad, provincia, ...cleanDto } = dto;
+
     return this.prisma.job.update({
       where: { id: jobId },
-      data: dto,
+      data: cleanDto,
+      include: {
+        entitlements: {
+          where: { status: "ACTIVE" },
+        },
+      },
     });
   }
 
