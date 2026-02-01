@@ -12,15 +12,41 @@ export class MailService {
   /**
    * Construye una URL HTTPS para la aplicación web
    * Centraliza la generación de URLs usando APP_WEB_URL como base
+   * Prioriza APP_WEB_URL, luego FRONTEND_URL, y finalmente usa un fallback seguro
    */
   private buildAppLink(path: string, query?: Record<string, string>): string {
-    const baseUrl = process.env.APP_WEB_URL ?? "http://localhost:3000";
-    const url = new URL(path, baseUrl);
+    // Priorizar APP_WEB_URL, luego FRONTEND_URL, y finalmente usar un fallback de producción
+    let baseUrl = process.env.APP_WEB_URL || process.env.FRONTEND_URL;
     
+    // Si no hay URL configurada, usar fallback según el entorno
+    if (!baseUrl) {
+      if (process.env.NODE_ENV === 'production') {
+        // En producción, usar el dominio principal
+        baseUrl = 'https://trabajo-ya.com';
+      } else {
+        // En desarrollo, usar localhost
+        baseUrl = 'http://localhost:3000';
+      }
+    }
+    
+    // Asegurar que la URL base termine con / para evitar problemas con new URL()
+    if (!baseUrl.endsWith('/')) {
+      baseUrl += '/';
+    }
+    
+    // Construir la URL completa
+    const url = new URL(path.startsWith('/') ? path.substring(1) : path, baseUrl);
+    
+    // Agregar parámetros de query si existen
     if (query) {
       Object.entries(query).forEach(([key, value]) => {
         url.searchParams.append(key, value);
       });
+    }
+    
+    // En producción, forzar HTTPS
+    if (process.env.NODE_ENV === 'production' && url.protocol === 'http:') {
+      url.protocol = 'https:';
     }
     
     return url.toString();
@@ -177,16 +203,22 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
     // Generar un Message-ID único y bien formateado (RFC 5322)
     const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
-    const unsubscribeUrl = process.env.APP_WEB_URL 
-      ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
+    const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
+    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe' 
+      ? baseUnsubscribeUrl
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+
+    // Formatear el From con nombre si es posible
+    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
+    const fromName = 'TrabajoYa';
+    const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
 
     await this.provider.send({
       to: email,
       subject: "Verifica tu cuenta de TrabajoYa",
       html,
       text,
-      from: process.env.MAIL_FROM,
+      from: fromFormatted,
       headers: {
         // Headers para mejorar deliverability y evitar spam
         "Message-ID": messageId,
@@ -196,9 +228,9 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
         "MIME-Version": "1.0",
+        "Content-Type": "text/html; charset=UTF-8",
         // Removido X-Priority ya que puede ser visto como spam
         // Removido Importance para mejorar deliverability
-        // El proveedor de email maneja Content-Type automáticamente
       },
     });
 
@@ -308,16 +340,22 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
     // Generar un Message-ID único y bien formateado (RFC 5322)
     const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
-    const unsubscribeUrl = process.env.APP_WEB_URL 
-      ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
+    const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
+    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe' 
+      ? baseUnsubscribeUrl
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+
+    // Formatear el From con nombre si es posible
+    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
+    const fromName = 'TrabajoYa';
+    const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
 
     await this.provider.send({
       to: email,
       subject: "Restablecer contraseña de TrabajoYa",
       html,
       text,
-      from: process.env.MAIL_FROM,
+      from: fromFormatted,
       headers: {
         // Headers para mejorar deliverability y evitar spam
         "Message-ID": messageId,
@@ -327,9 +365,9 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
         "MIME-Version": "1.0",
+        "Content-Type": "text/html; charset=UTF-8",
         // Removido X-Priority ya que puede ser visto como spam
         // Removido Importance para mejorar deliverability
-        // El proveedor de email maneja Content-Type automáticamente
       },
     });
   }
@@ -442,16 +480,22 @@ Este correo fue enviado automáticamente por TrabajoYa.`;
     // Generar un Message-ID único y bien formateado (RFC 5322)
     const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
-    const unsubscribeUrl = process.env.APP_WEB_URL 
-      ? `${process.env.APP_WEB_URL}/unsubscribe?email=${encodeURIComponent(email)}`
+    const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
+    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe' 
+      ? baseUnsubscribeUrl
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+
+    // Formatear el From con nombre si es posible
+    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
+    const fromName = 'TrabajoYa';
+    const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
 
     await this.provider.send({
       to: email,
       subject: `Tu publicación "${jobTitle}" ha sido aprobada`,
       html,
       text,
-      from: process.env.MAIL_FROM,
+      from: fromFormatted,
       headers: {
         // Headers para mejorar deliverability y evitar spam
         "Message-ID": messageId,
@@ -461,9 +505,9 @@ Este correo fue enviado automáticamente por TrabajoYa.`;
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
         "MIME-Version": "1.0",
+        "Content-Type": "text/html; charset=UTF-8",
         // Removido X-Priority ya que puede ser visto como spam
         // Removido Importance para mejorar deliverability
-        // El proveedor de email maneja Content-Type automáticamente
       },
     });
   }
