@@ -10,6 +10,7 @@ export interface PresignUploadDto {
   type: MediaType;
   mimeType: string;
   fileSize?: number;
+  fileName?: string; // Nombre original del archivo
 }
 
 export interface CompleteUploadDto {
@@ -75,7 +76,9 @@ export class UploadService {
     const key = this.gcsUploadService.generateKey(
       userId,
       dto.type,
-      fileExtension
+      fileExtension,
+      undefined, // customUuid
+      dto.fileName // nombre original del archivo
     );
 
     // Generar presigned URL

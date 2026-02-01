@@ -71,23 +71,35 @@ export class EmpresasService {
    * Buscar empresas (endpoint público)
    */
   async search(query: any) {
-    const where: any = {};
+    const where: any = {
+      AND: [],
+    };
 
-    // Búsqueda por nombre de empresa
+    // Búsqueda por nombre de empresa, industria o sector
     if (query.q) {
-      where.companyName = {
-        contains: query.q,
-        mode: "insensitive" as any,
-      };
+      where.AND.push({
+        OR: [
+          { companyName: { contains: query.q, mode: "insensitive" as any } },
+          { industria: { contains: query.q, mode: "insensitive" as any } },
+          { sector: { contains: query.q, mode: "insensitive" as any } },
+        ],
+      });
     }
 
     // Búsqueda por ubicación
     if (query.location) {
-      where.OR = [
-        { ciudad: { contains: query.location, mode: "insensitive" as any } },
-        { provincia: { contains: query.location, mode: "insensitive" as any } },
-        { pais: { contains: query.location, mode: "insensitive" as any } },
-      ];
+      where.AND.push({
+        OR: [
+          { ciudad: { contains: query.location, mode: "insensitive" as any } },
+          { provincia: { contains: query.location, mode: "insensitive" as any } },
+          { pais: { contains: query.location, mode: "insensitive" as any } },
+        ],
+      });
+    }
+
+    // Si no hay condiciones, usar objeto vacío para obtener todas las empresas
+    if (where.AND.length === 0) {
+      delete where.AND;
     }
 
     const page = Number(query.page || 1);

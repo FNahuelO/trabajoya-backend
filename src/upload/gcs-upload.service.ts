@@ -226,9 +226,9 @@ export class GCSUploadService {
     userId: string,
     type: "cv" | "avatar" | "video" | "logo",
     fileExtension: string,
-    customUuid?: string
+    customUuid?: string,
+    originalFileName?: string
   ): string {
-    const uuid = customUuid || this.generateUUID();
     const typePrefix =
       type === "cv"
         ? "cvs"
@@ -237,7 +237,50 @@ export class GCSUploadService {
         : type === "video"
         ? "videos"
         : "logos";
-    return `${typePrefix}/${userId}/${uuid}${fileExtension}`;
+    
+    // Si hay un nombre de archivo original, usarlo (sanitizado)
+    // Si no, usar UUID como antes
+    let fileName: string;
+    if (originalFileName) {
+      // Sanitizar el nombre del archivo: eliminar caracteres especiales y espacios
+      // Mantener solo letras, números, guiones y puntos
+      fileName = this.sanitizeFileName(originalFileName, fileExtension);
+    } else {
+      const uuid = customUuid || this.generateUUID();
+      fileName = `${uuid}${fileExtension}`;
+    }
+    
+    return `${typePrefix}/${userId}/${fileName}`;
+  }
+
+  /**
+   * Sanitiza el nombre del archivo para que sea seguro para usar en URLs y storage
+   */
+  private sanitizeFileName(fileName: string, fileExtension: string): string {
+    // Obtener el nombre sin la extensión
+    const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+    
+    // Reemplazar espacios con guiones y eliminar caracteres especiales
+    // Mantener solo letras, números, guiones, guiones bajos y puntos
+    let sanitized = nameWithoutExt
+      .normalize("NFD") // Normalizar caracteres unicode
+      .replace(/[\u0300-\u036f]/g, "") // Eliminar diacríticos
+      .replace(/[^a-zA-Z0-9._-]/g, "-") // Reemplazar caracteres especiales con guiones
+      .replace(/-+/g, "-") // Reemplazar múltiples guiones con uno solo
+      .replace(/^-|-$/g, ""); // Eliminar guiones al inicio y final
+    
+    // Si después de sanitizar está vacío, usar un UUID
+    if (!sanitized || sanitized.length === 0) {
+      sanitized = this.generateUUID();
+    }
+    
+    // Limitar la longitud del nombre (máximo 200 caracteres)
+    if (sanitized.length > 200) {
+      sanitized = sanitized.substring(0, 200);
+    }
+    
+    // Asegurar que la extensión sea la correcta
+    return `${sanitized}${fileExtension}`;
   }
 
   /**
