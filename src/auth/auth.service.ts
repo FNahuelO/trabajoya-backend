@@ -1239,6 +1239,16 @@ export class AuthService {
       };
     }
 
+    // Verificar si el usuario está verificado antes de permitir recuperación de contraseña
+    if (!user.isVerified) {
+      throw new UnauthorizedException(
+        await this.getTranslation(
+          "auth.emailNotVerifiedForPasswordReset",
+          "Por favor verifica tu email antes de recuperar tu contraseña"
+        )
+      );
+    }
+
     const resetToken = crypto.randomUUID();
     const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hora
 
