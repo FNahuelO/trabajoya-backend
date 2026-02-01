@@ -48,6 +48,9 @@ export class JobsService {
             { requirements: { contains: keyword, mode: "insensitive" } },
             // También buscar en el nombre de la empresa
             { empresa: { companyName: { contains: keyword, mode: "insensitive" } } },
+            // Buscar en industria y sector de la empresa
+            { empresa: { industria: { contains: keyword, mode: "insensitive" } } },
+            { empresa: { sector: { contains: keyword, mode: "insensitive" } } },
           ],
         }));
 
@@ -61,6 +64,9 @@ export class JobsService {
               { description: { contains: keywords[0], mode: "insensitive" } },
               { requirements: { contains: keywords[0], mode: "insensitive" } },
               { empresa: { companyName: { contains: keywords[0], mode: "insensitive" } } },
+              // Buscar en industria y sector de la empresa
+              { empresa: { industria: { contains: keywords[0], mode: "insensitive" } } },
+              { empresa: { sector: { contains: keywords[0], mode: "insensitive" } } },
             ],
           });
         } else {
@@ -146,6 +152,9 @@ export class JobsService {
                   { description: { contains: keyword, mode: "insensitive" } },
                   { requirements: { contains: keyword, mode: "insensitive" } },
                   { empresa: { companyName: { contains: keyword, mode: "insensitive" } } },
+                  // Buscar en industria y sector de la empresa
+                  { empresa: { industria: { contains: keyword, mode: "insensitive" } } },
+                  { empresa: { sector: { contains: keyword, mode: "insensitive" } } },
                 ],
               })),
             },

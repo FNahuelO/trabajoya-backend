@@ -119,6 +119,18 @@ export class EmpresasService {
       this.prisma.empresaProfile.count({ where }),
     ]);
 
+    // Log para verificar qué devuelve Prisma directamente
+    console.log(`[EmpresasService] Empresas obtenidas de Prisma: ${empresas.length}`);
+    if (empresas.length > 0) {
+      console.log(`[EmpresasService] Primera empresa (antes de procesar logos):`, {
+        id: empresas[0].id,
+        companyName: empresas[0].companyName,
+        logo: empresas[0].logo,
+        logoType: typeof empresas[0].logo,
+        hasLogo: !!empresas[0].logo,
+      });
+    }
+
     // Transformar logos a URLs
     const empresasWithUrls = await Promise.all(
       empresas.map(async (empresa) => {
