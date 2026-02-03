@@ -875,14 +875,18 @@ export class AuthService {
         },
       });
 
-      // Si no existe el usuario, lanzar error
+      // Si no existe el usuario, registrarlo automáticamente como POSTULANTE
       if (!user) {
-        throw new UnauthorizedException(
-          await this.getTranslation(
-            "auth.userNotFound",
-            "Usuario no encontrado. Por favor regístrate primero."
-          )
+        console.log(
+          `[Apple Auth] Usuario ${email || appleUserId} no encontrado, registrando automáticamente...`
         );
+        return this.registerApple({
+          identityToken: dto.identityToken,
+          authorizationCode: dto.authorizationCode,
+          email: dto.email,
+          fullName: dto.fullName,
+          appleUserId: dto.appleUserId,
+        });
       }
 
       // Verificar que el usuario tenga appleId asociado o actualizarlo
