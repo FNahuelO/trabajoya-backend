@@ -611,28 +611,73 @@ export class EmpresasService {
       },
     });
 
-    // Transformar avatares de postulantes a URLs completas
+    // Transformar URLs de postulantes (avatar, CV, video) a URLs completas/firmadas
     const applicationsWithUrls = await Promise.all(
       applications.map(async (application) => {
-        if (application.postulante?.profilePicture) {
-          const profilePicture = application.postulante.profilePicture;
-          let avatarUrl = profilePicture;
-          
-          if (!profilePicture.startsWith("http")) {
-            try {
-              if (this.gcpCdnService.isCdnConfigured()) {
-                avatarUrl = await this.gcpCdnService.getCdnUrl(profilePicture);
-              } else {
-                avatarUrl = await this.gcsUploadService.getObjectUrl(profilePicture, 3600);
+        if (application.postulante) {
+          // Transformar avatar/profilePicture
+          if (application.postulante.profilePicture) {
+            const profilePicture = application.postulante.profilePicture;
+            let avatarUrl = profilePicture;
+            
+            if (!profilePicture.startsWith("http")) {
+              try {
+                if (this.gcpCdnService.isCdnConfigured()) {
+                  avatarUrl = await this.gcpCdnService.getCdnUrl(profilePicture);
+                } else {
+                  avatarUrl = await this.gcsUploadService.getObjectUrl(profilePicture, 3600);
+                }
+              } catch (error) {
+                console.error("Error generando URL para avatar de postulante:", error);
               }
-            } catch (error) {
-              console.error("Error generando URL para avatar de postulante:", error);
             }
+            
+            // Actualizar tanto profilePicture como avatar para compatibilidad
+            application.postulante.profilePicture = avatarUrl;
+            (application.postulante as any).avatar = avatarUrl;
           }
-          
-          // Actualizar tanto profilePicture como avatar para compatibilidad
-          application.postulante.profilePicture = avatarUrl;
-          (application.postulante as any).avatar = avatarUrl;
+
+          // Transformar CV URL
+          if (application.postulante.cvUrl) {
+            const cvUrl = application.postulante.cvUrl;
+            let cvSignedUrl = cvUrl;
+            
+            if (!cvUrl.startsWith("http")) {
+              try {
+                if (this.gcpCdnService.isCdnConfigured()) {
+                  cvSignedUrl = await this.gcpCdnService.getCdnUrl(cvUrl);
+                } else {
+                  cvSignedUrl = await this.gcsUploadService.getObjectUrl(cvUrl, 3600);
+                }
+              } catch (error) {
+                console.error("Error generando URL para CV de postulante:", error);
+              }
+            }
+            
+            // Actualizar cvUrl y cv para compatibilidad
+            application.postulante.cvUrl = cvSignedUrl;
+            (application.postulante as any).cv = cvSignedUrl;
+          }
+
+          // Transformar Video URL
+          if (application.postulante.videoUrl) {
+            const videoUrl = application.postulante.videoUrl;
+            let videoSignedUrl = videoUrl;
+            
+            if (!videoUrl.startsWith("http")) {
+              try {
+                if (this.gcpCdnService.isCdnConfigured()) {
+                  videoSignedUrl = await this.gcpCdnService.getCdnUrl(videoUrl);
+                } else {
+                  videoSignedUrl = await this.gcsUploadService.getObjectUrl(videoUrl, 3600);
+                }
+              } catch (error) {
+                console.error("Error generando URL para video de postulante:", error);
+              }
+            }
+            
+            application.postulante.videoUrl = videoSignedUrl;
+          }
         }
         return application;
       })
