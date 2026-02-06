@@ -82,9 +82,15 @@ export class JobsService {
     if (q.location) {
       where.AND.push({
         OR: [
+          // Campos del Job
           { location: { contains: q.location, mode: "insensitive" } },
           { city: { contains: q.location, mode: "insensitive" } },
           { state: { contains: q.location, mode: "insensitive" } },
+          // Campos de la empresa relacionada
+          { empresa: { localidad: { contains: q.location, mode: "insensitive" } } },
+          { empresa: { ciudad: { contains: q.location, mode: "insensitive" } } },
+          { empresa: { provincia: { contains: q.location, mode: "insensitive" } } },
+          { empresa: { pais: { contains: q.location, mode: "insensitive" } } },
         ],
       });
     }
