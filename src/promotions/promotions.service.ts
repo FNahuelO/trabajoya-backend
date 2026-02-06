@@ -10,7 +10,7 @@ import { Prisma } from "@prisma/client";
 
 @Injectable()
 export class PromotionsService {
-  private readonly PROMO_KEY = "LAUNCH_TRIAL_4D";
+  private readonly DEFAULT_PROMO_KEY = "LAUNCH_TRIAL_4D";
 
   constructor(
     private prisma: PrismaService,
@@ -18,21 +18,43 @@ export class PromotionsService {
   ) {}
 
   /**
-   * Verifica si la ventana de promoción está abierta
+   * Obtiene la promoción activa desde la base de datos
    */
-  isLaunchTrialWindow(now?: Date): boolean {
+  async getActivePromotion(promoKey?: string) {
+    const code = promoKey || this.DEFAULT_PROMO_KEY;
+    return this.prisma.promotion.findFirst({
+      where: {
+        code,
+        isActive: true,
+      },
+    });
+  }
+
+  /**
+   * Verifica si la ventana de promoción está abierta
+   * Ahora usa las fechas de la tabla Promotion en lugar de variables de entorno
+   */
+  async isLaunchTrialWindow(now?: Date): Promise<boolean> {
     const currentTime = now || new Date();
+    
+    // Primero intentar obtener las fechas de la promoción en la BD
+    const promotion = await this.getActivePromotion();
+    
+    if (promotion && promotion.startAt && promotion.endAt) {
+      return currentTime >= promotion.startAt && currentTime <= promotion.endAt;
+    }
+
+    // Fallback a variables de entorno (retrocompatibilidad)
     const startAt = this.configService.get<string>("LAUNCH_TRIAL_START_AT");
     const endAt = this.configService.get<string>("LAUNCH_TRIAL_END_AT");
 
     if (!startAt || !endAt) {
-      return false; // Si no están configuradas, la ventana está cerrada
+      return false;
     }
 
     try {
       const start = new Date(startAt);
       const end = new Date(endAt);
-
       return currentTime >= start && currentTime <= end;
     } catch (error) {
       console.error("[PromotionsService] Error parsing dates:", error);
@@ -42,13 +64,27 @@ export class PromotionsService {
 
   /**
    * Obtiene el estado de la promoción para un usuario
+   * Ahora incluye los datos de la promoción desde la BD
    */
   async getLaunchTrialStatus(userId: string) {
-    const windowOpen = this.isLaunchTrialWindow();
+    const windowOpen = await this.isLaunchTrialWindow();
+    const promotion = await this.getActivePromotion();
+    
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { empresa: true },
     });
+
+    // Datos base de la promoción (desde BD o defaults)
+    const promotionData = promotion
+      ? {
+          code: promotion.code,
+          title: promotion.title,
+          description: promotion.description,
+          durationDays: promotion.durationDays,
+          metadata: promotion.metadata,
+        }
+      : null;
 
     if (!user || user.userType !== "EMPRESA") {
       return {
@@ -56,20 +92,23 @@ export class PromotionsService {
         alreadyUsed: false,
         windowOpen,
         reason: "Solo empresas pueden usar esta promoción",
+        promotion: promotionData,
       };
     }
 
-    // Buscar promoción existente
-    const promotion = await this.prisma.userPromotion.findUnique({
+    const promoKey = promotion?.code || this.DEFAULT_PROMO_KEY;
+
+    // Buscar promoción existente del usuario
+    const userPromotion = await this.prisma.userPromotion.findUnique({
       where: {
         userId_promoKey: {
           userId,
-          promoKey: this.PROMO_KEY,
+          promoKey,
         },
       },
     });
 
-    if (!promotion) {
+    if (!userPromotion) {
       return {
         eligible: windowOpen,
         alreadyUsed: false,
@@ -77,33 +116,37 @@ export class PromotionsService {
         reason: windowOpen
           ? undefined
           : "La ventana de promoción no está abierta",
+        promotion: promotionData,
       };
     }
 
-    if (promotion.status === "USED") {
+    if (userPromotion.status === "USED") {
       return {
         eligible: false,
         alreadyUsed: true,
         windowOpen,
         reason: "Ya has utilizado esta promoción",
+        promotion: promotionData,
       };
     }
 
-    if (promotion.status === "CLAIMED") {
+    if (userPromotion.status === "CLAIMED") {
       return {
         eligible: true,
         alreadyUsed: false,
         windowOpen,
         reason: undefined,
+        promotion: promotionData,
       };
     }
 
-    if (promotion.status === "EXPIRED") {
+    if (userPromotion.status === "EXPIRED") {
       return {
         eligible: false,
         alreadyUsed: false,
         windowOpen,
         reason: "La promoción ha expirado",
+        promotion: promotionData,
       };
     }
 
@@ -115,6 +158,7 @@ export class PromotionsService {
       reason: windowOpen
         ? undefined
         : "La ventana de promoción no está abierta",
+      promotion: promotionData,
     };
   }
 
@@ -125,12 +169,15 @@ export class PromotionsService {
     userId: string,
     metadata?: { ip?: string; userAgent?: string; companyId?: string }
   ) {
-    const windowOpen = this.isLaunchTrialWindow();
+    const windowOpen = await this.isLaunchTrialWindow();
     if (!windowOpen) {
       throw new BadRequestException(
         "La ventana de promoción no está abierta"
       );
     }
+
+    const activePromotion = await this.getActivePromotion();
+    const promoKey = activePromotion?.code || this.DEFAULT_PROMO_KEY;
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -148,7 +195,7 @@ export class PromotionsService {
       where: {
         userId_promoKey: {
           userId,
-          promoKey: this.PROMO_KEY,
+          promoKey,
         },
       },
     });
@@ -168,7 +215,7 @@ export class PromotionsService {
     // Crear o actualizar promoción
     const promotionData: Prisma.UserPromotionCreateInput = {
       user: { connect: { id: userId } },
-      promoKey: this.PROMO_KEY,
+      promoKey,
       status: "CLAIMED",
       claimedAt: new Date(),
       metadata: metadata || {},
@@ -202,11 +249,14 @@ export class PromotionsService {
    * Marca la promoción como usada al publicar un aviso
    */
   async useLaunchTrial(userId: string, jobPostId: string) {
+    const activePromotion = await this.getActivePromotion();
+    const promoKey = activePromotion?.code || this.DEFAULT_PROMO_KEY;
+
     const promotion = await this.prisma.userPromotion.findUnique({
       where: {
         userId_promoKey: {
           userId,
-          promoKey: this.PROMO_KEY,
+          promoKey,
         },
       },
     });
@@ -238,11 +288,14 @@ export class PromotionsService {
    * Obtiene la promoción reclamada de un usuario
    */
   async getClaimedPromotion(userId: string) {
+    const activePromotion = await this.getActivePromotion();
+    const promoKey = activePromotion?.code || this.DEFAULT_PROMO_KEY;
+
     return this.prisma.userPromotion.findUnique({
       where: {
         userId_promoKey: {
           userId,
-          promoKey: this.PROMO_KEY,
+          promoKey,
         },
       },
     });

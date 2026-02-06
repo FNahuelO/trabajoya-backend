@@ -643,7 +643,25 @@ model PushToken {
   @@index([isActive])
 }
 
-// Promociones de lanzamiento
+// Definición de promociones disponibles
+model Promotion {
+  id          String    @id @default(uuid())
+  code        String    @unique // e.g. 'LAUNCH_TRIAL_4D'
+  title       String    // Título a mostrar
+  description String    // Descripción de la promoción
+  durationDays Int      // Duración en días
+  isActive    Boolean   @default(true)
+  startAt     DateTime? // Fecha de inicio de la promoción
+  endAt       DateTime? // Fecha de fin de la promoción
+  metadata    Json?     // Datos adicionales (iconos, colores, etc.)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+}
+
+// Promociones reclamadas por usuarios
 model UserPromotion {
   id        String          @id @default(uuid())
   userId    String
