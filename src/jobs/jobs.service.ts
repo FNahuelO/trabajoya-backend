@@ -16,7 +16,7 @@ export class JobsService {
     private gcsUploadService: GCSUploadService
   ) {}
 
-  async search(q: any) {
+  async search(q: any) {    
     const where: any = {
       AND: [
         {
@@ -51,6 +51,14 @@ export class JobsService {
             // Buscar en industria y sector de la empresa
             { empresa: { industria: { contains: keyword, mode: "insensitive" } } },
             { empresa: { sector: { contains: keyword, mode: "insensitive" } } },
+            // Buscar en campos de ubicación del job
+            { location: { contains: keyword, mode: "insensitive" } },
+            { city: { contains: keyword, mode: "insensitive" } },
+            { state: { contains: keyword, mode: "insensitive" } },
+            // Buscar en campos de ubicación de la empresa
+            { empresa: { localidad: { contains: keyword, mode: "insensitive" } } },
+            { empresa: { ciudad: { contains: keyword, mode: "insensitive" } } },
+            { empresa: { provincia: { contains: keyword, mode: "insensitive" } } },
           ],
         }));
 
@@ -67,6 +75,14 @@ export class JobsService {
               // Buscar en industria y sector de la empresa
               { empresa: { industria: { contains: keywords[0], mode: "insensitive" } } },
               { empresa: { sector: { contains: keywords[0], mode: "insensitive" } } },
+              // Buscar en campos de ubicación del job
+              { location: { contains: keywords[0], mode: "insensitive" } },
+              { city: { contains: keywords[0], mode: "insensitive" } },
+              { state: { contains: keywords[0], mode: "insensitive" } },
+              // Buscar en campos de ubicación de la empresa
+              { empresa: { localidad: { contains: keywords[0], mode: "insensitive" } } },
+              { empresa: { ciudad: { contains: keywords[0], mode: "insensitive" } } },
+              { empresa: { provincia: { contains: keywords[0], mode: "insensitive" } } },
             ],
           });
         } else {
@@ -128,6 +144,8 @@ export class JobsService {
     const page = Number(q.page || 1);
     const pageSize = Number(q.pageSize || 20);
     const skip = (page - 1) * pageSize;
+
+    console.log('[JobsService] Query WHERE:', JSON.stringify(where, null, 2));
 
     let jobs: any[] = [];
     let total = 0;
