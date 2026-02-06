@@ -131,11 +131,12 @@ export class PromotionsService {
     }
 
     if (userPromotion.status === "CLAIMED") {
+      // Si ya reclamó la promoción, marcar como ya usada para que no se muestre la card
       return {
-        eligible: true,
-        alreadyUsed: false,
+        eligible: false,
+        alreadyUsed: true,
         windowOpen,
-        reason: undefined,
+        reason: "Ya has reclamado esta promoción",
         promotion: promotionData,
       };
     }
