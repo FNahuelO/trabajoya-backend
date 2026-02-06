@@ -276,18 +276,20 @@ export class IapService {
         console.log('[IAP] ✅ Entitlement creado exitosamente:', entitlement.id);
         
         // Actualizar el estado del job después de crear el entitlement exitosamente
+        // La publicación se aprueba inmediatamente para que sea visible, pero estará bajo revisión 48-72hs
         try {
           await this.prisma.job.update({
             where: { id: jobPostId },
             data: {
-              moderationStatus: 'PENDING',
+              moderationStatus: 'APPROVED',
               paymentStatus: 'PAID',
               paidAt: new Date(),
               isPaid: true,
               status: 'active',
+              publishedAt: new Date(), // Actualizar fecha de publicación al momento del pago
             },
           });
-          console.log('[IAP] ✅ Estado del job actualizado a PAID y PENDING (pendiente de revisión)');
+          console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs)');
         } catch (updateError: any) {
           console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
           // No lanzar error, el entitlement ya fue creado
@@ -423,18 +425,20 @@ export class IapService {
                 console.log('[IAP] ✅ Entitlement creado exitosamente después de eliminar constraint:', entitlement.id);
                 
                 // Actualizar el estado del job
+                // La publicación se aprueba inmediatamente para que sea visible, pero estará bajo revisión 48-72hs
                 try {
                   await this.prisma.job.update({
                     where: { id: jobPostId },
                     data: {
-                      moderationStatus: 'PENDING',
+                      moderationStatus: 'APPROVED',
                       paymentStatus: 'PAID',
                       paidAt: new Date(),
                       isPaid: true,
                       status: 'active',
+                      publishedAt: new Date(),
                     },
                   });
-                  console.log('[IAP] ✅ Estado del job actualizado a PAID y PENDING (pendiente de revisión)');
+                  console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs)');
                 } catch (updateError: any) {
                   console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
                 }
@@ -662,18 +666,20 @@ export class IapService {
     console.log('[IAP] ✅ Entitlement creado exitosamente (Google):', entitlement.id);
 
     // Actualizar el estado del job después de crear el entitlement exitosamente
+    // La publicación se aprueba inmediatamente para que sea visible, pero estará bajo revisión 48-72hs
     try {
       await this.prisma.job.update({
         where: { id: jobPostId },
         data: {
-          moderationStatus: 'PENDING',
+          moderationStatus: 'APPROVED',
           paymentStatus: 'PAID',
           paidAt: new Date(),
           isPaid: true,
           status: 'active',
+          publishedAt: new Date(),
         },
       });
-      console.log('[IAP] ✅ Estado del job actualizado a PAID y PENDING (pendiente de revisión) (Google)');
+      console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs) (Google)');
     } catch (updateError: any) {
       console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
       // No lanzar error, el entitlement ya fue creado

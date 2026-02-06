@@ -135,4 +135,64 @@ export class AdminController {
       data,
     });
   }
+
+  @Get("promotions")
+  async getPromotions(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 20;
+    const status = query.status;
+    const data = await this.adminService.getPromotions(page, pageSize, status);
+    return createResponse({
+      success: true,
+      message: "Promociones obtenidas correctamente",
+      data,
+    });
+  }
+
+  @Get("payments")
+  async getPayments(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 20;
+    const status = query.status;
+    const data = await this.adminService.getPayments(page, pageSize, status);
+    return createResponse({
+      success: true,
+      message: "Pagos obtenidos correctamente",
+      data,
+    });
+  }
+
+  @Get("video-meetings")
+  async getVideoMeetings(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 20;
+    const status = query.status;
+    const data = await this.adminService.getVideoMeetings(
+      page,
+      pageSize,
+      status
+    );
+    return createResponse({
+      success: true,
+      message: "Reuniones obtenidas correctamente",
+      data,
+    });
+  }
+
+  @Get("entitlements")
+  async getEntitlements(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 20;
+    const status = query.status;
+    const data = await this.adminService.getEntitlements(
+      page,
+      pageSize,
+      status
+    );
+    return createResponse({
+      success: true,
+      message: "Entitlements obtenidos correctamente",
+      data,
+    });
+  }
 }

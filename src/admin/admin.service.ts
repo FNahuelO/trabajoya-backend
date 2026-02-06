@@ -325,6 +325,15 @@ export class AdminService {
       totalMessages,
       totalCalls,
       activeSubscriptions,
+      totalPayments,
+      completedPayments,
+      totalPromotions,
+      claimedPromotions,
+      usedPromotions,
+      totalVideoMeetings,
+      scheduledMeetings,
+      pendingReports,
+      totalIapProducts,
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.empresaProfile.count(),
@@ -336,6 +345,15 @@ export class AdminService {
       this.prisma.message.count(),
       this.prisma.call.count(),
       this.prisma.subscription.count({ where: { status: "ACTIVE" } }),
+      this.prisma.paymentTransaction.count(),
+      this.prisma.paymentTransaction.count({ where: { status: "COMPLETED" } }),
+      this.prisma.userPromotion.count(),
+      this.prisma.userPromotion.count({ where: { status: "CLAIMED" } }),
+      this.prisma.userPromotion.count({ where: { status: "USED" } }),
+      this.prisma.videoMeeting.count(),
+      this.prisma.videoMeeting.count({ where: { status: "SCHEDULED" } }),
+      this.prisma.report.count({ where: { status: "PENDING" } }),
+      this.prisma.iapProduct.count({ where: { active: true } }),
     ]);
 
     return {
@@ -349,6 +367,186 @@ export class AdminService {
       totalMessages,
       totalCalls,
       activeSubscriptions,
+      totalPayments,
+      completedPayments,
+      totalPromotions,
+      claimedPromotions,
+      usedPromotions,
+      totalVideoMeetings,
+      scheduledMeetings,
+      pendingReports,
+      totalIapProducts,
+    };
+  }
+
+  // Promotions
+  async getPromotions(page: number, pageSize: number, status?: string) {
+    const skip = (page - 1) * pageSize;
+    const where: any = {};
+    if (status) {
+      where.status = status;
+    }
+
+    const [promotions, total] = await Promise.all([
+      this.prisma.userPromotion.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              userType: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.userPromotion.count({ where }),
+    ]);
+
+    return {
+      items: promotions,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  // Payments
+  async getPayments(page: number, pageSize: number, status?: string) {
+    const skip = (page - 1) * pageSize;
+    const where: any = {};
+    if (status) {
+      where.status = status;
+    }
+
+    const [payments, total] = await Promise.all([
+      this.prisma.paymentTransaction.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              userType: true,
+            },
+          },
+          empresa: {
+            select: {
+              id: true,
+              companyName: true,
+            },
+          },
+          plan: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.paymentTransaction.count({ where }),
+    ]);
+
+    return {
+      items: payments,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  // Video Meetings
+  async getVideoMeetings(page: number, pageSize: number, status?: string) {
+    const skip = (page - 1) * pageSize;
+    const where: any = {};
+    if (status) {
+      where.status = status;
+    }
+
+    const [meetings, total] = await Promise.all([
+      this.prisma.videoMeeting.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              userType: true,
+            },
+          },
+          invitedUser: {
+            select: {
+              id: true,
+              email: true,
+              userType: true,
+            },
+          },
+        },
+        orderBy: { scheduledAt: "desc" },
+      }),
+      this.prisma.videoMeeting.count({ where }),
+    ]);
+
+    return {
+      items: meetings,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  // Entitlements
+  async getEntitlements(page: number, pageSize: number, status?: string) {
+    const skip = (page - 1) * pageSize;
+    const where: any = {};
+    if (status) {
+      where.status = status;
+    }
+
+    const [entitlements, total] = await Promise.all([
+      this.prisma.jobPostEntitlement.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              userType: true,
+            },
+          },
+          job: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.jobPostEntitlement.count({ where }),
+    ]);
+
+    return {
+      items: entitlements,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 }
