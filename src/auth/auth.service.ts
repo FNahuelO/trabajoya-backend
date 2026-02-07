@@ -178,7 +178,12 @@ export class AuthService {
 
   private async getTranslation(key: string, fallback: string): Promise<string> {
     try {
-      return await this.i18n.translate(key);
+      const translated = await this.i18n.translate(key);
+      // nestjs-i18n devuelve la clave sin cambios cuando no encuentra la traducción
+      if (translated === key) {
+        return fallback;
+      }
+      return translated;
     } catch (error) {
       console.warn(
         `Translation failed for key: ${key}, using fallback: ${fallback}`
