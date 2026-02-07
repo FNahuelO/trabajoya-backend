@@ -4,11 +4,25 @@ import {
   IsString,
   IsNotEmpty,
   IsOptional,
+  IsIn,
   ValidateIf,
 } from "class-validator";
 import { i18nValidationMessage } from "nestjs-i18n";
 
+export type LoginSource = "backoffice" | "app" | "web-empresas";
+
 export class LoginDto {
+  @ApiProperty({
+    required: false,
+    description:
+      "Origen del login: backoffice (solo ADMIN), app (POSTULANTE/EMPRESA), web-empresas (solo EMPRESA)",
+    enum: ["backoffice", "app", "web-empresas"],
+  })
+  @IsOptional()
+  @IsIn(["backoffice", "app", "web-empresas"], {
+    message: "source debe ser: backoffice, app o web-empresas",
+  })
+  source?: LoginSource;
   @ApiProperty({ example: "usuario@ejemplo.com", required: false })
   @ValidateIf(
     (dto) =>

@@ -693,7 +693,7 @@ export class AuthService {
     }
   }
 
-  async loginGoogle(dto: { idToken: string }) {
+  async loginGoogle(dto: { idToken: string }, source?: string) {
     if (!dto.idToken) {
       throw new BadRequestException(
         await this.getTranslation(
@@ -755,6 +755,9 @@ export class AuthService {
         });
       }
 
+      // Validar que el tipo de usuario sea compatible con el origen del login
+      await this.validateUserTypeForSource(user.userType, source);
+
       const tokens = await this.issueTokens(user.id, user.userType);
 
       return {
@@ -762,7 +765,7 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          tipo: user.userType.toLowerCase() as "postulante" | "empresa",
+          tipo: user.userType.toLowerCase() as "postulante" | "empresa" | "admin",
           verificado: user.isVerified,
         },
       };
@@ -780,13 +783,16 @@ export class AuthService {
     }
   }
 
-  async loginApple(dto: {
-    identityToken?: string;
-    authorizationCode?: string;
-    email?: string;
-    fullName?: string;
-    appleUserId?: string;
-  }) {
+  async loginApple(
+    dto: {
+      identityToken?: string;
+      authorizationCode?: string;
+      email?: string;
+      fullName?: string;
+      appleUserId?: string;
+    },
+    source?: string
+  ) {
     try {
       let appleData: any;
 
@@ -897,6 +903,9 @@ export class AuthService {
         });
       }
 
+      // Validar que el tipo de usuario sea compatible con el origen del login
+      await this.validateUserTypeForSource(user.userType, source);
+
       const tokens = await this.issueTokens(user.id, user.userType);
 
       return {
@@ -904,7 +913,7 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          tipo: user.userType.toLowerCase() as "postulante" | "empresa",
+          tipo: user.userType.toLowerCase() as "postulante" | "empresa" | "admin",
           verificado: user.isVerified,
         },
       };
@@ -975,6 +984,53 @@ export class AuthService {
     );
 
     return token;
+  }
+
+  /**
+   * Valida que el userType del usuario sea compatible con el source (origen) del login.
+   * - backoffice: solo ADMIN
+   * - app: solo POSTULANTE y EMPRESA
+   * - web-empresas: solo EMPRESA
+   */
+  private async validateUserTypeForSource(
+    userType: string,
+    source?: string
+  ): Promise<void> {
+    // Si no se envía source, se asume que viene de la app móvil
+    if (!source) source = "app";
+
+    switch (source) {
+      case "backoffice":
+        if (userType !== "ADMIN") {
+          throw new UnauthorizedException(
+            await this.getTranslation(
+              "auth.unauthorizedSourceBackoffice",
+              "Acceso denegado. Solo administradores pueden acceder al backoffice"
+            )
+          );
+        }
+        break;
+      case "app":
+        if (userType !== "POSTULANTE" && userType !== "EMPRESA") {
+          throw new UnauthorizedException(
+            await this.getTranslation(
+              "auth.unauthorizedSourceApp",
+              "Acceso denegado. Solo postulantes y empresas pueden acceder a la app"
+            )
+          );
+        }
+        break;
+      case "web-empresas":
+        if (userType !== "EMPRESA") {
+          throw new UnauthorizedException(
+            await this.getTranslation(
+              "auth.unauthorizedSourceWebEmpresas",
+              "Acceso denegado. Solo empresas pueden acceder a este portal"
+            )
+          );
+        }
+        break;
+    }
   }
 
   async login(dto: any) {
@@ -1052,18 +1108,21 @@ export class AuthService {
 
     // Login con Google
     if (dto.idToken) {
-      return this.loginGoogle({ idToken: dto.idToken });
+      return this.loginGoogle({ idToken: dto.idToken }, dto.source);
     }
 
     // Login con Apple
     if (dto.identityToken || dto.authorizationCode || dto.appleUserId) {
-      return this.loginApple({
-        identityToken: dto.identityToken,
-        authorizationCode: dto.authorizationCode,
-        email: dto.email,
-        fullName: dto.fullName,
-        appleUserId: dto.appleUserId,
-      });
+      return this.loginApple(
+        {
+          identityToken: dto.identityToken,
+          authorizationCode: dto.authorizationCode,
+          email: dto.email,
+          fullName: dto.fullName,
+          appleUserId: dto.appleUserId,
+        },
+        dto.source
+      );
     }
 
     // Login con email/password
@@ -1106,6 +1165,9 @@ export class AuthService {
       );
     }
 
+    // Validar que el tipo de usuario sea compatible con el origen del login
+    await this.validateUserTypeForSource(user.userType, dto.source);
+
     const tokens = await this.issueTokens(user.id, user.userType);
 
     // Devolver tokens junto con información básica del usuario
@@ -1114,7 +1176,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        tipo: user.userType.toLowerCase() as "postulante" | "empresa",
+        tipo: user.userType.toLowerCase() as "postulante" | "empresa" | "admin",
         verificado: user.isVerified,
       },
     };
