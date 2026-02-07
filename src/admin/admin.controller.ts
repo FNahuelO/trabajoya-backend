@@ -1,4 +1,15 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Query,
+  Param,
+  Body,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { AdminGuard } from "../common/guards/admin.guard";
@@ -214,6 +225,156 @@ export class AdminController {
     return createResponse({
       success: true,
       message: "Entitlements obtenidos correctamente",
+      data,
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ROLES
+  // ══════════════════════════════════════════════════════════════════════
+
+  @Get("roles")
+  async getRoles() {
+    const data = await this.adminService.getRoles();
+    return createResponse({
+      success: true,
+      message: "Roles obtenidos correctamente",
+      data,
+    });
+  }
+
+  @Get("roles/:id")
+  async getRoleById(@Param("id") id: string) {
+    const data = await this.adminService.getRoleById(id);
+    return createResponse({
+      success: true,
+      message: "Rol obtenido correctamente",
+      data,
+    });
+  }
+
+  @Post("roles")
+  async createRole(
+    @Body()
+    body: {
+      name: string;
+      displayName: string;
+      description?: string;
+      permissions: string[];
+    }
+  ) {
+    const data = await this.adminService.createRole(body);
+    return createResponse({
+      success: true,
+      message: "Rol creado correctamente",
+      data,
+    });
+  }
+
+  @Patch("roles/:id")
+  async updateRole(
+    @Param("id") id: string,
+    @Body()
+    body: {
+      displayName?: string;
+      description?: string;
+      permissions?: string[];
+    }
+  ) {
+    const data = await this.adminService.updateRole(id, body);
+    return createResponse({
+      success: true,
+      message: "Rol actualizado correctamente",
+      data,
+    });
+  }
+
+  @Delete("roles/:id")
+  async deleteRole(@Param("id") id: string) {
+    const data = await this.adminService.deleteRole(id);
+    return createResponse({
+      success: true,
+      message: "Rol eliminado correctamente",
+      data,
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // USUARIOS INTERNOS
+  // ══════════════════════════════════════════════════════════════════════
+
+  @Get("internal-users")
+  async getInternalUsers(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 20;
+    const search = query.search;
+    const data = await this.adminService.getInternalUsers(
+      page,
+      pageSize,
+      search
+    );
+    return createResponse({
+      success: true,
+      message: "Usuarios internos obtenidos correctamente",
+      data,
+    });
+  }
+
+  @Get("internal-users/:id")
+  async getInternalUserById(@Param("id") id: string) {
+    const data = await this.adminService.getInternalUserById(id);
+    return createResponse({
+      success: true,
+      message: "Usuario interno obtenido correctamente",
+      data,
+    });
+  }
+
+  @Post("internal-users")
+  async createInternalUser(
+    @Body()
+    body: {
+      email: string;
+      password: string;
+      roleId?: string;
+    }
+  ) {
+    const data = await this.adminService.createInternalUser(body);
+    return createResponse({
+      success: true,
+      message: "Usuario interno creado correctamente",
+      data,
+    });
+  }
+
+  @Patch("internal-users/:id")
+  async updateInternalUser(
+    @Param("id") id: string,
+    @Body()
+    body: {
+      email?: string;
+      password?: string;
+      roleId?: string | null;
+      isVerified?: boolean;
+    }
+  ) {
+    const data = await this.adminService.updateInternalUser(id, body);
+    return createResponse({
+      success: true,
+      message: "Usuario interno actualizado correctamente",
+      data,
+    });
+  }
+
+  @Delete("internal-users/:id")
+  async deleteInternalUser(@Param("id") id: string, @Req() req: any) {
+    const data = await this.adminService.deleteInternalUser(
+      id,
+      req.user?.sub
+    );
+    return createResponse({
+      success: true,
+      message: "Usuario interno eliminado correctamente",
       data,
     });
   }

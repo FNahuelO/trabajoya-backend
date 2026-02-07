@@ -1,5 +1,11 @@
-import { Injectable } from "@nestjs/common";
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import * as bcrypt from "bcryptjs";
 
 @Injectable()
 export class AdminService {
@@ -626,5 +632,279 @@ export class AdminService {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
     };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ROLES
+  // ══════════════════════════════════════════════════════════════════════
+
+  async getRoles() {
+    const roles = await this.prisma.role.findMany({
+      orderBy: { createdAt: "asc" },
+      include: {
+        _count: { select: { users: true } },
+      },
+    });
+    return roles;
+  }
+
+  async getRoleById(id: string) {
+    const role = await this.prisma.role.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { users: true } },
+      },
+    });
+    if (!role) throw new NotFoundException("Rol no encontrado");
+    return role;
+  }
+
+  async createRole(data: {
+    name: string;
+    displayName: string;
+    description?: string;
+    permissions: string[];
+  }) {
+    const existing = await this.prisma.role.findUnique({
+      where: { name: data.name },
+    });
+    if (existing)
+      throw new BadRequestException("Ya existe un rol con ese nombre");
+
+    return this.prisma.role.create({
+      data: {
+        name: data.name.toUpperCase().replace(/\s+/g, "_"),
+        displayName: data.displayName,
+        description: data.description,
+        permissions: data.permissions,
+        isSystem: false,
+      },
+    });
+  }
+
+  async updateRole(
+    id: string,
+    data: {
+      displayName?: string;
+      description?: string;
+      permissions?: string[];
+    }
+  ) {
+    const role = await this.prisma.role.findUnique({ where: { id } });
+    if (!role) throw new NotFoundException("Rol no encontrado");
+
+    return this.prisma.role.update({
+      where: { id },
+      data: {
+        ...(data.displayName !== undefined && {
+          displayName: data.displayName,
+        }),
+        ...(data.description !== undefined && {
+          description: data.description,
+        }),
+        ...(data.permissions !== undefined && {
+          permissions: data.permissions,
+        }),
+      },
+    });
+  }
+
+  async deleteRole(id: string) {
+    const role = await this.prisma.role.findUnique({
+      where: { id },
+      include: { _count: { select: { users: true } } },
+    });
+    if (!role) throw new NotFoundException("Rol no encontrado");
+    if (role.isSystem)
+      throw new ForbiddenException("No se pueden eliminar roles del sistema");
+    if (role._count.users > 0)
+      throw new BadRequestException(
+        "No se puede eliminar un rol que tiene usuarios asignados. Reasigne los usuarios primero."
+      );
+
+    return this.prisma.role.delete({ where: { id } });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // USUARIOS INTERNOS (ADMIN)
+  // ══════════════════════════════════════════════════════════════════════
+
+  async getInternalUsers(page: number, pageSize: number, search?: string) {
+    const skip = (page - 1) * pageSize;
+    const where: any = { userType: "ADMIN" };
+
+    if (search) {
+      where.email = { contains: search, mode: "insensitive" };
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: pageSize,
+        select: {
+          id: true,
+          email: true,
+          userType: true,
+          isVerified: true,
+          createdAt: true,
+          updatedAt: true,
+          role: {
+            select: {
+              id: true,
+              name: true,
+              displayName: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      items: users,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async getInternalUserById(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        userType: true,
+        isVerified: true,
+        createdAt: true,
+        updatedAt: true,
+        role: {
+          select: {
+            id: true,
+            name: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+    if (!user || user.userType !== "ADMIN")
+      throw new NotFoundException("Usuario interno no encontrado");
+    return user;
+  }
+
+  async createInternalUser(data: {
+    email: string;
+    password: string;
+    roleId?: string;
+  }) {
+    const existing = await this.prisma.user.findUnique({
+      where: { email: data.email },
+    });
+    if (existing)
+      throw new BadRequestException("Ya existe un usuario con ese email");
+
+    if (data.roleId) {
+      const role = await this.prisma.role.findUnique({
+        where: { id: data.roleId },
+      });
+      if (!role) throw new BadRequestException("Rol no encontrado");
+    }
+
+    const passwordHash = await bcrypt.hash(data.password, 10);
+
+    return this.prisma.user.create({
+      data: {
+        email: data.email,
+        passwordHash,
+        userType: "ADMIN",
+        isVerified: true,
+        roleId: data.roleId || null,
+      },
+      select: {
+        id: true,
+        email: true,
+        userType: true,
+        isVerified: true,
+        createdAt: true,
+        updatedAt: true,
+        role: {
+          select: {
+            id: true,
+            name: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+  }
+
+  async updateInternalUser(
+    id: string,
+    data: {
+      email?: string;
+      password?: string;
+      roleId?: string | null;
+      isVerified?: boolean;
+    }
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || user.userType !== "ADMIN")
+      throw new NotFoundException("Usuario interno no encontrado");
+
+    if (data.email && data.email !== user.email) {
+      const existing = await this.prisma.user.findUnique({
+        where: { email: data.email },
+      });
+      if (existing)
+        throw new BadRequestException("Ya existe un usuario con ese email");
+    }
+
+    if (data.roleId) {
+      const role = await this.prisma.role.findUnique({
+        where: { id: data.roleId },
+      });
+      if (!role) throw new BadRequestException("Rol no encontrado");
+    }
+
+    const updateData: any = {};
+    if (data.email) updateData.email = data.email;
+    if (data.password) updateData.passwordHash = await bcrypt.hash(data.password, 10);
+    if (data.roleId !== undefined) updateData.roleId = data.roleId;
+    if (data.isVerified !== undefined) updateData.isVerified = data.isVerified;
+
+    return this.prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        userType: true,
+        isVerified: true,
+        createdAt: true,
+        updatedAt: true,
+        role: {
+          select: {
+            id: true,
+            name: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+  }
+
+  async deleteInternalUser(id: string, requesterId: string) {
+    if (id === requesterId)
+      throw new ForbiddenException("No puedes eliminar tu propio usuario");
+
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user || user.userType !== "ADMIN")
+      throw new NotFoundException("Usuario interno no encontrado");
+
+    await this.prisma.user.delete({ where: { id } });
+    return { deleted: true };
   }
 }

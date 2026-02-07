@@ -22,6 +22,9 @@ model User {
   resetTokenExpiry     DateTime?
   verificationToken    String?               @unique
   verificationTokenExpiry DateTime?
+  // Rol del backoffice (solo para usuarios ADMIN)
+  roleId               String?
+  role                 Role?                 @relation(fields: [roleId], references: [id], onDelete: SetNull)
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   empresa              EmpresaProfile?
@@ -43,6 +46,21 @@ model User {
   reportsReceived      Report[]              @relation("ReportsReceived")
   usersBlocked         BlockedUser[]         @relation("UsersBlocked")
   usersBlockedBy       BlockedUser[]         @relation("UsersBlockedBy")
+
+  @@index([roleId])
+}
+
+// Roles del backoffice con permisos granulares
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // Ej: SUPER_ADMIN, MODERADOR, SOPORTE, VIEWER
+  displayName String   // Nombre para mostrar: "Super Administrador", "Moderador", etc.
+  description String?  // Descripción del rol
+  permissions String[] // Array de permisos: ["users:read", "users:write", "jobs:read", ...]
+  isSystem    Boolean  @default(false) // Roles del sistema no se pueden eliminar
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
 }
 
 model RefreshToken {
