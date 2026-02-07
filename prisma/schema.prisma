@@ -217,8 +217,8 @@ model Job {
   state               String?
   jobType             JobType
   workMode            String?
-  category            String
-  experienceLevel     ExperienceLevel
+  category            String?
+  experienceLevel     ExperienceLevel      @default(JUNIOR)
   status              String               @default("active")
   publishedAt         DateTime             @default(now())
   // Salary fields
@@ -624,6 +624,8 @@ enum PaymentMethod {
   PAYPAL
   MERCADOPAGO
   STRIPE
+  APPLE_IAP
+  GOOGLE_PLAY
 }
 
 // Push Notifications

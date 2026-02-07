@@ -1,0 +1,4 @@
+-- AlterEnum
+ALTER TYPE "PaymentMethod" ADD VALUE 'APPLE_IAP';
+ALTER TYPE "PaymentMethod" ADD VALUE 'GOOGLE_PLAY';
+

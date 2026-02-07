@@ -12,6 +12,7 @@ import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 import { PromotionsService } from "../promotions/promotions.service";
 import { MailService } from "../mail/mail.service";
+import { PaymentMethod, PaymentStatus } from "@prisma/client";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -915,6 +916,40 @@ export class EmpresasService {
       },
     });
 
+    // Registrar la transacción de pago con estado PENDING
+    try {
+      // Buscar el plan asociado al job si existe
+      let planId: string | null = null;
+      let planType: any = null;
+      if (job.paymentAmount) {
+        // Intentar encontrar el plan por precio
+        const plan = await this.prisma.plan.findFirst({
+          where: { price: job.paymentAmount, isActive: true },
+        });
+        if (plan) {
+          planId = plan.id;
+          planType = plan.subscriptionPlan;
+        }
+      }
+
+      await this.prisma.paymentTransaction.create({
+        data: {
+          userId,
+          empresaId: profile.id,
+          orderId: order.orderId,
+          amount,
+          currency,
+          status: PaymentStatus.PENDING,
+          paymentMethod: PaymentMethod.PAYPAL,
+          description: `Pago por publicación de empleo: ${job.title}`,
+          planType,
+          planId,
+        },
+      });
+    } catch (error) {
+      console.error("Error registrando PaymentTransaction en createJobPaymentOrder:", error);
+    }
+
     return {
       orderId: order.orderId,
       status: order.status,
@@ -981,7 +1016,7 @@ export class EmpresasService {
     }
 
     // Actualizar el empleo con el pago confirmado y pasar a moderación
-    return this.prisma.job.update({
+    const updatedJob = await this.prisma.job.update({
       where: { id: jobId },
       data: {
         isPaid: true,
@@ -992,5 +1027,32 @@ export class EmpresasService {
         autoRejectionReason: autoRejectionReason,
       },
     });
+
+    // Actualizar o crear la transacción de pago con estado COMPLETED
+    try {
+      await this.prisma.paymentTransaction.upsert({
+        where: { orderId },
+        update: {
+          status: PaymentStatus.COMPLETED,
+          paypalData: captureResult as any,
+          updatedAt: new Date(),
+        },
+        create: {
+          userId,
+          empresaId: profile.id,
+          orderId,
+          amount: job.paymentAmount || 0,
+          currency: job.paymentCurrency || "USD",
+          status: PaymentStatus.COMPLETED,
+          paymentMethod: PaymentMethod.PAYPAL,
+          description: `Pago por publicación de empleo: ${job.title}`,
+          paypalData: captureResult as any,
+        },
+      });
+    } catch (error) {
+      console.error("Error actualizando PaymentTransaction en confirmJobPayment:", error);
+    }
+
+    return updatedJob;
   }
 }

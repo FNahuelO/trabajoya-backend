@@ -154,10 +154,32 @@ export class AdminController {
     const page = parseInt(query.page) || 1;
     const pageSize = parseInt(query.pageSize) || 20;
     const status = query.status;
-    const data = await this.adminService.getPayments(page, pageSize, status);
+    const paymentMethod = query.paymentMethod;
+    const search = query.search;
+    const dateFrom = query.dateFrom;
+    const dateTo = query.dateTo;
+    const data = await this.adminService.getPayments(
+      page,
+      pageSize,
+      status,
+      paymentMethod,
+      search,
+      dateFrom,
+      dateTo
+    );
     return createResponse({
       success: true,
       message: "Pagos obtenidos correctamente",
+      data,
+    });
+  }
+
+  @Get("payments/stats")
+  async getPaymentStats() {
+    const data = await this.adminService.getPaymentStats();
+    return createResponse({
+      success: true,
+      message: "Estadísticas de pagos obtenidas correctamente",
       data,
     });
   }

@@ -416,11 +416,41 @@ export class AdminService {
   }
 
   // Payments
-  async getPayments(page: number, pageSize: number, status?: string) {
+  async getPayments(
+    page: number,
+    pageSize: number,
+    status?: string,
+    paymentMethod?: string,
+    search?: string,
+    dateFrom?: string,
+    dateTo?: string
+  ) {
     const skip = (page - 1) * pageSize;
     const where: any = {};
     if (status) {
       where.status = status;
+    }
+    if (paymentMethod) {
+      where.paymentMethod = paymentMethod;
+    }
+    if (search) {
+      where.OR = [
+        { orderId: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+        { user: { email: { contains: search, mode: "insensitive" } } },
+        { empresa: { companyName: { contains: search, mode: "insensitive" } } },
+      ];
+    }
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) {
+        where.createdAt.gte = new Date(dateFrom);
+      }
+      if (dateTo) {
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        where.createdAt.lte = toDate;
+      }
     }
 
     const [payments, total] = await Promise.all([
@@ -461,6 +491,54 @@ export class AdminService {
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  // Payment Stats
+  async getPaymentStats() {
+    const [
+      totalPayments,
+      completedPayments,
+      pendingPayments,
+      failedPayments,
+      totalRevenueResult,
+      paypalCount,
+      appleIapCount,
+      googlePlayCount,
+      todayPayments,
+    ] = await Promise.all([
+      this.prisma.paymentTransaction.count(),
+      this.prisma.paymentTransaction.count({ where: { status: "COMPLETED" } }),
+      this.prisma.paymentTransaction.count({ where: { status: "PENDING" } }),
+      this.prisma.paymentTransaction.count({ where: { status: "FAILED" } }),
+      this.prisma.paymentTransaction.aggregate({
+        _sum: { amount: true },
+        where: { status: "COMPLETED" },
+      }),
+      this.prisma.paymentTransaction.count({ where: { paymentMethod: "PAYPAL" } }),
+      this.prisma.paymentTransaction.count({ where: { paymentMethod: "APPLE_IAP" } }),
+      this.prisma.paymentTransaction.count({ where: { paymentMethod: "GOOGLE_PLAY" } }),
+      this.prisma.paymentTransaction.count({
+        where: {
+          createdAt: {
+            gte: new Date(new Date().setHours(0, 0, 0, 0)),
+          },
+        },
+      }),
+    ]);
+
+    return {
+      totalPayments,
+      completedPayments,
+      pendingPayments,
+      failedPayments,
+      totalRevenue: totalRevenueResult._sum.amount || 0,
+      byMethod: {
+        paypal: paypalCount,
+        appleIap: appleIapCount,
+        googlePlay: googlePlayCount,
+      },
+      todayPayments,
     };
   }
 

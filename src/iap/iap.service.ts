@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VerifyAppleDto } from './dto/verify-apple.dto';
 import { VerifyGoogleDto } from './dto/verify-google.dto';
 import { RestoreDto } from './dto/restore.dto';
+import { PaymentMethod, PaymentStatus } from '@prisma/client';
 import axios from 'axios';
 
 @Injectable()
@@ -275,6 +276,38 @@ export class IapService {
 
         console.log('[IAP] ✅ Entitlement creado exitosamente:', entitlement.id);
         
+        // Registrar PaymentTransaction para Apple IAP
+        try {
+          const empresa = await this.prisma.empresaProfile.findFirst({
+            where: { userId },
+          });
+
+          await this.prisma.paymentTransaction.create({
+            data: {
+              userId,
+              empresaId: empresa?.id || null,
+              orderId: `apple_${dto.transactionId}`,
+              amount: plan.price,
+              currency: plan.currency || 'USD',
+              status: PaymentStatus.COMPLETED,
+              paymentMethod: PaymentMethod.APPLE_IAP,
+              description: `Compra IAP Apple: ${plan.name} (${dto.productId})`,
+              planType: plan.subscriptionPlan,
+              planId: plan.id,
+              paypalData: {
+                source: 'APPLE_IAP',
+                productId: dto.productId,
+                transactionId: dto.transactionId,
+                jobPostId,
+                entitlementId: entitlement.id,
+              } as any,
+            },
+          });
+          console.log('[IAP] ✅ PaymentTransaction registrada para Apple IAP');
+        } catch (ptError: any) {
+          console.error('[IAP] ⚠️ Error al registrar PaymentTransaction (no crítico):', ptError?.message);
+        }
+
         // Actualizar el estado del job después de crear el entitlement exitosamente
         // La publicación se aprueba inmediatamente para que sea visible, pero estará bajo revisión 48-72hs
         try {
@@ -664,6 +697,39 @@ export class IapService {
     });
 
     console.log('[IAP] ✅ Entitlement creado exitosamente (Google):', entitlement.id);
+
+    // Registrar PaymentTransaction para Google Play
+    try {
+      const empresa = await this.prisma.empresaProfile.findFirst({
+        where: { userId },
+      });
+
+      await this.prisma.paymentTransaction.create({
+        data: {
+          userId,
+          empresaId: empresa?.id || null,
+          orderId: `google_${dto.orderId || dto.purchaseToken}`,
+          amount: plan.price,
+          currency: plan.currency || 'USD',
+          status: PaymentStatus.COMPLETED,
+          paymentMethod: PaymentMethod.GOOGLE_PLAY,
+          description: `Compra Google Play: ${plan.name} (${dto.productId})`,
+          planType: plan.subscriptionPlan,
+          planId: plan.id,
+          paypalData: {
+            source: 'GOOGLE_PLAY',
+            productId: dto.productId,
+            purchaseToken: dto.purchaseToken,
+            orderId: dto.orderId,
+            jobPostId,
+            entitlementId: entitlement.id,
+          } as any,
+        },
+      });
+      console.log('[IAP] ✅ PaymentTransaction registrada para Google Play');
+    } catch (ptError: any) {
+      console.error('[IAP] ⚠️ Error al registrar PaymentTransaction (no crítico):', ptError?.message);
+    }
 
     // Actualizar el estado del job después de crear el entitlement exitosamente
     // La publicación se aprueba inmediatamente para que sea visible, pero estará bajo revisión 48-72hs
