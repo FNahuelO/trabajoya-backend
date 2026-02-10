@@ -372,6 +372,192 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
     });
   }
 
+  async sendApplicationStatusUpdateEmail(
+    email: string,
+    postulanteFullName: string,
+    jobTitle: string,
+    companyName: string,
+    newStatus: string,
+    notes?: string
+  ): Promise<void> {
+    const statusLabels: Record<string, { label: string; emoji: string; color: string; description: string }> = {
+      PENDING: {
+        label: "Pendiente",
+        emoji: "⏳",
+        color: "#f59e0b",
+        description: "Tu postulación está pendiente de revisión.",
+      },
+      REVIEWED: {
+        label: "Revisada",
+        emoji: "👀",
+        color: "#3b82f6",
+        description: "Tu postulación ha sido revisada por la empresa.",
+      },
+      INTERVIEW: {
+        label: "Entrevista",
+        emoji: "📅",
+        color: "#8b5cf6",
+        description: "¡Felicitaciones! La empresa quiere agendar una entrevista contigo.",
+      },
+      ACCEPTED: {
+        label: "Aceptada",
+        emoji: "🎉",
+        color: "#10b981",
+        description: "¡Felicitaciones! Tu postulación ha sido aceptada.",
+      },
+      REJECTED: {
+        label: "Rechazada",
+        emoji: "❌",
+        color: "#ef4444",
+        description: "Lamentablemente, tu postulación no fue seleccionada en esta oportunidad.",
+      },
+    };
+
+    const statusInfo = statusLabels[newStatus] || {
+      label: newStatus,
+      emoji: "📋",
+      color: "#6b7280",
+      description: "El estado de tu postulación ha sido actualizado.",
+    };
+
+    const actionUrl = this.buildAppLink("/app/applications");
+
+    const notesSection = notes
+      ? `
+            <div style="background-color: #f3f4f6; border-left: 4px solid #6b7280; padding: 16px; margin: 20px 0; border-radius: 4px;">
+              <p style="color: #374151; font-size: 14px; margin: 0 0 8px 0; font-weight: 600;">
+                💬 Nota de la empresa:
+              </p>
+              <p style="color: #4b5563; font-size: 14px; margin: 0; line-height: 1.6;">
+                ${notes}
+              </p>
+            </div>`
+      : "";
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <title>Actualización de Postulación - TrabajoYa</title>
+        <!--[if !mso]><!-->
+        <style type="text/css">
+          .preheader { display: none !important; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0; }
+        </style>
+        <!--<![endif]-->
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
+        <div class="preheader" style="display: none; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0;">
+          Tu postulación a "${jobTitle}" en ${companyName} ha sido actualizada a: ${statusInfo.label}
+        </div>
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
+          <!-- Header -->
+          <div style="background-color: ${statusInfo.color}; padding: 40px 20px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">${statusInfo.emoji} Actualización de Postulación</h1>
+          </div>
+          
+          <!-- Content -->
+          <div style="padding: 40px 30px;">
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Hola${postulanteFullName ? ` ${postulanteFullName}` : ""},
+            </p>
+            
+            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+              Queremos informarte que el estado de tu postulación al puesto <strong>"${jobTitle}"</strong> en <strong>${companyName}</strong> ha sido actualizado.
+            </p>
+            
+            <!-- Status Badge -->
+            <div style="background-color: ${statusInfo.color}15; border-left: 4px solid ${statusInfo.color}; padding: 20px; margin: 30px 0; border-radius: 4px;">
+              <p style="color: ${statusInfo.color}; font-size: 18px; margin: 0 0 8px 0; font-weight: 700;">
+                ${statusInfo.emoji} Nuevo estado: ${statusInfo.label}
+              </p>
+              <p style="color: #374151; font-size: 14px; margin: 0; line-height: 1.6;">
+                ${statusInfo.description}
+              </p>
+            </div>
+            ${notesSection}
+            
+            <!-- Primary Button -->
+            ${this.createEmailButton("Ver mis Postulaciones", actionUrl, statusInfo.color)}
+            
+            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+              Si tienes alguna pregunta, puedes contactar a la empresa directamente a través de la plataforma.
+            </p>
+          </div>
+          
+          <!-- Footer -->
+          <div style="background-color: #f9fafb; border-top: 1px solid #e5e7eb; padding: 30px 20px; text-align: center;">
+            <p style="color: #9ca3af; font-size: 12px; margin: 0 0 10px 0;">
+              Este email fue enviado automáticamente por TrabajoYa
+            </p>
+            <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+              Recibiste este email porque tienes una postulación activa en la plataforma.
+            </p>
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+              <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                ¿Necesitas ayuda? Contáctanos en 
+                <a href="mailto:soporte@trabajo-ya.com" style="color: #2563eb; text-decoration: none;">soporte@trabajo-ya.com</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `Actualización de Postulación - TrabajoYa
+
+Hola${postulanteFullName ? ` ${postulanteFullName}` : ""},
+
+Queremos informarte que el estado de tu postulación al puesto "${jobTitle}" en ${companyName} ha sido actualizado.
+
+${statusInfo.emoji} Nuevo estado: ${statusInfo.label}
+${statusInfo.description}
+${notes ? `\nNota de la empresa: ${notes}\n` : ""}
+Ver tus postulaciones:
+${actionUrl}
+
+Si tienes alguna pregunta, puedes contactar a la empresa directamente a través de la plataforma.
+
+---
+Este correo fue enviado automáticamente por TrabajoYa.
+Recibiste este email porque tienes una postulación activa en la plataforma.
+
+¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com`;
+
+    const domain = process.env.MAIL_FROM?.split("@")[1] || "trabajo-ya.com";
+    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
+    const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
+    const unsubscribeUrl =
+      baseUnsubscribeUrl !== "http://localhost:3000/unsubscribe"
+        ? baseUnsubscribeUrl
+        : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+
+    const fromEmail = process.env.MAIL_FROM || "noreply@trabajo-ya.com";
+    const fromName = "TrabajoYa";
+    const fromFormatted = fromEmail.includes("<") ? fromEmail : `${fromName} <${fromEmail}>`;
+
+    await this.provider.send({
+      to: email,
+      subject: `${statusInfo.emoji} Tu postulación a "${jobTitle}" fue actualizada: ${statusInfo.label}`,
+      html,
+      text,
+      from: fromFormatted,
+      headers: {
+        "Message-ID": messageId,
+        "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
+        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "X-Mailer": "TrabajoYa",
+        "X-Auto-Response-Suppress": "All",
+        "MIME-Version": "1.0",
+        "Content-Type": "text/html; charset=UTF-8",
+      },
+    });
+  }
+
   async sendJobApprovalEmail(
     email: string,
     jobTitle: string,

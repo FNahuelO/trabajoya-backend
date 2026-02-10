@@ -703,20 +703,49 @@ export class EmpresasService {
 
     const application = await this.prisma.application.findUnique({
       where: { id: applicationId },
-      include: { job: true },
+      include: {
+        job: true,
+        postulante: {
+          include: {
+            user: {
+              select: { email: true },
+            },
+          },
+        },
+      },
     });
 
     if (!application || application.job.empresaId !== profile.id) {
       throw new NotFoundException("Mensaje de error");
     }
 
-    return this.prisma.application.update({
+    const updatedApplication = await this.prisma.application.update({
       where: { id: applicationId },
       data: {
         status: status as any,
         coverLetter: notes,
       },
     });
+
+    // Enviar email de notificación al postulante
+    try {
+      const postulanteEmail = application.postulante?.user?.email;
+      if (postulanteEmail) {
+        await this.mailService.sendApplicationStatusUpdateEmail(
+          postulanteEmail,
+          application.postulante.fullName,
+          application.job.title,
+          profile.companyName,
+          status,
+          notes
+        );
+      }
+    } catch (error) {
+      // No fallar si el envío de email falla, solo loguear el error
+      console.error("Error enviando email de actualización de postulación:", error);
+    }
+
+    return updatedApplication;
   }
 
   // Métodos para moderación (coordinadores)
