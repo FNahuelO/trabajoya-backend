@@ -420,8 +420,6 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
       description: "El estado de tu postulación ha sido actualizado.",
     };
 
-    const actionUrl = this.buildAppLink("/app/applications");
-
     const notesSection = notes
       ? `
             <div style="background-color: #f3f4f6; border-left: 4px solid #6b7280; padding: 16px; margin: 20px 0; border-radius: 4px;">
@@ -479,9 +477,6 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
             </div>
             ${notesSection}
             
-            <!-- Primary Button -->
-            ${this.createEmailButton("Ver mis Postulaciones", actionUrl, statusInfo.color)}
-            
             <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
               Si tienes alguna pregunta, puedes contactar a la empresa directamente a través de la plataforma.
             </p>
@@ -516,9 +511,6 @@ Queremos informarte que el estado de tu postulación al puesto "${jobTitle}" en 
 ${statusInfo.emoji} Nuevo estado: ${statusInfo.label}
 ${statusInfo.description}
 ${notes ? `\nNota de la empresa: ${notes}\n` : ""}
-Ver tus postulaciones:
-${actionUrl}
-
 Si tienes alguna pregunta, puedes contactar a la empresa directamente a través de la plataforma.
 
 ---
