@@ -183,7 +183,7 @@ export class AuthService {
       if (translated === key) {
         return fallback;
       }
-      return translated;
+      return translated as string;
     } catch (error) {
       console.warn(
         `Translation failed for key: ${key}, using fallback: ${fallback}`
