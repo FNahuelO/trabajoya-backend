@@ -53,6 +53,40 @@ export class MailService {
   }
 
   /**
+   * Construye una URL HTTPS para el portal web de empresas
+   * Usa WEB_EMPRESAS_URL como base, con fallback a empresas.trabajo-ya.com
+   */
+  private buildEmpresasLink(path: string, query?: Record<string, string>): string {
+    let baseUrl = process.env.WEB_EMPRESAS_URL;
+    
+    if (!baseUrl) {
+      if (process.env.NODE_ENV === 'production') {
+        baseUrl = 'https://empresas.trabajo-ya.com';
+      } else {
+        baseUrl = 'http://localhost:3000';
+      }
+    }
+    
+    if (!baseUrl.endsWith('/')) {
+      baseUrl += '/';
+    }
+    
+    const url = new URL(path.startsWith('/') ? path.substring(1) : path, baseUrl);
+    
+    if (query) {
+      Object.entries(query).forEach(([key, value]) => {
+        url.searchParams.append(key, value);
+      });
+    }
+    
+    if (process.env.NODE_ENV === 'production' && url.protocol === 'http:') {
+      url.protocol = 'https:';
+    }
+    
+    return url.toString();
+  }
+
+  /**
    * Genera un botón HTML compatible con todas las plataformas (Outlook, Gmail, Apple Mail, etc.)
    * Usa tablas anidadas para máxima compatibilidad con Outlook
    */
@@ -93,9 +127,12 @@ export class MailService {
     `;
   }
 
-  async sendVerificationEmail(email: string, token: string): Promise<void> {
-    // URL HTTPS unificada para botón HTML y versión texto plano
-    const actionUrl = this.buildAppLink("/app/verify-email", { token });
+  async sendVerificationEmail(email: string, token: string, userType?: string): Promise<void> {
+    // Para EMPRESA: enlace directo al portal web-empresas
+    // Para POSTULANTE (u otros): enlace a la web principal que redirige a la app vía deep link
+    const actionUrl = userType === 'EMPRESA'
+      ? this.buildEmpresasLink("/verificar-email", { token })
+      : this.buildAppLink("/app/verify-email", { token });
 
     const html = `
       <!DOCTYPE html>

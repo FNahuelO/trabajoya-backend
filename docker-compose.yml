@@ -64,6 +64,7 @@ services:
 
       # Links en emails (front)
       APP_WEB_URL: http://localhost:3000
+      WEB_EMPRESAS_URL: http://localhost:3000
 
     ports: ["4000:4000"]
     depends_on:

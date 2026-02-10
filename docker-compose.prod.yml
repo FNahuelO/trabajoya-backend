@@ -45,6 +45,7 @@ services:
 
       # FRONT URL para armar links en emails
       APP_WEB_URL: ${APP_WEB_URL}
+      WEB_EMPRESAS_URL: ${WEB_EMPRESAS_URL:-https://empresas.trabajo-ya.com}
 
       # MAIL: SES en producción
       MAIL_PROVIDER: ses

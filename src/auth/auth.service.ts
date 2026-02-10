@@ -349,8 +349,8 @@ export class AuthService {
       // No fallar el registro si hay error aceptando términos, pero loguear
     }
 
-    // Enviar email de verificación
-    await this.mailService.sendVerificationEmail(user.email, verificationToken);
+    // Enviar email de verificación (POSTULANTE → web con deep link a la app)
+    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType);
 
     return {
       message: await this.getTranslation(
@@ -1577,8 +1577,8 @@ export class AuthService {
       data: { verificationToken, verificationTokenExpiry },
     });
 
-    // Enviar email con el token
-    await this.mailService.sendVerificationEmail(user.email, verificationToken);
+    // Enviar email con el token (usar userType para determinar destino)
+    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType);
 
     return {
       message: await this.getTranslation(
@@ -1634,8 +1634,8 @@ export class AuthService {
       data: { verificationToken, verificationTokenExpiry },
     });
 
-    // Enviar email con el token
-    await this.mailService.sendVerificationEmail(user.email, verificationToken);
+    // Enviar email con el token (usar userType para determinar destino)
+    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType);
 
     return {
       message: await this.getTranslation(
@@ -1758,8 +1758,8 @@ export class AuthService {
       } as any,
     });
 
-    // Enviar email de verificación
-    await this.mailService.sendVerificationEmail(user.email, verificationToken);
+    // Enviar email de verificación (EMPRESA → portal web-empresas)
+    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType);
 
     // Generar tokens
     const tokens = await this.issueTokens(user.id, user.userType);
