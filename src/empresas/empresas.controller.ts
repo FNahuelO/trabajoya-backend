@@ -158,6 +158,26 @@ export class EmpresasController {
   @Patch("applications/:id")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  updateApplicationStatusPatch(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() dto: { status: string; notes?: string }
+  ) {
+    return createResponse({
+      success: true,
+      message: "Estado de la aplicación actualizado correctamente",
+      data: this.service.updateApplicationStatus(
+        req.user?.sub,
+        id,
+        dto.status,
+        dto.notes
+      ),
+    });
+  }
+
+  @Put("applications/:id")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   updateApplicationStatus(
     @Req() req: any,
     @Param("id") id: string,
