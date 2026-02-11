@@ -154,35 +154,12 @@ export class VideoMeetingsService {
         }
       }
 
-      // 2) Crear evento “espejo” en calendario del invitado con el MISMO link (si está conectado)
-      if (invited?.email && meetingUrl) {
-        const invitedAccessToken = await this.getValidAccessToken({
-          userId: invited.id,
-          accessToken: invited.googleAccessToken,
-          refreshToken: invited.googleRefreshToken,
-          labelForLogs: "invitado",
-        });
-
-        if (invitedAccessToken) {
-          try {
-            const invitedEvent = await this.googleMeetService.createCalendarEvent(
-              invited.email,
-              invitedAccessToken,
-              title || "Videollamada",
-              description || "",
-              startTime,
-              endTime,
-              [creator?.email].filter(Boolean) as string[],
-              meetingUrl
-            );
-            googleEventIdInvited = invitedEvent.eventId;
-          } catch (error) {
-            console.error(
-              "[VideoMeetings] Error creando evento en calendario del invitado:",
-              error
-            );
-          }
-        }
+      // El evento del invitado se crea automáticamente por Google Calendar
+      // al incluirlo como attendee en createMeeting() con sendUpdates: "all".
+      // No es necesario crear un evento "espejo" separado (causaba duplicación).
+      // Usamos el mismo eventId ya que Google Calendar comparte el evento entre organizador y asistentes.
+      if (googleEventIdCreator) {
+        googleEventIdInvited = googleEventIdCreator;
       }
     }
 
@@ -412,48 +389,9 @@ export class VideoMeetingsService {
       }
     }
 
-    // Actualizar evento del calendario del invitado (postulante)
-    if (
-      this.googleMeetService &&
-      meeting.googleEventIdInvited &&
-      meeting.invitedUser.googleAccessToken
-    ) {
-      try {
-        let accessToken = meeting.invitedUser.googleAccessToken;
-        if (meeting.invitedUser.googleRefreshToken) {
-          try {
-            const refreshed = await this.googleMeetService.refreshAccessToken(
-              meeting.invitedUser.googleRefreshToken
-            );
-            accessToken = refreshed.accessToken;
-            await this.prisma.user.update({
-              where: { id: meeting.invitedUserId },
-              data: { googleAccessToken: accessToken },
-            });
-          } catch (refreshError) {
-            console.warn(
-              `No se pudo refrescar el token del invitado al actualizar: ${refreshError}`
-            );
-          }
-        }
-
-        await this.googleMeetService.updateMeeting(
-          accessToken,
-          meeting.googleEventIdInvited,
-          title,
-          description,
-          startTime,
-          endTime,
-          [meeting.createdBy.email].filter(Boolean)
-        );
-      } catch (error) {
-        console.error(
-          "Error actualizando evento del calendario del invitado:",
-          error
-        );
-        // Continuar sin fallar si no se puede actualizar el evento
-      }
-    }
+    // No es necesario actualizar el evento del invitado por separado.
+    // Google Calendar propaga automáticamente los cambios a todos los asistentes
+    // cuando se actualiza el evento del creador con sendUpdates: "all".
 
     const updatedMeeting = await this.prisma.videoMeeting.update({
       where: { id: meetingId },
@@ -655,43 +593,9 @@ export class VideoMeetingsService {
       }
     }
 
-    // Eliminar evento del calendario del invitado (postulante)
-    if (
-      this.googleMeetService &&
-      meeting.googleEventIdInvited &&
-      meeting.invitedUser.googleAccessToken
-    ) {
-      try {
-        let accessToken = meeting.invitedUser.googleAccessToken;
-        if (meeting.invitedUser.googleRefreshToken) {
-          try {
-            const refreshed = await this.googleMeetService.refreshAccessToken(
-              meeting.invitedUser.googleRefreshToken
-            );
-            accessToken = refreshed.accessToken;
-            await this.prisma.user.update({
-              where: { id: meeting.invitedUserId },
-              data: { googleAccessToken: accessToken },
-            });
-          } catch (refreshError) {
-            console.warn(
-              `No se pudo refrescar el token del invitado al cancelar: ${refreshError}`
-            );
-          }
-        }
-
-        await this.googleMeetService.deleteMeeting(
-          accessToken,
-          meeting.googleEventIdInvited
-        );
-      } catch (error) {
-        console.error(
-          "Error eliminando evento del calendario del invitado:",
-          error
-        );
-        // Continuar sin fallar si no se puede eliminar el evento
-      }
-    }
+    // No es necesario eliminar el evento del invitado por separado.
+    // Google Calendar elimina automáticamente el evento de los asistentes
+    // cuando se elimina el evento del creador con sendUpdates: "all".
 
     const updatedMeeting = await this.prisma.videoMeeting.update({
       where: { id: meetingId },

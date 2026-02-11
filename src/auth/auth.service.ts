@@ -1486,15 +1486,29 @@ export class AuthService {
   }
 
   async verifyEmail(token: string) {
+    if (!token || typeof token !== "string" || !token.trim()) {
+      throw new BadRequestException(
+        await this.getTranslation(
+          "auth.invalidVerificationToken",
+          "El token de verificación es requerido"
+        )
+      );
+    }
+
     const user = await this.prisma.user.findFirst({
-      where: { verificationToken: token },
+      where: { verificationToken: token.trim() },
     });
 
     if (!user) {
+      // Log para debug
+      console.log(
+        `[verifyEmail] Token no encontrado en DB: ${token.substring(0, 8)}...`
+      );
+
       throw new UnauthorizedException(
         await this.getTranslation(
           "auth.invalidVerificationToken",
-          "Token de verificación inválido"
+          "El enlace de verificación ya no es válido. Puede haber expirado o ya fue utilizado. Por favor, solicitá uno nuevo desde el login."
         )
       );
     }
@@ -1511,7 +1525,14 @@ export class AuthService {
     }
 
     // Verificar expiración del token
-    if (!user.verificationTokenExpiry || user.verificationTokenExpiry < new Date()) {
+    if (
+      !user.verificationTokenExpiry ||
+      user.verificationTokenExpiry < new Date()
+    ) {
+      console.log(
+        `[verifyEmail] Token expirado para usuario ${user.email}. Expiry: ${user.verificationTokenExpiry}`
+      );
+
       // Invalidar el token expirado para forzar reenvío
       await this.prisma.user.update({
         where: { id: user.id },
@@ -1524,7 +1545,7 @@ export class AuthService {
       throw new UnauthorizedException(
         await this.getTranslation(
           "auth.verificationTokenExpired",
-          "El enlace de verificación expiró. Solicita uno nuevo."
+          "El enlace de verificación expiró. Solicitá uno nuevo desde el login."
         )
       );
     }
@@ -1537,6 +1558,8 @@ export class AuthService {
         verificationTokenExpiry: null,
       },
     });
+
+    console.log(`[verifyEmail] Email verificado exitosamente: ${user.email}`);
 
     return {
       message: await this.getTranslation(
