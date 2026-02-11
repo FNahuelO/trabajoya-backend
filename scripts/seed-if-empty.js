@@ -25,7 +25,7 @@ const CATALOG_TYPES = [
 ];
 
 // Planes que se siembran
-const PLAN_CODES = ["LAUNCH_TRIAL", "URGENT", "STANDARD", "CRYSTAL"];
+const PLAN_CODES = ["URGENT", "STANDARD", "CRYSTAL"];
 
 async function checkTablesExist() {
   try {
