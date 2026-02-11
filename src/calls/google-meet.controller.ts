@@ -85,7 +85,7 @@ export class GoogleMeetController {
   })
   async authorize(
     @Req() req: any,
-    @Body() body: { code: string; redirectUri?: string }
+    @Body() body: { code: string; redirectUri?: string; clientId?: string }
   ) {
     const defaultRedirectUri =
       process.env.GOOGLE_OAUTH_REDIRECT_URI ||
@@ -93,7 +93,8 @@ export class GoogleMeetController {
 
     const tokens = await this.googleMeetService.getTokensFromCode(
       body.code,
-      body.redirectUri || defaultRedirectUri
+      body.redirectUri || defaultRedirectUri,
+      body.clientId
     );
 
     // Guardar los tokens en la base de datos asociados al usuario
@@ -179,6 +180,46 @@ export class GoogleMeetController {
       data: {
         connected: !!(user?.googleAccessToken || user?.googleRefreshToken),
       },
+    });
+  }
+
+  @Post("store-tokens")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Almacenar tokens de Google Calendar directamente",
+    description:
+      "Almacena los tokens de acceso y refresh de Google Calendar obtenidos durante el login con Google. " +
+      "Esto permite auto-conectar Google Calendar cuando el usuario inicia sesión con Google.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Tokens almacenados exitosamente",
+  })
+  async storeTokens(
+    @Req() req: any,
+    @Body() body: { accessToken: string; refreshToken?: string }
+  ) {
+    if (!body.accessToken) {
+      return createResponse({
+        success: false,
+        message: "Access token requerido",
+        data: { connected: false },
+      });
+    }
+
+    await this.prisma.user.update({
+      where: { id: req.user?.sub },
+      data: {
+        googleAccessToken: body.accessToken,
+        ...(body.refreshToken ? { googleRefreshToken: body.refreshToken } : {}),
+      },
+    });
+
+    return createResponse({
+      success: true,
+      message: "Google Calendar conectado exitosamente",
+      data: { connected: true },
     });
   }
 

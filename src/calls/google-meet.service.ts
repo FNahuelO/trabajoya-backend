@@ -262,37 +262,49 @@ export class GoogleMeetService {
    */
   async getTokensFromCode(
     code: string,
-    redirectUri: string
+    redirectUri: string,
+    frontendClientId?: string
   ): Promise<{ accessToken: string; refreshToken?: string }> {
     if (!this.oauth2Client) {
       throw new BadRequestException("Google OAuth no está configurado");
     }
 
-    const clientId = this.configService.get<string>("GOOGLE_CLIENT_ID");
-    const clientSecret = this.configService.get<string>("GOOGLE_CLIENT_SECRET");
+    const webClientId = this.configService.get<string>("GOOGLE_CLIENT_ID");
+    const webClientSecret = this.configService.get<string>(
+      "GOOGLE_CLIENT_SECRET"
+    );
 
-    if (!clientId || !clientSecret) {
+    if (!webClientId || !webClientSecret) {
       throw new BadRequestException("Google OAuth credentials no configuradas");
     }
 
+    // Si el frontend envió un clientId (ej: iOS/Android nativo), usarlo para el intercambio.
+    // Los clientes nativos de Google no necesitan client_secret.
+    const isNativeClient =
+      frontendClientId && frontendClientId !== webClientId;
+    const clientId = frontendClientId || webClientId;
+    const clientSecret = isNativeClient ? undefined : webClientSecret;
+
     try {
-      // IMPORTANTE: Crear un nuevo OAuth2Client con el redirectUri exacto que se usó en la autorización
-      // El redirectUri del móvil (ej: com.googleusercontent.apps.xxx:/google-calendar-callback)
-      // debe coincidir EXACTAMENTE con el usado para obtener el código
+      // IMPORTANTE: Crear un nuevo OAuth2Client con el clientId y redirectUri exactos
+      // que se usaron en la autorización. El código está vinculado al client_id que lo generó.
       const oauth2Client = new OAuth2Client({
         clientId,
-        clientSecret,
+        clientSecret: clientSecret || "",
         redirectUri, // Usar el redirectUri exacto del frontend
       });
 
       this.logger.log(
-        `[GoogleCalendar] Intercambiando código con redirectUri: ${redirectUri}`
+        `[GoogleCalendar] Intercambiando código con clientId: ${clientId.substring(0, 30)}..., redirectUri: ${redirectUri}, isNativeClient: ${isNativeClient}`
       );
 
-      const { tokens } = await oauth2Client.getToken({
+      // Para clientes nativos, Google permite el intercambio sin client_secret
+      const tokenRequestBody: any = {
         code,
         redirect_uri: redirectUri,
-      });
+      };
+
+      const { tokens } = await oauth2Client.getToken(tokenRequestBody);
 
       this.logger.log(`[GoogleCalendar] Tokens obtenidos exitosamente`);
 
