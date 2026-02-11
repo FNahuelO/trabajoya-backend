@@ -83,6 +83,27 @@ export class VideoMeetingsService {
       throw new NotFoundException("Usuario invitado no encontrado");
     }
 
+    // Validar que el creador (empresa) tenga Google Calendar conectado
+    const creator = await this.prisma.user.findUnique({
+      where: { id: createdById },
+      select: {
+        id: true,
+        email: true,
+        googleAccessToken: true,
+        googleRefreshToken: true,
+      },
+    });
+
+    if (!creator) {
+      throw new NotFoundException("Usuario creador no encontrado");
+    }
+
+    if (!creator.googleAccessToken && !creator.googleRefreshToken) {
+      throw new BadRequestException(
+        "Debes conectar tu Google Calendar antes de crear una videollamada. Ve a Configuración para conectarlo."
+      );
+    }
+
     // Validar que la fecha programada sea en el futuro
     const scheduledDate = new Date(scheduledAt);
     if (scheduledDate <= new Date()) {
@@ -102,26 +123,16 @@ export class VideoMeetingsService {
     let googleEventIdInvited: string | undefined;
 
     if (this.googleMeetService) {
-      const [creator, invited] = await Promise.all([
-        this.prisma.user.findUnique({
-          where: { id: createdById },
-          select: {
-            id: true,
-            email: true,
-            googleAccessToken: true,
-            googleRefreshToken: true,
-          },
-        }),
-        this.prisma.user.findUnique({
-          where: { id: invitedUserId },
-          select: {
-            id: true,
-            email: true,
-            googleAccessToken: true,
-            googleRefreshToken: true,
-          },
-        }),
-      ]);
+      // creator ya fue consultado arriba para validar Google Calendar
+      const invited = await this.prisma.user.findUnique({
+        where: { id: invitedUserId },
+        select: {
+          id: true,
+          email: true,
+          googleAccessToken: true,
+          googleRefreshToken: true,
+        },
+      });
 
       // 1) Crear evento con Google Meet en calendario del creador (si está conectado)
       if (creator?.email) {
