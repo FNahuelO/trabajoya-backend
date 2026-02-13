@@ -482,16 +482,17 @@ export class CallsGateway
    */
   @SubscribeMessage("webrtc:offer")
   handleWebRTCOffer(
-    @MessageBody() data: { offer: any; toUserId: string },
+    @MessageBody() data: { offer: any; toUserId: string; callId?: string },
     @ConnectedSocket() client: AuthenticatedSocket
   ) {
-    const { offer, toUserId } = data;
+    const { offer, toUserId, callId } = data;
     const toSocketId = this.connectedUsers.get(toUserId);
 
     if (toSocketId) {
       this.server.to(toSocketId).emit("webrtc:offer", {
         offer,
         fromSocketId: client.id,
+        callId,
       });
     }
 
@@ -503,16 +504,17 @@ export class CallsGateway
    */
   @SubscribeMessage("webrtc:answer")
   handleWebRTCAnswer(
-    @MessageBody() data: { answer: any; toUserId: string },
+    @MessageBody() data: { answer: any; toUserId: string; callId?: string },
     @ConnectedSocket() client: AuthenticatedSocket
   ) {
-    const { answer, toUserId } = data;
+    const { answer, toUserId, callId } = data;
     const toSocketId = this.connectedUsers.get(toUserId);
 
     if (toSocketId) {
       this.server.to(toSocketId).emit("webrtc:answer", {
         answer,
         fromSocketId: client.id,
+        callId,
       });
     }
 
@@ -524,16 +526,17 @@ export class CallsGateway
    */
   @SubscribeMessage("webrtc:ice-candidate")
   handleICECandidate(
-    @MessageBody() data: { candidate: any; toUserId: string },
+    @MessageBody() data: { candidate: any; toUserId: string; callId?: string },
     @ConnectedSocket() client: AuthenticatedSocket
   ) {
-    const { candidate, toUserId } = data;
+    const { candidate, toUserId, callId } = data;
     const toSocketId = this.connectedUsers.get(toUserId);
 
     if (toSocketId) {
       this.server.to(toSocketId).emit("webrtc:ice-candidate", {
         candidate,
         fromSocketId: client.id,
+        callId,
       });
     }
 
