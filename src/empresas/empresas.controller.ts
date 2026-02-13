@@ -103,6 +103,30 @@ export class EmpresasController {
     });
   }
 
+  @Patch("jobs/:id/pause")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Pausar un empleo publicado" })
+  async pauseJob(@Req() req: any, @Param("id") id: string) {
+    return createResponse({
+      success: true,
+      message: "Empleo pausado correctamente",
+      data: await this.service.pauseJob(req.user?.sub, id),
+    });
+  }
+
+  @Patch("jobs/:id/resume")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Reanudar un empleo pausado" })
+  async resumeJob(@Req() req: any, @Param("id") id: string) {
+    return createResponse({
+      success: true,
+      message: "Empleo reanudado correctamente",
+      data: await this.service.resumeJob(req.user?.sub, id),
+    });
+  }
+
   @Delete("jobs/:id")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

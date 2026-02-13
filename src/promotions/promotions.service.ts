@@ -379,14 +379,15 @@ export class PromotionsService {
       });
     }
 
-    // Actualizar el job: marcar como pagado y pendiente de moderación
+    // Actualizar el job: marcar como pagado y aprobado (promoción auto-aprueba)
     const updatedJob = await this.prisma.job.update({
       where: { id: jobPostId },
       data: {
         isPaid: true,
         paymentStatus: "COMPLETED",
-        status: "inactive", // Estará inactivo hasta que pase moderación
-        moderationStatus: "PENDING",
+        status: "active",
+        moderationStatus: "APPROVED",
+        moderatedAt: publishedAt,
         publishedAt,
         paidAt: publishedAt,
       },

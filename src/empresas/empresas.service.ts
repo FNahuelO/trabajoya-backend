@@ -248,8 +248,8 @@ export class EmpresasService {
         requirements: dto.requirements || "",
       });
 
-      let moderationStatus = "PENDING";
-      let status = "inactive";
+      let moderationStatus = "APPROVED";
+      let status = "active";
       let autoRejectionReason = null;
 
       if (!moderationResult.isApproved) {
@@ -257,8 +257,9 @@ export class EmpresasService {
         status = "inactive";
         autoRejectionReason = moderationResult.reasons.join(". ");
       } else {
-        moderationStatus = "PENDING";
-        status = "inactive";
+        // Promoción LAUNCH_TRIAL: auto-aprobar si pasa la moderación automática
+        moderationStatus = "APPROVED";
+        status = "active";
       }
 
       // Asegurar que el título original se preserve siempre
@@ -285,6 +286,7 @@ export class EmpresasService {
           isPaid: true,
           paymentStatus: "COMPLETED",
           publishedAt: publishedAt,
+          moderatedAt: moderationStatus === "APPROVED" ? publishedAt : null,
         },
       });
 
@@ -551,13 +553,16 @@ export class EmpresasService {
     });
   }
 
-  async deleteJob(userId: string, jobId: string) {
+  /**
+   * Pausar un empleo (la publicación deja de ser visible para postulantes)
+   */
+  async pauseJob(userId: string, jobId: string) {
     const profile = await this.prisma.empresaProfile.findUnique({
       where: { userId },
     });
 
     if (!profile) {
-      throw new NotFoundException("Mensaje de error");
+      throw new NotFoundException("Empresa no encontrada");
     }
 
     const job = await this.prisma.job.findFirst({
@@ -565,7 +570,92 @@ export class EmpresasService {
     });
 
     if (!job) {
-      throw new NotFoundException("Mensaje de error");
+      throw new NotFoundException("Empleo no encontrado");
+    }
+
+    // Solo se puede pausar si está activo y aprobado
+    if (job.status === "PAUSED") {
+      throw new BadRequestException("Este empleo ya está pausado");
+    }
+
+    if (job.moderationStatus !== "APPROVED") {
+      throw new BadRequestException(
+        "Solo se pueden pausar empleos que estén aprobados"
+      );
+    }
+
+    return this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: "PAUSED",
+      },
+      include: {
+        entitlements: {
+          where: { status: "ACTIVE" },
+        },
+      },
+    });
+  }
+
+  /**
+   * Reanudar un empleo pausado (vuelve a ser visible para postulantes)
+   */
+  async resumeJob(userId: string, jobId: string) {
+    const profile = await this.prisma.empresaProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException("Empresa no encontrada");
+    }
+
+    const job = await this.prisma.job.findFirst({
+      where: { id: jobId, empresaId: profile.id },
+    });
+
+    if (!job) {
+      throw new NotFoundException("Empleo no encontrado");
+    }
+
+    if (job.status !== "PAUSED") {
+      throw new BadRequestException("Este empleo no está pausado");
+    }
+
+    return this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: "active",
+      },
+      include: {
+        entitlements: {
+          where: { status: "ACTIVE" },
+        },
+      },
+    });
+  }
+
+  async deleteJob(userId: string, jobId: string) {
+    const profile = await this.prisma.empresaProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException("Empresa no encontrada");
+    }
+
+    const job = await this.prisma.job.findFirst({
+      where: { id: jobId, empresaId: profile.id },
+    });
+
+    if (!job) {
+      throw new NotFoundException("Empleo no encontrado");
+    }
+
+    // Solo se puede eliminar si está pausado o pendiente de pago
+    if (job.status !== "PAUSED" && job.moderationStatus !== "PENDING_PAYMENT") {
+      throw new BadRequestException(
+        "Solo se pueden eliminar empleos que estén pausados. Pausá la publicación primero."
+      );
     }
 
     return this.prisma.job.delete({ where: { id: jobId } });
