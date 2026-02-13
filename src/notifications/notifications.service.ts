@@ -220,6 +220,52 @@ export class NotificationsService {
   }
 
   /**
+   * Enviar notificación de nueva postulación a la empresa
+   */
+  async sendNewApplicationNotification(
+    empresaUserId: string,
+    applicantName: string,
+    jobTitle: string,
+    applicationData: {
+      applicationId: string;
+      jobId: string;
+      postulanteId: string;
+    }
+  ): Promise<void> {
+    // Verificar preferencias de la empresa
+    const preferences = await this.getUserPreferences(empresaUserId);
+    const empresaPrefs = preferences as EmpresaNotificationPreferences;
+
+    if (!empresaPrefs.newApplications) {
+      this.logger.log(
+        `[NotificationsService] Empresa user ${empresaUserId} has disabled newApplications notifications, skipping push`
+      );
+      return;
+    }
+
+    this.logger.log(
+      `[NotificationsService] Sending new application notification to empresa user ${empresaUserId} for job "${jobTitle}"`
+    );
+
+    const title = "Nueva postulación";
+    const body = `${applicantName} se postuló a "${jobTitle}"`;
+
+    await this.expoPushService.sendToUser(
+      empresaUserId,
+      title,
+      body,
+      {
+        ...applicationData,
+        type: "new_application",
+      },
+      {
+        priority: "high",
+        channelId: "general",
+      }
+    );
+  }
+
+  /**
    * Enviar notificación de llamada
    */
   async sendCallNotification(

@@ -2,20 +2,25 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AtsService } from "./ats.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
+import { NotificationsService } from "../notifications/notifications.service";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
 export class PostulantesService {
+  private logger = new Logger("PostulantesService");
+
   constructor(
     private prisma: PrismaService,
     private atsService: AtsService,
     private gcpCdnService: GcpCdnService,
-    private gcsUploadService: GCSUploadService
+    private gcsUploadService: GCSUploadService,
+    private notificationsService: NotificationsService
   ) {}
 
   async createByUser(userId: string, dto: any) {
@@ -278,9 +283,14 @@ export class PostulantesService {
     const updateData: any = {};
 
     // Mapear fullName desde firstName/lastName
-    if (dto.firstName || dto.lastName) {
-      const firstName = dto.firstName || "";
-      const lastName = dto.lastName || "";
+    // Usar los valores existentes del perfil cuando solo se envía uno de los dos campos
+    if (dto.firstName !== undefined || dto.lastName !== undefined) {
+      const existingParts = profile.fullName ? profile.fullName.split(" ") : [];
+      const existingFirstName = existingParts[0] || "";
+      const existingLastName = existingParts.slice(1).join(" ") || "";
+
+      const firstName = dto.firstName !== undefined ? dto.firstName : existingFirstName;
+      const lastName = dto.lastName !== undefined ? dto.lastName : existingLastName;
       updateData.fullName = `${firstName} ${lastName}`.trim();
     }
 
@@ -515,7 +525,7 @@ export class PostulantesService {
       );
     }
 
-    return this.prisma.application.create({
+    const application = await this.prisma.application.create({
       data: {
         postulanteId: profile.id,
         jobId,
@@ -528,12 +538,39 @@ export class PostulantesService {
               select: {
                 companyName: true,
                 logo: true,
+                userId: true,
               },
             },
           },
         },
       },
     });
+
+    // Enviar notificación push a la empresa (en background, no bloquea la respuesta)
+    try {
+      const empresaUserId = application.job.empresa.userId;
+      const applicantName = profile.fullName || "Un postulante";
+      const jobTitle = application.job.title;
+
+      // No usar await para no bloquear la respuesta al postulante
+      this.notificationsService
+        .sendNewApplicationNotification(empresaUserId, applicantName, jobTitle, {
+          applicationId: application.id,
+          jobId: application.jobId,
+          postulanteId: profile.id,
+        })
+        .catch((error) => {
+          this.logger.error(
+            `Error sending new application notification to empresa: ${error.message}`,
+            error.stack
+          );
+        });
+    } catch (error) {
+      // No fallar si la notificación no se puede enviar
+      this.logger.error("Error preparing application notification:", error);
+    }
+
+    return application;
   }
 
   async getApplications(userId: string) {

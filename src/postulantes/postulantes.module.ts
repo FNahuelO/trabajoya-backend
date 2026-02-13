@@ -4,9 +4,10 @@ import { PostulantesController } from "./postulantes.controller";
 import { AtsService } from "./ats.service";
 import { PrismaModule } from "../prisma/prisma.module";
 import { UploadModule } from "../upload/upload.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [PrismaModule, UploadModule],
+  imports: [PrismaModule, UploadModule, NotificationsModule],
   controllers: [PostulantesController],
   providers: [AtsService, PostulantesService],
   exports: [AtsService, PostulantesService],

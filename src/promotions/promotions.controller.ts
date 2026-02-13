@@ -75,6 +75,13 @@ export class PromotionsController {
       jobPostId
     );
 
+    // Activar el job: crear entitlement y actualizar estado de pago
+    const activationResult = await this.promotionsService.activateJobWithPromotion(
+      req.user?.sub,
+      jobPostId,
+      { claimedAt: promotion.claimedAt }
+    );
+
     return createResponse({
       success: true,
       message: "Promoción reclamada y activada correctamente",
@@ -84,6 +91,7 @@ export class PromotionsController {
         claimedAt: promotion.claimedAt,
         usedAt: usedPromotion.usedAt,
         jobPostId,
+        entitlement: activationResult.entitlement,
       },
     });
   }

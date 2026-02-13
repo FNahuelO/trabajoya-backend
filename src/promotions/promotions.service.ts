@@ -286,6 +286,116 @@ export class PromotionsService {
   }
 
   /**
+   * Activa un job post existente usando la promoción de lanzamiento.
+   * Crea el JobPostEntitlement y actualiza el estado del job.
+   */
+  async activateJobWithPromotion(
+    userId: string,
+    jobPostId: string,
+    promotion: { claimedAt: Date | null }
+  ) {
+    // Verificar que el job existe y pertenece al usuario
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobPostId },
+      include: { empresa: true },
+    });
+
+    if (!job) {
+      throw new NotFoundException(
+        `La publicación con id ${jobPostId} no existe`
+      );
+    }
+
+    // Verificar que el job pertenece al usuario
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { empresa: true },
+    });
+
+    if (!user?.empresa || job.empresaId !== user.empresa.id) {
+      throw new ForbiddenException(
+        "No tienes permiso para activar esta publicación"
+      );
+    }
+
+    // Verificar que no exista ya un entitlement activo para este job
+    const existingEntitlement = await this.prisma.jobPostEntitlement.findUnique({
+      where: { jobPostId },
+    });
+
+    if (existingEntitlement && existingEntitlement.status === "ACTIVE") {
+      throw new BadRequestException(
+        "Esta publicación ya tiene un plan activo"
+      );
+    }
+
+    // Obtener la duración de la promoción
+    const activePromotion = await this.getActivePromotion();
+    const durationDays = activePromotion?.durationDays || 4;
+
+    const publishedAt = new Date();
+    const expiresAt = new Date(publishedAt);
+    expiresAt.setDate(expiresAt.getDate() + durationDays);
+
+    // Crear el entitlement (o actualizar si existía uno expirado/revocado)
+    if (existingEntitlement) {
+      await this.prisma.jobPostEntitlement.update({
+        where: { id: existingEntitlement.id },
+        data: {
+          source: "PROMO",
+          planKey: "LAUNCH_TRIAL",
+          expiresAt,
+          status: "ACTIVE",
+          maxEdits: 0,
+          editsUsed: 0,
+          allowCategoryChange: false,
+          maxCategoryChanges: 0,
+          categoryChangesUsed: 0,
+          rawPayload: {
+            promo_key: activePromotion?.code || "LAUNCH_TRIAL_4D",
+            claimed_at: promotion.claimedAt,
+          },
+        },
+      });
+    } else {
+      await this.prisma.jobPostEntitlement.create({
+        data: {
+          userId,
+          jobPostId,
+          source: "PROMO",
+          planKey: "LAUNCH_TRIAL",
+          expiresAt,
+          status: "ACTIVE",
+          maxEdits: 0,
+          editsUsed: 0,
+          allowCategoryChange: false,
+          maxCategoryChanges: 0,
+          categoryChangesUsed: 0,
+          rawPayload: {
+            promo_key: activePromotion?.code || "LAUNCH_TRIAL_4D",
+            claimed_at: promotion.claimedAt,
+          },
+        },
+      });
+    }
+
+    // Actualizar el job: marcar como pagado y pendiente de moderación
+    const updatedJob = await this.prisma.job.update({
+      where: { id: jobPostId },
+      data: {
+        isPaid: true,
+        paymentStatus: "COMPLETED",
+        status: "inactive", // Estará inactivo hasta que pase moderación
+        moderationStatus: "PENDING",
+        publishedAt,
+        paidAt: publishedAt,
+      },
+    });
+
+    return { entitlement: { jobPostId, expiresAt, status: "ACTIVE" }, job: updatedJob };
+  }
+
+  /**
    * Obtiene la promoción reclamada de un usuario
    */
   async getClaimedPromotion(userId: string) {

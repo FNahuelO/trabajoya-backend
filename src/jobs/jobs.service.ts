@@ -200,6 +200,7 @@ export class JobsService {
                   provincia: true,
                   pais: true,
                   logo: true,
+                  beneficiosEmpresa: true,
                 } as any,
               },
               _count: {
@@ -231,6 +232,7 @@ export class JobsService {
                     provincia: true,
                     pais: true,
                     logo: true,
+                    beneficiosEmpresa: true,
                   } as any,
                 },
                 _count: {
@@ -261,6 +263,7 @@ export class JobsService {
                   provincia: true,
                   pais: true,
                   logo: true,
+                  beneficiosEmpresa: true,
                 } as any,
               },
               _count: {
@@ -291,6 +294,7 @@ export class JobsService {
                 provincia: true,
                 pais: true,
                 logo: true,
+                beneficiosEmpresa: true,
               } as any,
             },
             _count: {
@@ -355,6 +359,7 @@ export class JobsService {
             provincia: true,
             pais: true,
             logo: true,
+            beneficiosEmpresa: true,
           } as any,
         },
         _count: {
