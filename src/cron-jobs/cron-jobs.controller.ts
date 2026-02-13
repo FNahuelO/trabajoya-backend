@@ -24,6 +24,23 @@ export class CronJobsController {
       message: 'Job ejecutado exitosamente',
     };
   }
+
+  @Post('expire-entitlements')
+  @ApiOperation({
+    summary: 'Ejecutar manualmente la expiración de entitlements y desactivación de publicaciones',
+    description:
+      'Expirar entitlements vencidos y desactivar las publicaciones asociadas. Solo para administradores.',
+  })
+  async expireEntitlements() {
+    await this.cronJobsService.expireEntitlementsAndDeactivateJobs();
+    return {
+      success: true,
+      message: 'Job de expiración ejecutado exitosamente',
+    };
+  }
 }
+
+
+
 
 

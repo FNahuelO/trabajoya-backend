@@ -78,6 +78,108 @@ export class CronJobsService {
       );
     }
   }
+
+  /**
+   * Job que se ejecuta cada hora
+   * Expirar entitlements vencidos y desactivar las publicaciones asociadas
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async expireEntitlementsAndDeactivateJobs() {
+    this.logger.log('Iniciando job: Expirar entitlements vencidos y desactivar publicaciones');
+
+    try {
+      const now = new Date();
+
+      // 1. Buscar entitlements activos que ya expiraron
+      const expiredEntitlements = await this.prisma.jobPostEntitlement.findMany({
+        where: {
+          status: 'ACTIVE',
+          expiresAt: {
+            lte: now,
+          },
+        },
+        select: {
+          id: true,
+          jobPostId: true,
+          planKey: true,
+          expiresAt: true,
+          job: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      if (expiredEntitlements.length === 0) {
+        this.logger.log('No hay entitlements expirados para procesar');
+        return;
+      }
+
+      this.logger.log(
+        `Encontrados ${expiredEntitlements.length} entitlements expirados para procesar`,
+      );
+
+      // 2. Actualizar todos los entitlements expirados a estado EXPIRED
+      const entitlementIds = expiredEntitlements.map((ent) => ent.id);
+      const entitlementResult = await this.prisma.jobPostEntitlement.updateMany({
+        where: {
+          id: {
+            in: entitlementIds,
+          },
+        },
+        data: {
+          status: 'EXPIRED',
+        },
+      });
+
+      this.logger.log(
+        `✅ ${entitlementResult.count} entitlements marcados como EXPIRED`,
+      );
+
+      // 3. Desactivar los jobs asociados (solo los que estén activos)
+      const jobIdsToDeactivate = expiredEntitlements
+        .filter((ent) => ent.job.status === 'active')
+        .map((ent) => ent.jobPostId);
+
+      if (jobIdsToDeactivate.length > 0) {
+        const jobResult = await this.prisma.job.updateMany({
+          where: {
+            id: {
+              in: jobIdsToDeactivate,
+            },
+          },
+          data: {
+            status: 'inactive',
+          },
+        });
+
+        this.logger.log(
+          `✅ ${jobResult.count} publicaciones desactivadas por expiración de plan`,
+        );
+      }
+
+      // Log detallado
+      expiredEntitlements.forEach((ent) => {
+        this.logger.log(
+          `  - Entitlement "${ent.planKey}" (ID: ${ent.id}) expirado. ` +
+          `Job: "${ent.job.title}" (ID: ${ent.jobPostId}). ` +
+          `Expiró el: ${ent.expiresAt.toISOString()}. ` +
+          `Estado del job: ${ent.job.status} → ${ent.job.status === 'active' ? 'inactive' : ent.job.status} (sin cambio)`,
+        );
+      });
+    } catch (error: any) {
+      this.logger.error(
+        `❌ Error al expirar entitlements y desactivar publicaciones: ${error?.message}`,
+        error?.stack,
+      );
+    }
+  }
 }
+
+
+
 
 
