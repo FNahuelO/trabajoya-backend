@@ -91,9 +91,17 @@ export class GoogleMeetController {
       process.env.GOOGLE_OAUTH_REDIRECT_URI ||
       `${process.env.ALLOWED_ORIGINS?.split(",")[0] || "http://localhost:3000"}/auth/google/callback`;
 
+    // IMPORTANTE: Si redirectUri fue proporcionado explícitamente (incluso vacío ""),
+    // usarlo tal cual. Solo usar default si no fue proporcionado (undefined/null).
+    // Esto es crítico para serverAuthCode de SDKs nativos que no usan redirectUri.
+    const finalRedirectUri =
+      body.redirectUri !== undefined && body.redirectUri !== null
+        ? body.redirectUri
+        : defaultRedirectUri;
+
     const tokens = await this.googleMeetService.getTokensFromCode(
       body.code,
-      body.redirectUri || defaultRedirectUri,
+      finalRedirectUri,
       body.clientId
     );
 
@@ -207,7 +215,7 @@ export class GoogleMeetController {
   })
   async storeTokens(
     @Req() req: any,
-    @Body() body: { accessToken: string; refreshToken?: string }
+    @Body() body: { accessToken: string; refreshToken?: string; clientId?: string }
   ) {
     if (!body.accessToken) {
       return createResponse({
@@ -222,6 +230,7 @@ export class GoogleMeetController {
       data: {
         googleAccessToken: body.accessToken,
         ...(body.refreshToken ? { googleRefreshToken: body.refreshToken } : {}),
+        ...(body.clientId ? { googleOAuthClientId: body.clientId } : {}),
       },
     });
 

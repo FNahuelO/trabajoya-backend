@@ -286,22 +286,30 @@ export class GoogleMeetService {
     const clientSecret = isNativeClient ? undefined : webClientSecret;
 
     try {
+      // Para serverAuthCode de SDKs nativos (Android/iOS), el redirectUri es vacío.
+      // En ese caso usamos el redirectUri por defecto del constructor ("urn:ietf:wg:oauth:2.0:oob")
+      // o simplemente no lo enviamos en el request body.
+      const isServerAuthCode = !redirectUri || redirectUri === "";
+      const effectiveRedirectUri = isServerAuthCode ? "" : redirectUri;
+
       // IMPORTANTE: Crear un nuevo OAuth2Client con el clientId y redirectUri exactos
       // que se usaron en la autorización. El código está vinculado al client_id que lo generó.
       const oauth2Client = new OAuth2Client({
         clientId,
         clientSecret: clientSecret || "",
-        redirectUri, // Usar el redirectUri exacto del frontend
+        // Para serverAuthCode de SDKs nativos, no necesitamos redirectUri
+        ...(isServerAuthCode ? {} : { redirectUri: effectiveRedirectUri }),
       });
 
       this.logger.log(
-        `[GoogleCalendar] Intercambiando código con clientId: ${clientId.substring(0, 30)}..., redirectUri: ${redirectUri}, isNativeClient: ${isNativeClient}`
+        `[GoogleCalendar] Intercambiando código con clientId: ${clientId.substring(0, 30)}..., redirectUri: ${effectiveRedirectUri || "(vacío/serverAuthCode)"}, isNativeClient: ${isNativeClient}, isServerAuthCode: ${isServerAuthCode}`
       );
 
       // Para clientes nativos, Google permite el intercambio sin client_secret
+      // Para serverAuthCode, no incluir redirect_uri en el body
       const tokenRequestBody: any = {
         code,
-        redirect_uri: redirectUri,
+        ...(isServerAuthCode ? {} : { redirect_uri: effectiveRedirectUri }),
       };
 
       const { tokens } = await oauth2Client.getToken(tokenRequestBody);
