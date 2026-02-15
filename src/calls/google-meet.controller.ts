@@ -188,14 +188,21 @@ export class GoogleMeetController {
       select: {
         googleAccessToken: true,
         googleRefreshToken: true,
+        googleOAuthClientId: true,
       },
     });
+
+    // Check for non-empty tokens (empty strings are falsy but should also be treated as not connected)
+    const hasAccessToken = !!(user?.googleAccessToken && user.googleAccessToken.trim());
+    const hasRefreshToken = !!(user?.googleRefreshToken && user.googleRefreshToken.trim());
+    const hasClientId = !!(user?.googleOAuthClientId && user.googleOAuthClientId.trim());
 
     return createResponse({
       success: true,
       message: "Estado de conexión obtenido",
       data: {
-        connected: !!(user?.googleAccessToken || user?.googleRefreshToken),
+        connected: hasAccessToken || hasRefreshToken,
+        hasGoogleOAuthClientId: hasClientId,
       },
     });
   }

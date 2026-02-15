@@ -314,11 +314,28 @@ export class GoogleMeetService {
 
       const { tokens } = await oauth2Client.getToken(tokenRequestBody);
 
-      this.logger.log(`[GoogleCalendar] Tokens obtenidos exitosamente`);
+      if (!tokens.access_token) {
+        this.logger.error(
+          `[GoogleCalendar] Token exchange exitoso pero access_token vacío. Tokens recibidos: ${JSON.stringify({
+            has_access_token: !!tokens.access_token,
+            has_refresh_token: !!tokens.refresh_token,
+            has_id_token: !!tokens.id_token,
+            token_type: tokens.token_type,
+            scope: tokens.scope,
+          })}`
+        );
+        throw new BadRequestException(
+          "El intercambio de tokens fue exitoso pero no se recibió un access_token válido de Google."
+        );
+      }
+
+      this.logger.log(
+        `[GoogleCalendar] Tokens obtenidos exitosamente (access_token: ${tokens.access_token.substring(0, 20)}..., refresh_token: ${tokens.refresh_token ? "sí" : "no"})`
+      );
 
       return {
-        accessToken: tokens.access_token || "",
-        refreshToken: tokens.refresh_token,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || undefined,
       };
     } catch (error: any) {
       this.logger.error("Error obteniendo tokens de Google:", error);
