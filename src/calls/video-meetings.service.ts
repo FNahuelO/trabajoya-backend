@@ -32,9 +32,10 @@ export class VideoMeetingsService {
     userId: string;
     accessToken?: string | null;
     refreshToken?: string | null;
+    googleOAuthClientId?: string | null;
     labelForLogs: string;
   }): Promise<string | null> {
-    const { userId, accessToken, refreshToken, labelForLogs } = params;
+    const { userId, accessToken, refreshToken, googleOAuthClientId, labelForLogs } = params;
 
     // Si no hay ni accessToken ni refreshToken, no se puede obtener un token válido
     if (!accessToken && !refreshToken) return null;
@@ -44,7 +45,7 @@ export class VideoMeetingsService {
     // Siempre intentar refrescar si hay refreshToken (el accessToken puede estar expirado o ser null)
     if (this.googleMeetService && refreshToken) {
       try {
-        const refreshed = await this.googleMeetService.refreshAccessToken(refreshToken);
+        const refreshed = await this.googleMeetService.refreshAccessToken(refreshToken, googleOAuthClientId);
         tokenToUse = refreshed.accessToken;
         await this.prisma.user.update({
           where: { id: userId },
@@ -98,6 +99,7 @@ export class VideoMeetingsService {
         email: true,
         googleAccessToken: true,
         googleRefreshToken: true,
+        googleOAuthClientId: true,
       },
     });
 
@@ -140,6 +142,7 @@ export class VideoMeetingsService {
           email: true,
           googleAccessToken: true,
           googleRefreshToken: true,
+          googleOAuthClientId: true,
         },
       });
 
@@ -149,6 +152,7 @@ export class VideoMeetingsService {
           userId: creator.id,
           accessToken: creator.googleAccessToken,
           refreshToken: creator.googleRefreshToken,
+          googleOAuthClientId: creator.googleOAuthClientId,
           labelForLogs: "creador",
         });
 
@@ -182,7 +186,7 @@ export class VideoMeetingsService {
               console.warn("[VideoMeetings] Token inválido detectado, limpiando tokens del creador...");
               await this.prisma.user.update({
                 where: { id: creator.id },
-                data: { googleAccessToken: null },
+                data: { googleAccessToken: null, googleOAuthClientId: null },
               });
               calendarWarning = "Tu sesión de Google Calendar expiró. Por favor, reconecta tu Google Calendar en la configuración y vuelve a intentar.";
             }
@@ -330,6 +334,7 @@ export class VideoMeetingsService {
             email: true,
             googleAccessToken: true,
             googleRefreshToken: true,
+            googleOAuthClientId: true,
           },
         },
         invitedUser: {
@@ -338,6 +343,7 @@ export class VideoMeetingsService {
             email: true,
             googleAccessToken: true,
             googleRefreshToken: true,
+            googleOAuthClientId: true,
           },
         },
       },
@@ -396,7 +402,8 @@ export class VideoMeetingsService {
         if (meeting.createdBy.googleRefreshToken) {
           try {
             const refreshed = await this.googleMeetService.refreshAccessToken(
-              meeting.createdBy.googleRefreshToken
+              meeting.createdBy.googleRefreshToken,
+              meeting.createdBy.googleOAuthClientId
             );
             accessToken = refreshed.accessToken;
             await this.prisma.user.update({
@@ -462,6 +469,7 @@ export class VideoMeetingsService {
             email: true,
             googleAccessToken: true,
             googleRefreshToken: true,
+            googleOAuthClientId: true,
           },
         },
         invitedUser: {
@@ -470,6 +478,7 @@ export class VideoMeetingsService {
             email: true,
             googleAccessToken: true,
             googleRefreshToken: true,
+            googleOAuthClientId: true,
           },
         },
       },
@@ -571,6 +580,7 @@ export class VideoMeetingsService {
             email: true,
             googleAccessToken: true,
             googleRefreshToken: true,
+            googleOAuthClientId: true,
           },
         },
         invitedUser: {
@@ -579,6 +589,7 @@ export class VideoMeetingsService {
             email: true,
             googleAccessToken: true,
             googleRefreshToken: true,
+            googleOAuthClientId: true,
           },
         },
       },
@@ -610,7 +621,8 @@ export class VideoMeetingsService {
         if (meeting.createdBy.googleRefreshToken) {
           try {
             const refreshed = await this.googleMeetService.refreshAccessToken(
-              meeting.createdBy.googleRefreshToken
+              meeting.createdBy.googleRefreshToken,
+              meeting.createdBy.googleOAuthClientId
             );
             accessToken = refreshed.accessToken;
             await this.prisma.user.update({

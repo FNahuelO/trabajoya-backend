@@ -330,21 +330,45 @@ export class GoogleMeetService {
    * Refresca un token de acceso usando el refresh token
    *
    * @param refreshToken Refresh token del usuario
+   * @param storedClientId Client ID que se usó al autorizar (para clientes nativos iOS/Android)
    * @returns Nuevo token de acceso
    */
   async refreshAccessToken(
-    refreshToken: string
+    refreshToken: string,
+    storedClientId?: string | null
   ): Promise<{ accessToken: string }> {
     if (!this.oauth2Client) {
       throw new BadRequestException("Google OAuth no está configurado");
     }
 
     try {
-      this.oauth2Client.setCredentials({
+      const webClientId = this.configService.get<string>("GOOGLE_CLIENT_ID");
+      const webClientSecret = this.configService.get<string>("GOOGLE_CLIENT_SECRET");
+
+      // Si el token fue obtenido con un clientId diferente al web (ej: iOS/Android nativo),
+      // crear un OAuth2Client específico con ese clientId para que el refresh funcione.
+      // Los refresh tokens están vinculados al clientId que los generó.
+      const isNativeClient = storedClientId && storedClientId !== webClientId;
+
+      let client: OAuth2Client;
+      if (isNativeClient) {
+        this.logger.log(
+          `[Refresh] Usando clientId nativo para refrescar: ${storedClientId.substring(0, 30)}...`
+        );
+        // Clientes nativos no usan client_secret para refresh
+        client = new OAuth2Client({
+          clientId: storedClientId,
+          clientSecret: "",
+        });
+      } else {
+        client = this.oauth2Client;
+      }
+
+      client.setCredentials({
         refresh_token: refreshToken,
       });
 
-      const { credentials } = await this.oauth2Client.refreshAccessToken();
+      const { credentials } = await client.refreshAccessToken();
 
       return {
         accessToken: credentials.access_token || "",

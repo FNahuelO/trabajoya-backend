@@ -98,11 +98,13 @@ export class GoogleMeetController {
     );
 
     // Guardar los tokens en la base de datos asociados al usuario
+    // También guardar el clientId usado para poder refrescar correctamente después
     await this.prisma.user.update({
       where: { id: req.user?.sub },
       data: {
         googleAccessToken: tokens.accessToken,
         googleRefreshToken: tokens.refreshToken,
+        googleOAuthClientId: body.clientId || null,
       },
     });
 
@@ -132,8 +134,15 @@ export class GoogleMeetController {
     },
   })
   async refreshToken(@Req() req: any, @Body() body: { refreshToken: string }) {
+    // Obtener el clientId almacenado para usar el mismo que se usó al autorizar
+    const user = await this.prisma.user.findUnique({
+      where: { id: req.user?.sub },
+      select: { googleOAuthClientId: true },
+    });
+
     const tokens = await this.googleMeetService.refreshAccessToken(
-      body.refreshToken
+      body.refreshToken,
+      user?.googleOAuthClientId
     );
 
     // Actualizar el accessToken en la base de datos
@@ -239,6 +248,7 @@ export class GoogleMeetController {
       data: {
         googleAccessToken: null,
         googleRefreshToken: null,
+        googleOAuthClientId: null,
       },
     });
 

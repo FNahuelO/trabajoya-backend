@@ -16,6 +16,7 @@ model User {
   appleId              String?               @unique
   googleAccessToken    String? // Token de acceso de Google Calendar
   googleRefreshToken   String? // Refresh token de Google Calendar
+  googleOAuthClientId  String? // Client ID de OAuth usado al autorizar (para refresh correcto)
   isVerified           Boolean               @default(false)
   language             String                @default("es")
   resetToken           String?               @unique
