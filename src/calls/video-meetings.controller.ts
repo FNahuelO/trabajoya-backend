@@ -23,6 +23,7 @@ import {
   VideoMeetingResponseDto,
 } from "./dto/video-meeting.dto";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { EmpresaGuard } from "../common/guards/empresa.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
 
 @ApiTags("video-meetings")
@@ -33,7 +34,8 @@ export class VideoMeetingsController {
   constructor(private videoMeetingsService: VideoMeetingsService) {}
 
   @Post()
-  @ApiOperation({ summary: "Crear una nueva reunión de videollamada" })
+  @UseGuards(EmpresaGuard)
+  @ApiOperation({ summary: "Crear una nueva reunión de videollamada (solo empresas)" })
   @ApiResponse({ status: 201, type: VideoMeetingResponseDto })
   async createVideoMeeting(
     @Req() req: any,

@@ -126,7 +126,9 @@ export class VideoMeetingsService {
     const durationMinutes = duration || 30;
     const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
 
-    // Intentar crear eventos de Google Calendar (empresa + postulante) al AGENDAR
+    // Intentar crear evento de Google Calendar en el calendario de la empresa al AGENDAR
+    // Solo la empresa crea eventos; el postulante recibe la invitación automáticamente
+    // como attendee (Google Calendar se encarga de enviarle la invitación).
     let meetingUrl: string | undefined;
     let googleEventIdCreator: string | undefined;
     let googleEventIdInvited: string | undefined;
@@ -134,19 +136,15 @@ export class VideoMeetingsService {
     let calendarWarning: string | undefined;
 
     if (this.googleMeetService) {
-      // creator ya fue consultado arriba para validar Google Calendar
+      // Obtener solo el email del invitado para agregarlo como attendee
       const invited = await this.prisma.user.findUnique({
         where: { id: invitedUserId },
         select: {
-          id: true,
           email: true,
-          googleAccessToken: true,
-          googleRefreshToken: true,
-          googleOAuthClientId: true,
         },
       });
 
-      // 1) Crear evento con Google Meet en calendario del creador (si está conectado)
+      // Crear evento con Google Meet en calendario del creador (empresa)
       if (creator?.email) {
         const creatorAccessToken = await this.getValidAccessToken({
           userId: creator.id,
@@ -199,8 +197,8 @@ export class VideoMeetingsService {
 
       // El evento del invitado se crea automáticamente por Google Calendar
       // al incluirlo como attendee en createMeeting() con sendUpdates: "all".
-      // No es necesario crear un evento "espejo" separado (causaba duplicación).
-      // Usamos el mismo eventId ya que Google Calendar comparte el evento entre organizador y asistentes.
+      // No es necesario crear un evento separado para el postulante.
+      // Google Calendar comparte el evento entre organizador y asistentes.
       if (googleEventIdCreator) {
         googleEventIdInvited = googleEventIdCreator;
       }

@@ -15,6 +15,7 @@ import {
 } from "@nestjs/swagger";
 import { GoogleMeetService } from "./google-meet.service";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { EmpresaGuard } from "../common/guards/empresa.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
 import { Public } from "../common/decorators/public.decorator";
 import { PrismaService } from "../prisma/prisma.service";
@@ -28,14 +29,13 @@ export class GoogleMeetController {
   ) {}
 
   @Get("auth-url")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, EmpresaGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: "Obtener URL de autorización para Google Calendar",
     description:
-      "Genera una URL para que el usuario autorice el acceso a Google Calendar. " +
-      "El usuario debe visitar esta URL, autorizar la aplicación, y luego usar el código " +
-      "recibido en el endpoint /google-meet/authorize",
+      "Genera una URL para que la empresa autorice el acceso a Google Calendar. " +
+      "Solo las empresas pueden conectar Google Calendar.",
   })
   @ApiResponse({
     status: 200,
@@ -64,13 +64,13 @@ export class GoogleMeetController {
   }
 
   @Post("authorize")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, EmpresaGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: "Intercambiar código de autorización por tokens",
     description:
       "Intercambia el código de autorización recibido de Google por tokens de acceso. " +
-      "Los tokens deben guardarse en la base de datos asociados al usuario.",
+      "Solo las empresas pueden conectar Google Calendar.",
   })
   @ApiResponse({
     status: 200,
@@ -124,12 +124,12 @@ export class GoogleMeetController {
   }
 
   @Post("refresh-token")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, EmpresaGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: "Refrescar token de acceso de Google",
     description:
-      "Obtiene un nuevo token de acceso usando el refresh token guardado.",
+      "Obtiene un nuevo token de acceso usando el refresh token guardado. Solo para empresas.",
   })
   @ApiResponse({
     status: 200,
@@ -201,13 +201,13 @@ export class GoogleMeetController {
   }
 
   @Post("store-tokens")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, EmpresaGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary: "Almacenar tokens de Google Calendar directamente",
     description:
       "Almacena los tokens de acceso y refresh de Google Calendar obtenidos durante el login con Google. " +
-      "Esto permite auto-conectar Google Calendar cuando el usuario inicia sesión con Google.",
+      "Solo las empresas pueden conectar Google Calendar.",
   })
   @ApiResponse({
     status: 200,
@@ -242,10 +242,10 @@ export class GoogleMeetController {
   }
 
   @Post("disconnect")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, EmpresaGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: "Desconectar Google Calendar",
+    summary: "Desconectar Google Calendar (solo empresas)",
   })
   @ApiResponse({
     status: 200,
