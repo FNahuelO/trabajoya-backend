@@ -35,9 +35,13 @@ export class VideoMeetingsService {
     labelForLogs: string;
   }): Promise<string | null> {
     const { userId, accessToken, refreshToken, labelForLogs } = params;
-    if (!accessToken) return null;
 
-    let tokenToUse = accessToken;
+    // Si no hay ni accessToken ni refreshToken, no se puede obtener un token válido
+    if (!accessToken && !refreshToken) return null;
+
+    let tokenToUse = accessToken || null;
+
+    // Siempre intentar refrescar si hay refreshToken (el accessToken puede estar expirado o ser null)
     if (this.googleMeetService && refreshToken) {
       try {
         const refreshed = await this.googleMeetService.refreshAccessToken(refreshToken);
@@ -46,8 +50,11 @@ export class VideoMeetingsService {
           where: { id: userId },
           data: { googleAccessToken: tokenToUse },
         });
+        console.log(`[VideoMeetings] Token refrescado exitosamente (${labelForLogs})`);
       } catch (refreshError) {
         console.warn(`[VideoMeetings] No se pudo refrescar token (${labelForLogs}):`, refreshError);
+        // Si no se pudo refrescar y no hay accessToken previo, retornar null
+        if (!tokenToUse) return null;
       }
     }
     return tokenToUse;
@@ -121,6 +128,8 @@ export class VideoMeetingsService {
     let meetingUrl: string | undefined;
     let googleEventIdCreator: string | undefined;
     let googleEventIdInvited: string | undefined;
+    let googleCalendarEventCreated = false;
+    let calendarWarning: string | undefined;
 
     if (this.googleMeetService) {
       // creator ya fue consultado arriba para validar Google Calendar
@@ -156,12 +165,31 @@ export class VideoMeetingsService {
             );
             meetingUrl = creatorEvent.meetingUrl;
             googleEventIdCreator = creatorEvent.eventId;
-          } catch (error) {
-            console.error(
-              "[VideoMeetings] Error creando evento (Meet) en calendario del creador:",
-              error
+            googleCalendarEventCreated = true;
+            console.log(
+              `[VideoMeetings] ✅ Evento de Google Calendar creado exitosamente (eventId: ${googleEventIdCreator})`
             );
+          } catch (error: any) {
+            const errorMsg = error?.message || "Error desconocido";
+            console.error(
+              "[VideoMeetings] ❌ Error creando evento (Meet) en calendario del creador:",
+              errorMsg
+            );
+            calendarWarning = `No se pudo crear el evento en Google Calendar: ${errorMsg}. La reunión se agendó pero deberás agregar el evento manualmente a tu calendario.`;
+
+            // Si el error es de autenticación, limpiar tokens inválidos
+            if (error?.code === 401 || errorMsg.includes("invalid_grant") || errorMsg.includes("Token")) {
+              console.warn("[VideoMeetings] Token inválido detectado, limpiando tokens del creador...");
+              await this.prisma.user.update({
+                where: { id: creator.id },
+                data: { googleAccessToken: null },
+              });
+              calendarWarning = "Tu sesión de Google Calendar expiró. Por favor, reconecta tu Google Calendar en la configuración y vuelve a intentar.";
+            }
           }
+        } else {
+          calendarWarning = "No se pudo obtener un token válido de Google Calendar. Por favor, reconecta tu Google Calendar en la configuración.";
+          console.warn("[VideoMeetings] ⚠️ No se obtuvo token válido para crear evento de calendario");
         }
       }
 
@@ -239,7 +267,12 @@ export class VideoMeetingsService {
       console.error("Error al enviar mensaje de invitación:", error);
     }
 
-    return this.mapMeetingToResponse(meeting);
+    const response = this.mapMeetingToResponse(meeting);
+    response.googleCalendarEventCreated = googleCalendarEventCreated;
+    if (calendarWarning) {
+      response.warning = calendarWarning;
+    }
+    return response;
   }
 
   /**

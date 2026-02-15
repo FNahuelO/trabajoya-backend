@@ -128,4 +128,16 @@ export class VideoMeetingResponseDto {
 
   @ApiProperty({ required: false })
   endedAt?: Date;
+
+  @ApiProperty({
+    required: false,
+    description: 'Indica si el evento se creó exitosamente en Google Calendar',
+  })
+  googleCalendarEventCreated?: boolean;
+
+  @ApiProperty({
+    required: false,
+    description: 'Mensaje de advertencia si hubo un problema no crítico (ej: evento de calendario no creado)',
+  })
+  warning?: string;
 }
