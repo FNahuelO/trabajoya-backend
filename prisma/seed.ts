@@ -550,6 +550,39 @@ async function main() {
     order += 10;
   }
 
+  // Crear horarios de empleo (JOB_SCHEDULES)
+  const jobSchedules = [
+    { code: "MANANA", es: "Mañana", en: "Morning", pt: "Manhã" },
+    { code: "TARDE", es: "Tarde", en: "Afternoon", pt: "Tarde" },
+    { code: "NOCHE", es: "Noche", en: "Night", pt: "Noite" },
+    { code: "ROTATIVO", es: "Rotativo", en: "Rotating", pt: "Rotativo" },
+    { code: "FLEXIBLE", es: "Flexible", en: "Flexible", pt: "Flexível" },
+    { code: "COMPLETO", es: "Jornada Completa", en: "Full Day", pt: "Jornada Completa" },
+    { code: "MEDIO_TIEMPO", es: "Medio Tiempo", en: "Part Time", pt: "Meio Período" },
+  ];
+
+  order = 10;
+  for (const schedule of jobSchedules) {
+    const catalog = await prisma.catalog.upsert({
+      where: { type_code: { type: "JOB_SCHEDULES", code: schedule.code } },
+      update: {},
+      create: {
+        type: "JOB_SCHEDULES",
+        code: schedule.code,
+        isActive: true,
+        order,
+        translations: {
+          create: [
+            { lang: "ES", label: schedule.es },
+            { lang: "EN", label: schedule.en },
+            { lang: "PT", label: schedule.pt },
+          ],
+        },
+      },
+    });
+    order += 10;
+  }
+
   // Crear JOB_TYPES (duplicado de JOB_TYPE para compatibilidad)
   order = 10;
   for (const type of jobTypes) {

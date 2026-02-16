@@ -243,6 +243,8 @@ model Job {
   // Salary fields
   minSalary           Float?
   maxSalary           Float?
+  // Schedule field
+  schedule            String? // Horario de trabajo (código del catálogo JOB_SCHEDULES, ej: MANANA, TARDE, NOCHE)
   // Additional fields
   benefits            String?
   company             String?
@@ -540,6 +542,7 @@ enum CatalogType {
   STUDY_TYPES
   STUDY_STATUSES
   MARITAL_STATUSES
+  JOB_SCHEDULES
 }
 
 enum CatalogLanguage {

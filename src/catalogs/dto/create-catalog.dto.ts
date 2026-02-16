@@ -26,6 +26,7 @@ export enum CatalogType {
   STUDY_TYPES = "STUDY_TYPES",
   STUDY_STATUSES = "STUDY_STATUSES",
   MARITAL_STATUSES = "MARITAL_STATUSES",
+  JOB_SCHEDULES = "JOB_SCHEDULES",
 }
 
 class CatalogTranslationDto {

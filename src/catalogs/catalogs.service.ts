@@ -235,7 +235,7 @@ export class CatalogsService {
   async getPublicCatalogs(lang: "es" | "en" | "pt" = "es") {
     const langUpper = lang.toUpperCase() as "ES" | "EN" | "PT";
 
-    const catalogTypes: Array<"JOB_AREA" | "JOB_TYPE" | "JOB_LEVEL" | "JOB_TYPES" | "EXPERIENCE_LEVELS" | "APPLICATION_STATUSES" | "MODALITIES" | "LANGUAGE_LEVELS" | "COMPANY_SIZES" | "SECTORS" | "STUDY_TYPES" | "STUDY_STATUSES" | "MARITAL_STATUSES"> = [
+    const catalogTypes: Array<"JOB_AREA" | "JOB_TYPE" | "JOB_LEVEL" | "JOB_TYPES" | "EXPERIENCE_LEVELS" | "APPLICATION_STATUSES" | "MODALITIES" | "LANGUAGE_LEVELS" | "COMPANY_SIZES" | "SECTORS" | "STUDY_TYPES" | "STUDY_STATUSES" | "MARITAL_STATUSES" | "JOB_SCHEDULES"> = [
       "JOB_AREA",
       "JOB_TYPE",
       "JOB_LEVEL",
@@ -249,6 +249,7 @@ export class CatalogsService {
       "STUDY_TYPES",
       "STUDY_STATUSES",
       "MARITAL_STATUSES",
+      "JOB_SCHEDULES",
     ];
 
     const catalogsByType = await Promise.all(
@@ -283,6 +284,7 @@ export class CatalogsService {
       STUDY_TYPES: "studyTypes",
       STUDY_STATUSES: "studyStatuses",
       MARITAL_STATUSES: "maritalStatuses",
+      JOB_SCHEDULES: "jobSchedules",
     };
 
     const result: Record<string, Array<{ code: string; label: string; order: number }>> = {};

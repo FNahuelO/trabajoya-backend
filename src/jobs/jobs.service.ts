@@ -130,6 +130,9 @@ export class JobsService {
     if (q.nivelLaboral) {
       where.AND.push({ experienceLevel: q.nivelLaboral });
     }
+    if (q.horario) {
+      where.AND.push({ schedule: q.horario });
+    }
 
     // Filtro por fecha desde (fechaDesde)
     if (q.fechaDesde) {
