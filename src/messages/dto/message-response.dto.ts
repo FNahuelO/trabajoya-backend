@@ -41,6 +41,9 @@ export class MessageResponseDto {
   @ApiProperty({ description: "Contenido del mensaje" })
   content: string;
 
+  @ApiProperty({ description: "Indica si el mensaje ha sido entregado al destinatario" })
+  isDelivered: boolean;
+
   @ApiProperty({ description: "Indica si el mensaje ha sido leído" })
   isRead: boolean;
 

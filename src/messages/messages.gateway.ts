@@ -104,6 +104,39 @@ export class MessagesGateway
       // Enviar contador de mensajes no leídos
       const unreadCount = await this.messagesService.getUnreadCount(userId);
       client.emit("unreadCount", { count: unreadCount });
+
+      // Marcar mensajes pendientes como entregados y notificar a los remitentes
+      try {
+        const deliveredMessages =
+          await this.messagesService.markPendingMessagesAsDelivered(userId);
+        if (deliveredMessages.length > 0) {
+          // Agrupar por remitente para notificar eficientemente
+          const bySender = new Map<string, string[]>();
+          for (const { messageId, fromUserId } of deliveredMessages) {
+            if (!bySender.has(fromUserId)) {
+              bySender.set(fromUserId, []);
+            }
+            bySender.get(fromUserId)!.push(messageId);
+          }
+          // Notificar a cada remitente que sus mensajes fueron entregados
+          for (const [senderId, messageIds] of bySender) {
+            const senderSocketId = this.connectedUsers.get(senderId);
+            if (senderSocketId) {
+              this.server.to(senderSocketId).emit("messagesDelivered", {
+                messageIds,
+              });
+            }
+          }
+          this.logger.log(
+            `Marked ${deliveredMessages.length} messages as delivered for user ${userId}`
+          );
+        }
+      } catch (deliveryError) {
+        this.logger.error(
+          "Error marking pending messages as delivered:",
+          deliveryError
+        );
+      }
     } catch (error) {
       this.logger.error("Error handling WebSocket connection:", error);
       if (client && typeof client.emit === "function") {
@@ -206,6 +239,20 @@ export class MessagesGateway
         this.server
           .to(recipientSocketId)
           .emit("unreadCount", { count: unreadCount });
+
+        // El destinatario está online, marcar como entregado
+        try {
+          await this.messagesService.markAsDelivered(message.id);
+          // Notificar al remitente que el mensaje fue entregado
+          client.emit("messagesDelivered", {
+            messageIds: [message.id],
+          });
+        } catch (deliveryError) {
+          this.logger.error(
+            "Error marking message as delivered:",
+            deliveryError
+          );
+        }
       }
 
       // SIEMPRE enviar notificación push, incluso si el usuario está conectado
@@ -366,6 +413,16 @@ export class MessagesGateway
       this.server.to(socketId).emit("messageRead", {
         messageId,
         readAt,
+      });
+    }
+  }
+
+  // Método para notificar que mensajes fueron entregados
+  async notifyMessagesDelivered(userId: string, messageIds: string[]) {
+    const socketId = this.connectedUsers.get(userId);
+    if (socketId) {
+      this.server.to(socketId).emit("messagesDelivered", {
+        messageIds,
       });
     }
   }

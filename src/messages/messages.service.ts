@@ -357,14 +357,14 @@ export class MessagesService {
       },
     });
 
-    // Marcar como leídos los mensajes recibidos
+    // Marcar como entregados y leídos los mensajes recibidos
     await this.prisma.message.updateMany({
       where: {
         fromUserId: otherUserId,
         toUserId: userId,
-        isRead: false,
+        OR: [{ isRead: false }, { isDelivered: false }],
       },
-      data: { isRead: true },
+      data: { isDelivered: true, isRead: true },
     });
 
     return Promise.all(
@@ -392,7 +392,7 @@ export class MessagesService {
 
     const updatedMessage = await this.prisma.message.update({
       where: { id: messageId },
-      data: { isRead: true },
+      data: { isDelivered: true, isRead: true },
       include: {
         fromUser: {
           select: {
@@ -440,6 +440,126 @@ export class MessagesService {
     });
 
     return await this.mapMessageToResponse(updatedMessage);
+  }
+
+  async markAsDelivered(
+    messageId: string
+  ): Promise<MessageResponseDto> {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException("Mensaje no encontrado");
+    }
+
+    // Solo marcar como entregado si aún no lo está
+    if (message.isDelivered) {
+      // Ya está marcado, retornar sin actualizar
+      const fullMessage = await this.prisma.message.findUnique({
+        where: { id: messageId },
+        include: {
+          fromUser: {
+            select: {
+              id: true,
+              email: true,
+              userType: true,
+              postulante: {
+                select: { id: true, fullName: true, profilePicture: true },
+              },
+              empresa: {
+                select: { id: true, companyName: true, logo: true },
+              },
+            },
+          },
+          toUser: {
+            select: {
+              id: true,
+              email: true,
+              userType: true,
+              postulante: {
+                select: { id: true, fullName: true, profilePicture: true },
+              },
+              empresa: {
+                select: { id: true, companyName: true, logo: true },
+              },
+            },
+          },
+        },
+      });
+      return await this.mapMessageToResponse(fullMessage);
+    }
+
+    const updatedMessage = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { isDelivered: true },
+      include: {
+        fromUser: {
+          select: {
+            id: true,
+            email: true,
+            userType: true,
+            postulante: {
+              select: { id: true, fullName: true, profilePicture: true },
+            },
+            empresa: {
+              select: { id: true, companyName: true, logo: true },
+            },
+          },
+        },
+        toUser: {
+          select: {
+            id: true,
+            email: true,
+            userType: true,
+            postulante: {
+              select: { id: true, fullName: true, profilePicture: true },
+            },
+            empresa: {
+              select: { id: true, companyName: true, logo: true },
+            },
+          },
+        },
+      },
+    });
+
+    return await this.mapMessageToResponse(updatedMessage);
+  }
+
+  /**
+   * Marcar todos los mensajes no entregados para un usuario como entregados.
+   * Retorna los IDs de los mensajes actualizados y sus remitentes para poder notificarlos.
+   */
+  async markPendingMessagesAsDelivered(
+    userId: string
+  ): Promise<{ messageId: string; fromUserId: string }[]> {
+    // Obtener mensajes no entregados destinados a este usuario
+    const undeliveredMessages = await this.prisma.message.findMany({
+      where: {
+        toUserId: userId,
+        isDelivered: false,
+      },
+      select: {
+        id: true,
+        fromUserId: true,
+      },
+    });
+
+    if (undeliveredMessages.length === 0) return [];
+
+    // Marcar todos como entregados en batch
+    await this.prisma.message.updateMany({
+      where: {
+        toUserId: userId,
+        isDelivered: false,
+      },
+      data: { isDelivered: true },
+    });
+
+    return undeliveredMessages.map((msg) => ({
+      messageId: msg.id,
+      fromUserId: msg.fromUserId,
+    }));
   }
 
   async getUnreadCount(userId: string): Promise<number> {
@@ -495,6 +615,7 @@ export class MessagesService {
       fromUserId: message.fromUserId,
       toUserId: message.toUserId,
       content: message.content,
+      isDelivered: message.isDelivered,
       isRead: message.isRead,
       createdAt: message.createdAt.toISOString(),
       fromUser: message.fromUser

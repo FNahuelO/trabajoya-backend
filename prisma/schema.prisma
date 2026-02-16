@@ -308,15 +308,16 @@ model CompanyFavorite {
 }
 
 model Message {
-  id         String   @id @default(uuid())
-  fromUserId String
-  toUserId   String
-  content    String
-  isRead     Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  fromUser   User     @relation("SentMessages", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUser     User     @relation("ReceivedMessages", fields: [toUserId], references: [id], onDelete: Cascade)
-  reports    Report[]
+  id          String   @id @default(uuid())
+  fromUserId  String
+  toUserId    String
+  content     String
+  isDelivered Boolean  @default(false)
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  fromUser    User     @relation("SentMessages", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser      User     @relation("ReceivedMessages", fields: [toUserId], references: [id], onDelete: Cascade)
+  reports     Report[]
 }
 
 enum UserType {
