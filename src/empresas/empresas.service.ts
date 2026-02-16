@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
@@ -12,11 +13,14 @@ import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 import { PromotionsService } from "../promotions/promotions.service";
 import { MailService } from "../mail/mail.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PaymentMethod, PaymentStatus } from "@prisma/client";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
 export class EmpresasService {
+  private logger = new Logger("EmpresasService");
+
   constructor(
     private prisma: PrismaService,
     private contentModeration: ContentModerationService,
@@ -26,7 +30,8 @@ export class EmpresasService {
     private gcsUploadService: GCSUploadService,
     private configService: ConfigService,
     private promotionsService: PromotionsService,
-    private mailService: MailService
+    private mailService: MailService,
+    private notificationsService: NotificationsService
   ) {}
 
   async getByUser(userId: string) {
@@ -833,6 +838,33 @@ export class EmpresasService {
     } catch (error) {
       // No fallar si el envío de email falla, solo loguear el error
       console.error("Error enviando email de actualización de postulación:", error);
+    }
+
+    // Enviar notificación push al postulante (en background, no bloquea la respuesta)
+    try {
+      const postulanteUserId = application.postulante?.userId;
+      if (postulanteUserId) {
+        this.notificationsService
+          .sendApplicationStatusNotification(
+            postulanteUserId,
+            application.job.title,
+            profile.companyName,
+            status,
+            {
+              applicationId: application.id,
+              jobId: application.jobId,
+            }
+          )
+          .catch((error) => {
+            this.logger.error(
+              `Error sending application status push notification to postulante: ${error.message}`,
+              error.stack
+            );
+          });
+      }
+    } catch (error) {
+      // No fallar si la notificación push no se puede enviar
+      this.logger.error("Error preparing application status push notification:", error);
     }
 
     return updatedApplication;

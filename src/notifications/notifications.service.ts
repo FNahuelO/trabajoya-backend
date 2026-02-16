@@ -266,6 +266,66 @@ export class NotificationsService {
   }
 
   /**
+   * Enviar notificación de cambio de estado de postulación al postulante
+   */
+  async sendApplicationStatusNotification(
+    postulanteUserId: string,
+    jobTitle: string,
+    companyName: string,
+    newStatus: string,
+    applicationData: {
+      applicationId: string;
+      jobId: string;
+    }
+  ): Promise<void> {
+    // Verificar preferencias del postulante
+    const preferences = await this.getUserPreferences(postulanteUserId);
+    const postulantePrefs = preferences as PostulanteNotificationPreferences;
+
+    if (!postulantePrefs.applicationUpdates) {
+      this.logger.log(
+        `[NotificationsService] Postulante user ${postulanteUserId} has disabled applicationUpdates notifications, skipping push`
+      );
+      return;
+    }
+
+    // Mapear estados a etiquetas legibles
+    const statusLabels: Record<string, { label: string; emoji: string }> = {
+      PENDING: { label: "Pendiente", emoji: "⏳" },
+      REVIEWED: { label: "Revisada", emoji: "👀" },
+      INTERVIEW: { label: "Entrevista", emoji: "📅" },
+      ACCEPTED: { label: "Aceptada", emoji: "🎉" },
+      REJECTED: { label: "No seleccionada", emoji: "📋" },
+    };
+
+    const statusInfo = statusLabels[newStatus] || { label: newStatus, emoji: "📌" };
+
+    this.logger.log(
+      `[NotificationsService] Sending application status notification to postulante user ${postulanteUserId} for job "${jobTitle}" - status: ${newStatus}`
+    );
+
+    const title = `${statusInfo.emoji} Tu postulación fue actualizada`;
+    const body = `Tu postulación a "${jobTitle}" en ${companyName} cambió a: ${statusInfo.label}`;
+
+    await this.expoPushService.sendToUser(
+      postulanteUserId,
+      title,
+      body,
+      {
+        ...applicationData,
+        type: "application_status",
+        newStatus,
+        jobTitle,
+        companyName,
+      },
+      {
+        priority: "high",
+        channelId: "general",
+      }
+    );
+  }
+
+  /**
    * Enviar notificación de llamada
    */
   async sendCallNotification(

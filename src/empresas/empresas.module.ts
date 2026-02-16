@@ -8,9 +8,10 @@ import { UploadModule } from "../upload/upload.module";
 import { JobsModule } from "../jobs/jobs.module";
 import { PromotionsModule } from "../promotions/promotions.module";
 import { MailModule } from "../mail/mail.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [SubscriptionsModule, PaymentsModule, UploadModule, JobsModule, PromotionsModule, MailModule],
+  imports: [SubscriptionsModule, PaymentsModule, UploadModule, JobsModule, PromotionsModule, MailModule, NotificationsModule],
   controllers: [EmpresasController],
   providers: [EmpresasService, ContentModerationService],
   exports: [EmpresasService],
