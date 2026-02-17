@@ -246,7 +246,7 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
 
     // Formatear el From con nombre si es posible
-    const fromEmail = process.env.MAIL_FROM || 'noreply@send.trabajo-ya.com';
+    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
     const fromName = 'TrabajoYa';
     const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
 
@@ -384,7 +384,7 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
 
     // Formatear el From con nombre si es posible
     // Elegí un "From" alineado con el MAIL FROM (lo que más ayuda en Outlook)
-    const fromEmail = process.env.MAIL_FROM || "noreply@send.trabajo-ya.com";
+    const fromEmail = process.env.MAIL_FROM || "noreply@trabajo-ya.com";
     const fromName = "TrabajoYa";
     const fromFormatted = fromEmail.includes("<")
       ? fromEmail
@@ -564,7 +564,7 @@ Recibiste este email porque tienes una postulación activa en la plataforma.
         ? baseUnsubscribeUrl
         : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
 
-    const fromEmail = process.env.MAIL_FROM || "noreply@send.trabajo-ya.com";
+    const fromEmail = process.env.MAIL_FROM || "noreply@trabajo-ya.com";
     const fromName = "TrabajoYa";
     const fromFormatted = fromEmail.includes("<") ? fromEmail : `${fromName} <${fromEmail}>`;
 
@@ -701,7 +701,7 @@ Este correo fue enviado automáticamente por TrabajoYa.`;
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
 
     // Formatear el From con nombre si es posible
-    const fromEmail = process.env.MAIL_FROM || 'noreply@send.trabajo-ya.com';
+    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
     const fromName = 'TrabajoYa';
     const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
 
