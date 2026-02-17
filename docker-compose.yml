@@ -41,7 +41,7 @@ services:
       # MAIL - AWS SES (producción) o SMTP (desarrollo)
       # Para usar SES en desarrollo, configura:
       # MAIL_PROVIDER: ses
-      # MAIL_FROM: "noreply@trabajo-ya.com"
+      # MAIL_FROM: "noreply@send.trabajo-ya.com"
       # AWS_REGION: us-east-1
       # AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       # AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}

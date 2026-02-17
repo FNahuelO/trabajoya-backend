@@ -7,7 +7,7 @@ const MAIL_PROVIDER_TOKEN = "MAIL_PROVIDER";
 export class MailService {
   constructor(
     @Inject(MAIL_PROVIDER_TOKEN) private readonly provider: MailProvider
-  ) {}
+  ) { }
 
   /**
    * Construye una URL HTTPS para la aplicación web
@@ -17,7 +17,7 @@ export class MailService {
   private buildAppLink(path: string, query?: Record<string, string>): string {
     // Priorizar APP_WEB_URL, luego FRONTEND_URL, y finalmente usar un fallback de producción
     let baseUrl = process.env.APP_WEB_URL || process.env.FRONTEND_URL;
-    
+
     // Si no hay URL configurada, usar fallback según el entorno
     if (!baseUrl) {
       if (process.env.NODE_ENV === 'production') {
@@ -28,27 +28,27 @@ export class MailService {
         baseUrl = 'http://localhost:3000';
       }
     }
-    
+
     // Asegurar que la URL base termine con / para evitar problemas con new URL()
     if (!baseUrl.endsWith('/')) {
       baseUrl += '/';
     }
-    
+
     // Construir la URL completa
     const url = new URL(path.startsWith('/') ? path.substring(1) : path, baseUrl);
-    
+
     // Agregar parámetros de query si existen
     if (query) {
       Object.entries(query).forEach(([key, value]) => {
         url.searchParams.append(key, value);
       });
     }
-    
+
     // En producción, forzar HTTPS
     if (process.env.NODE_ENV === 'production' && url.protocol === 'http:') {
       url.protocol = 'https:';
     }
-    
+
     return url.toString();
   }
 
@@ -58,7 +58,7 @@ export class MailService {
    */
   private buildEmpresasLink(path: string, query?: Record<string, string>): string {
     let baseUrl = process.env.WEB_EMPRESAS_URL;
-    
+
     if (!baseUrl) {
       if (process.env.NODE_ENV === 'production') {
         baseUrl = 'https://empresas.trabajo-ya.com';
@@ -66,23 +66,23 @@ export class MailService {
         baseUrl = 'http://localhost:3000';
       }
     }
-    
+
     if (!baseUrl.endsWith('/')) {
       baseUrl += '/';
     }
-    
+
     const url = new URL(path.startsWith('/') ? path.substring(1) : path, baseUrl);
-    
+
     if (query) {
       Object.entries(query).forEach(([key, value]) => {
         url.searchParams.append(key, value);
       });
     }
-    
+
     if (process.env.NODE_ENV === 'production' && url.protocol === 'http:') {
       url.protocol = 'https:';
     }
-    
+
     return url.toString();
   }
 
@@ -241,12 +241,12 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
     const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
     const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
-    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe' 
+    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe'
       ? baseUnsubscribeUrl
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
 
     // Formatear el From con nombre si es posible
-    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
+    const fromEmail = process.env.MAIL_FROM || 'noreply@send.trabajo-ya.com';
     const fromName = 'TrabajoYa';
     const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
 
@@ -378,35 +378,35 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
     const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
     const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
-    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe' 
+    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe'
       ? baseUnsubscribeUrl
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
 
     // Formatear el From con nombre si es posible
-    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
-    const fromName = 'TrabajoYa';
-    const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
+    // Elegí un "From" alineado con el MAIL FROM (lo que más ayuda en Outlook)
+    const fromEmail = process.env.MAIL_FROM || "noreply@send.trabajo-ya.com";
+    const fromName = "TrabajoYa";
+    const fromFormatted = fromEmail.includes("<")
+      ? fromEmail
+      : `${fromName} <${fromEmail}>`;
 
     await this.provider.send({
       to: email,
       subject: "Restablecer contraseña de TrabajoYa",
-      html,
+      html: html
+        .replace("🔒", "")   // por ahora, sacá emojis en subject/H1/botón para Outlook
+        .replace("🔑", "")
+        .replace("⚠️", ""),
       text,
       from: fromFormatted,
       headers: {
-        // Headers para mejorar deliverability y evitar spam
-        "Message-ID": messageId,
         "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
-        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "MIME-Version": "1.0",
-        "Content-Type": "text/html; charset=UTF-8",
-        // Removido X-Priority ya que puede ser visto como spam
-        // Removido Importance para mejorar deliverability
+        // opcional, no molesta:
+        "X-Mailer": "TrabajoYa",
       },
     });
+
   }
 
   async sendApplicationStatusUpdateEmail(
@@ -564,7 +564,7 @@ Recibiste este email porque tienes una postulación activa en la plataforma.
         ? baseUnsubscribeUrl
         : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
 
-    const fromEmail = process.env.MAIL_FROM || "noreply@trabajo-ya.com";
+    const fromEmail = process.env.MAIL_FROM || "noreply@send.trabajo-ya.com";
     const fromName = "TrabajoYa";
     const fromFormatted = fromEmail.includes("<") ? fromEmail : `${fromName} <${fromEmail}>`;
 
@@ -696,12 +696,12 @@ Este correo fue enviado automáticamente por TrabajoYa.`;
     const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
     const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
-    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe' 
+    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe'
       ? baseUnsubscribeUrl
       : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
 
     // Formatear el From con nombre si es posible
-    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
+    const fromEmail = process.env.MAIL_FROM || 'noreply@send.trabajo-ya.com';
     const fromName = 'TrabajoYa';
     const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
 
