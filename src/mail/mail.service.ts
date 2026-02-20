@@ -135,6 +135,7 @@ export class MailService {
       : this.buildAppLink("/app/verify-email", { token });
 
     const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
+    const LOGO_FULL_URL = this.buildAppLink("/logo.png");
 
     // Traducciones por idioma
     const translations: Record<string, Record<string, string>> = {
@@ -358,6 +359,7 @@ export class MailService {
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
               <tr>
                 <td style="text-align: center;">
+                  <img src="${LOGO_FULL_URL}" alt="TrabajoYa" style="height: 40px; width: auto; margin-bottom: 16px;" />
                   <p style="margin: 0 0 4px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
                     ${t.footerAutoEmail}
                   </p>
@@ -429,6 +431,7 @@ ${t.textPlainContact}`;
     const actionUrl = this.buildAppLink("/app/reset-password", { token });
 
     const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
+    const LOGO_FULL_URL = this.buildAppLink("/logo.png");
 
     // Traducciones por idioma
     const translations: Record<string, Record<string, string>> = {
@@ -642,6 +645,7 @@ ${t.textPlainContact}`;
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
               <tr>
                 <td style="text-align: center;">
+                  <img src="${LOGO_FULL_URL}" alt="TrabajoYa" style="height: 40px; width: auto; margin-bottom: 16px;" />
                   <p style="margin: 0 0 4px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
                     ${t.footerAutoEmail}
                   </p>
@@ -717,6 +721,7 @@ ${t.footerIgnore}`;
     lang: string = "es"
   ): Promise<void> {
     const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
+    const LOGO_FULL_URL = this.buildAppLink("/logo.png");
 
     // Traducciones por idioma
     const translations: Record<string, Record<string, string>> = {
@@ -937,6 +942,7 @@ ${t.footerIgnore}`;
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
               <tr>
                 <td style="text-align: center;">
+                  <img src="${LOGO_FULL_URL}" alt="TrabajoYa" style="height: 40px; width: auto; margin-bottom: 16px;" />
                   <p style="margin: 0 0 4px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
                     ${t.footerAutoEmail}
                   </p>
@@ -1006,6 +1012,7 @@ ${t.textPlainContact}`;
     const actionUrl = this.buildAppLink(`/app/job/${jobId}`);
 
     const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
+    const LOGO_FULL_URL = this.buildAppLink("/logo.png");
 
     // Traducciones por idioma
     const translations: Record<string, Record<string, string>> = {
@@ -1249,6 +1256,7 @@ ${t.textPlainContact}`;
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
               <tr>
                 <td style="text-align: center;">
+                  <img src="${LOGO_FULL_URL}" alt="TrabajoYa" style="height: 40px; width: auto; margin-bottom: 16px;" />
                   <p style="margin: 0 0 12px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
                     ${t.footerAutoEmail}
                   </p>
