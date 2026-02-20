@@ -238,11 +238,10 @@ export class GoogleMeetService {
       throw new BadRequestException("Google OAuth no está configurado");
     }
 
+    // Solo solicitar el scope mínimo necesario para crear eventos de calendario
+    // (requerido por la verificación de Google OAuth - permisos mínimos)
     const scopes = [
-      "https://www.googleapis.com/auth/calendar",
       "https://www.googleapis.com/auth/calendar.events",
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile",
     ];
 
     return this.oauth2Client.generateAuthUrl({
