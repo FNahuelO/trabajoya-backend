@@ -1,33 +1,54 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { IsBoolean, IsOptional } from "class-validator";
 
 export class UpdateNotificationPreferencesDto {
-  @ApiProperty({ default: true })
-  emailGeneral: boolean;
+  @ApiProperty({ description: "Notificaciones generales por email", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  emailGeneral?: boolean;
 
-  @ApiProperty({ default: true })
-  pushGeneral: boolean;
+  @ApiProperty({ description: "Notificaciones generales push", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  pushGeneral?: boolean;
 
-  @ApiProperty({ default: true })
-  emailEstadoPostulaciones: boolean;
+  @ApiProperty({ description: "Estado de postulaciones por email", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  emailEstadoPostulaciones?: boolean;
 
-  @ApiProperty({ default: true })
-  pushEstadoPostulaciones: boolean;
+  @ApiProperty({ description: "Estado de postulaciones push", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  pushEstadoPostulaciones?: boolean;
 
-  @ApiProperty({ default: true })
-  emailMensajesEmpresas: boolean;
+  @ApiProperty({ description: "Mensajes de empresas por email", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  emailMensajesEmpresas?: boolean;
 
-  @ApiProperty({ default: true })
-  pushMensajesEmpresas: boolean;
+  @ApiProperty({ description: "Mensajes de empresas push", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  pushMensajesEmpresas?: boolean;
 
-  @ApiProperty({ default: true })
-  emailNuevosEmpleosSeguidos: boolean;
+  @ApiProperty({ description: "Nuevos empleos de empresas seguidas por email", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  emailNuevosEmpleosSeguidos?: boolean;
 
-  @ApiProperty({ default: true })
-  pushNuevosEmpleosSeguidos: boolean;
+  @ApiProperty({ description: "Nuevos empleos de empresas seguidas push", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  pushNuevosEmpleosSeguidos?: boolean;
 
-  @ApiProperty({ default: true })
-  emailRecomendados: boolean;
+  @ApiProperty({ description: "Empleos recomendados por email", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  emailRecomendados?: boolean;
 
-  @ApiProperty({ default: true })
-  pushRecomendados: boolean;
+  @ApiProperty({ description: "Empleos recomendados push", default: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  pushRecomendados?: boolean;
 }

@@ -9,6 +9,7 @@ import { AtsService } from "./ats.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { UpdateNotificationPreferencesDto } from "./dto/update-notification-preferences.dto";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -450,39 +451,52 @@ export class PostulantesService {
     return updatedProfile;
   }
 
+  private readonly DEFAULT_NOTIFICATION_PREFS = {
+    emailGeneral: true,
+    pushGeneral: true,
+    emailEstadoPostulaciones: true,
+    pushEstadoPostulaciones: true,
+    emailMensajesEmpresas: true,
+    pushMensajesEmpresas: true,
+    emailNuevosEmpleosSeguidos: true,
+    pushNuevosEmpleosSeguidos: true,
+    emailRecomendados: true,
+    pushRecomendados: true,
+  };
+
   async getNotificationPreferences(userId: string) {
     const profile = await this.prisma.postulanteProfile.findUnique({
       where: { userId },
     });
     if (!profile) {
-      throw new NotFoundException("Mensaje de error");
+      throw new NotFoundException("Perfil de postulante no encontrado");
     }
-    return (
-      profile.notificationPreferences ?? {
-        emailGeneral: true,
-        pushGeneral: true,
-        emailEstadoPostulaciones: true,
-        pushEstadoPostulaciones: true,
-        emailMensajesEmpresas: true,
-        pushMensajesEmpresas: true,
-        emailNuevosEmpleosSeguidos: true,
-        pushNuevosEmpleosSeguidos: true,
-        emailRecomendados: true,
-        pushRecomendados: true,
-      }
-    );
+    const stored = (profile.notificationPreferences as Record<string, boolean>) ?? {};
+    return { ...this.DEFAULT_NOTIFICATION_PREFS, ...stored };
   }
 
-  async updateNotificationPreferences(userId: string, dto: any) {
+  async updateNotificationPreferences(
+    userId: string,
+    dto: UpdateNotificationPreferencesDto,
+  ) {
     const profile = await this.prisma.postulanteProfile.findUnique({
       where: { userId },
     });
     if (!profile) {
-      throw new NotFoundException("Mensaje de error");
+      throw new NotFoundException("Perfil de postulante no encontrado");
     }
+
+    // Mergear con preferencias existentes para no perder campos no enviados
+    const current = (profile.notificationPreferences as Record<string, boolean>) ?? {};
+    const merged = {
+      ...this.DEFAULT_NOTIFICATION_PREFS,
+      ...current,
+      ...dto,
+    };
+
     const updated = await this.prisma.postulanteProfile.update({
       where: { userId },
-      data: { notificationPreferences: dto },
+      data: { notificationPreferences: merged },
       select: { notificationPreferences: true },
     });
     return updated.notificationPreferences;

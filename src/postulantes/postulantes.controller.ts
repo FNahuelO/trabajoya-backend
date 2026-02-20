@@ -56,16 +56,31 @@ export class PostulantesController {
   }
 
   @Get("notifications")
-  getNotificationPreferences(@Req() req: any) {
-    return this.service.getNotificationPreferences(req.user?.sub);
+  async getNotificationPreferences(@Req() req: any) {
+    const preferences = await this.service.getNotificationPreferences(
+      req.user?.sub,
+    );
+    return createResponse({
+      success: true,
+      message: "Preferencias obtenidas correctamente",
+      data: preferences,
+    });
   }
 
   @Put("notifications")
-  updateNotificationPreferences(
+  async updateNotificationPreferences(
     @Req() req: any,
-    @Body() dto: UpdateNotificationPreferencesDto
+    @Body() dto: UpdateNotificationPreferencesDto,
   ) {
-    return this.service.updateNotificationPreferences(req.user?.sub, dto);
+    const preferences = await this.service.updateNotificationPreferences(
+      req.user?.sub,
+      dto,
+    );
+    return createResponse({
+      success: true,
+      message: "Preferencias actualizadas correctamente",
+      data: preferences,
+    });
   }
 
   @Post("applications/:jobId")
