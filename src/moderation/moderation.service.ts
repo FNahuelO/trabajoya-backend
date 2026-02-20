@@ -139,6 +139,7 @@ export class ModerationService {
             user: {
               select: {
                 email: true,
+                language: true,
               },
             },
           },
@@ -169,7 +170,8 @@ export class ModerationService {
           job.empresa.user.email,
           job.title,
           job.empresa.companyName || "",
-          job.id
+          job.id,
+          job.empresa.user.language
         );
       } catch (error) {
         // Log el error pero no fallar la aprobación si el correo falla

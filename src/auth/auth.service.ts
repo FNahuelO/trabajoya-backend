@@ -350,7 +350,7 @@ export class AuthService {
     }
 
     // Enviar email de verificación (POSTULANTE → web con deep link a la app)
-    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType);
+    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType, user.language || "es");
 
     return {
       message: await this.getTranslation(
@@ -1333,8 +1333,8 @@ export class AuthService {
       },
     });
 
-    // Enviar email de recuperación
-    await this.mailService.sendPasswordResetEmail(email.trim(), resetToken);
+    // Enviar email de recuperación en el idioma del usuario
+    await this.mailService.sendPasswordResetEmail(email.trim(), resetToken, user.language || "es");
 
     return {
       message: await this.getTranslation(
@@ -1603,7 +1603,7 @@ export class AuthService {
     });
 
     // Enviar email con el token (usar userType para determinar destino)
-    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType);
+    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType, user.language || "es");
 
     return {
       message: await this.getTranslation(
@@ -1660,7 +1660,7 @@ export class AuthService {
     });
 
     // Enviar email con el token (usar userType para determinar destino)
-    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType);
+    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType, user.language || "es");
 
     return {
       message: await this.getTranslation(
@@ -1784,7 +1784,7 @@ export class AuthService {
     });
 
     // Enviar email de verificación (EMPRESA → portal web-empresas)
-    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType);
+    await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType, user.language || "es");
 
     // Generar tokens
     const tokens = await this.issueTokens(user.id, user.userType);

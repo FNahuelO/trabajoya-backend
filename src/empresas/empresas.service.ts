@@ -803,7 +803,7 @@ export class EmpresasService {
         postulante: {
           include: {
             user: {
-              select: { email: true },
+              select: { email: true, language: true },
             },
           },
         },
@@ -822,7 +822,7 @@ export class EmpresasService {
       },
     });
 
-    // Enviar email de notificación al postulante
+    // Enviar email de notificación al postulante en su idioma
     try {
       const postulanteEmail = application.postulante?.user?.email;
       if (postulanteEmail) {
@@ -832,7 +832,8 @@ export class EmpresasService {
           application.job.title,
           profile.companyName,
           status,
-          notes
+          notes,
+          application.postulante?.user?.language || "es"
         );
       }
     } catch (error) {
@@ -932,6 +933,7 @@ export class EmpresasService {
             user: {
               select: {
                 email: true,
+                language: true,
               },
             },
           },
@@ -961,7 +963,8 @@ export class EmpresasService {
           job.empresa.user.email,
           job.title,
           job.empresa.companyName || "",
-          job.id
+          job.id,
+          job.empresa.user.language
         );
       } catch (error) {
         // Log el error pero no fallar la aprobación si el correo falla

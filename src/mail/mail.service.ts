@@ -127,21 +127,101 @@ export class MailService {
     `;
   }
 
-  async sendVerificationEmail(email: string, token: string, userType?: string): Promise<void> {
+  async sendVerificationEmail(email: string, token: string, userType?: string, lang: string = "es"): Promise<void> {
     // Para EMPRESA: enlace directo al portal web-empresas
     // Para POSTULANTE (u otros): enlace a la web principal que redirige a la app vía deep link
     const actionUrl = userType === 'EMPRESA'
       ? this.buildEmpresasLink("/verificar-email", { token })
       : this.buildAppLink("/app/verify-email", { token });
 
+    const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
+
+    // Traducciones por idioma
+    const translations: Record<string, Record<string, string>> = {
+      es: {
+        subject: "Verifica tu cuenta de TrabajoYa",
+        preheader: "Verifica tu dirección de correo electrónico para activar tu cuenta en TrabajoYa",
+        title: "Bienvenido a TrabajoYa",
+        greeting: "Hola,",
+        description: "Gracias por registrarte en",
+        descriptionCta: "Para completar tu registro y comenzar a buscar oportunidades laborales, necesitamos verificar tu correo electrónico.",
+        buttonText: "Verificar mi Email",
+        benefitsTitle: "Una vez verificado, podrás:",
+        benefit1: "Buscar y aplicar a ofertas de trabajo",
+        benefit2: "Completar tu perfil profesional",
+        benefit3: "Recibir notificaciones de nuevas oportunidades",
+        benefit4: "Conectar con empresas de tu interés",
+        expirationImportant: "Importante:",
+        expirationDesc: "Este enlace de verificación expirará en 24 horas por seguridad. Si necesitas un nuevo enlace, puedes solicitarlo desde la aplicación.",
+        footerAutoEmail: "Este email fue enviado automáticamente por TrabajoYa.",
+        footerIgnore: "Si no te registraste en TrabajoYa, puedes ignorar este mensaje.",
+        footerHelp: "¿Necesitas ayuda?",
+        textPlainTitle: "Bienvenido a TrabajoYa",
+        textPlainVerifyLink: "Para verificar tu cuenta, visita:",
+        textPlainBenefits: "Una vez verificado, podrás:",
+        textPlainExpiry: "Este enlace de verificación expirará en 24 horas por seguridad.",
+        textPlainContact: "¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com",
+      },
+      en: {
+        subject: "Verify your TrabajoYa account",
+        preheader: "Verify your email address to activate your TrabajoYa account",
+        title: "Welcome to TrabajoYa",
+        greeting: "Hello,",
+        description: "Thank you for signing up at",
+        descriptionCta: "To complete your registration and start looking for job opportunities, we need to verify your email address.",
+        buttonText: "Verify my Email",
+        benefitsTitle: "Once verified, you'll be able to:",
+        benefit1: "Search and apply to job offers",
+        benefit2: "Complete your professional profile",
+        benefit3: "Receive notifications for new opportunities",
+        benefit4: "Connect with companies you're interested in",
+        expirationImportant: "Important:",
+        expirationDesc: "This verification link will expire in 24 hours for security. If you need a new link, you can request one from the app.",
+        footerAutoEmail: "This email was sent automatically by TrabajoYa.",
+        footerIgnore: "If you didn't sign up for TrabajoYa, you can ignore this message.",
+        footerHelp: "Need help?",
+        textPlainTitle: "Welcome to TrabajoYa",
+        textPlainVerifyLink: "To verify your account, visit:",
+        textPlainBenefits: "Once verified, you'll be able to:",
+        textPlainExpiry: "This verification link will expire in 24 hours for security.",
+        textPlainContact: "Need help? Contact us at soporte@trabajo-ya.com",
+      },
+      pt: {
+        subject: "Verifique sua conta do TrabajoYa",
+        preheader: "Verifique seu endereço de e-mail para ativar sua conta no TrabajoYa",
+        title: "Bem-vindo ao TrabajoYa",
+        greeting: "Olá,",
+        description: "Obrigado por se registrar no",
+        descriptionCta: "Para completar seu registro e começar a buscar oportunidades de emprego, precisamos verificar seu e-mail.",
+        buttonText: "Verificar meu E-mail",
+        benefitsTitle: "Uma vez verificado, você poderá:",
+        benefit1: "Buscar e candidatar-se a vagas de emprego",
+        benefit2: "Completar seu perfil profissional",
+        benefit3: "Receber notificações de novas oportunidades",
+        benefit4: "Conectar-se com empresas do seu interesse",
+        expirationImportant: "Importante:",
+        expirationDesc: "Este link de verificação expirará em 24 horas por segurança. Se precisar de um novo link, pode solicitá-lo pelo aplicativo.",
+        footerAutoEmail: "Este e-mail foi enviado automaticamente pelo TrabajoYa.",
+        footerIgnore: "Se você não se registrou no TrabajoYa, pode ignorar esta mensagem.",
+        footerHelp: "Precisa de ajuda?",
+        textPlainTitle: "Bem-vindo ao TrabajoYa",
+        textPlainVerifyLink: "Para verificar sua conta, acesse:",
+        textPlainBenefits: "Uma vez verificado, você poderá:",
+        textPlainExpiry: "Este link de verificação expirará em 24 horas por segurança.",
+        textPlainContact: "Precisa de ajuda? Entre em contato em soporte@trabajo-ya.com",
+      },
+    };
+
+    const t = translations[lang] || translations["es"];
+
     const html = `
       <!DOCTYPE html>
-      <html lang="es">
+      <html lang="${lang}">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>Verifica tu email - TrabajoYa</title>
+        <title>${t.subject}</title>
         <!--[if !mso]><!-->
         <style type="text/css">
           .preheader { display: none !important; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0; }
@@ -151,99 +231,179 @@ export class MailService {
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
         <!-- Preheader text for email clients -->
         <div class="preheader" style="display: none; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0;">
-          Verifica tu dirección de correo electrónico para activar tu cuenta en TrabajoYa
+          ${t.preheader}
         </div>
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
+
           <!-- Header -->
-          <div style="background-color: #2563eb; padding: 40px 20px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">✨ ¡Bienvenido a TrabajoYa!</h1>
+          <div style="background-color: #0f2b4e; padding: 40px 32px; text-align: center; position: relative; overflow: hidden;">
+            <img src="${LOGO_URL}" alt="TrabajoYa" style="height: 48px; width: auto; margin-bottom: 16px;" />
+            <p style="margin: 0 0 4px 0; font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.5);">
+              TrabajoYa
+            </p>
+            <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #ffffff; letter-spacing: -0.025em;">
+              ${t.title}
+            </h1>
           </div>
-          
-          <!-- Content -->
-          <div style="padding: 40px 30px;">
-            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-              Hola,
+
+          <!-- Body -->
+          <div style="padding: 40px 32px;">
+            <!-- Greeting & Description -->
+            <p style="margin: 0 0 12px 0; font-size: 15px; line-height: 1.6; color: #1a1a2e;">
+              ${t.greeting}
             </p>
-            
-            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-              Gracias por registrarte en TrabajoYa. Para completar tu registro y comenzar a buscar oportunidades laborales, necesitamos verificar tu dirección de correo electrónico.
+            <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #4a4a5a;">
+              ${t.description} <span style="font-weight: 600; color: #0f2b4e;">TrabajoYa</span>.
+              ${t.descriptionCta}
             </p>
-            
-            <!-- Primary Button -->
-            ${this.createEmailButton("✅ Verificar mi Email", actionUrl, "#2563eb")}
-            
+
+            <!-- CTA Button -->
+            ${this.createEmailButton(t.buttonText, actionUrl, "#2e9e39")}
+
             <!-- Benefits -->
-            <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin: 30px 0; border-radius: 4px;">
-              <p style="color: #1e40af; font-size: 14px; margin: 0 0 12px 0; font-weight: 600;">
-                🚀 Una vez verificado, podrás:
-              </p>
-              <ul style="color: #1e40af; font-size: 14px; margin: 0; padding-left: 20px; line-height: 1.8;">
-                <li>Buscar y aplicar a ofertas de trabajo</li>
-                <li>Completar tu perfil profesional</li>
-                <li>Recibir notificaciones de nuevas oportunidades</li>
-                <li>Conectar con empresas de tu interés</li>
-              </ul>
-            </div>
-            
-            <!-- Security Info -->
-            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 30px 0; border-radius: 4px;">
-              <p style="color: #92400e; font-size: 13px; margin: 0; line-height: 1.6;">
-                <strong>💡 Importante:</strong> Este enlace de verificación expirará en 24 horas por seguridad. 
-                Si necesitas un nuevo enlace, puedes solicitarlo desde la aplicación.
-              </p>
-            </div>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top: 8px;">
+              <tr>
+                <td style="border: 1px solid #e8f0e8; border-radius: 8px; background-color: #f0f8f0; padding: 20px;">
+                  <p style="margin: 0 0 12px 0; font-size: 13px; font-weight: 600; color: #1a5c24;">
+                    ${t.benefitsTitle}
+                  </p>
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <!-- Benefit 1 -->
+                    <tr>
+                      <td style="padding: 0 0 10px 0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="vertical-align: middle; width: 28px;">
+                              <div style="width: 28px; height: 28px; border-radius: 6px; background-color: rgba(46,158,57,0.1); text-align: center; line-height: 28px; font-size: 14px;">
+                                &#128188;
+                              </div>
+                            </td>
+                            <td style="vertical-align: middle; padding-left: 10px;">
+                              <p style="margin: 0; font-size: 13px; color: #2a5c2a;">${t.benefit1}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <!-- Benefit 2 -->
+                    <tr>
+                      <td style="padding: 0 0 10px 0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="vertical-align: middle; width: 28px;">
+                              <div style="width: 28px; height: 28px; border-radius: 6px; background-color: rgba(46,158,57,0.1); text-align: center; line-height: 28px; font-size: 14px;">
+                                &#128100;
+                              </div>
+                            </td>
+                            <td style="vertical-align: middle; padding-left: 10px;">
+                              <p style="margin: 0; font-size: 13px; color: #2a5c2a;">${t.benefit2}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <!-- Benefit 3 -->
+                    <tr>
+                      <td style="padding: 0 0 10px 0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="vertical-align: middle; width: 28px;">
+                              <div style="width: 28px; height: 28px; border-radius: 6px; background-color: rgba(46,158,57,0.1); text-align: center; line-height: 28px; font-size: 14px;">
+                                &#128276;
+                              </div>
+                            </td>
+                            <td style="vertical-align: middle; padding-left: 10px;">
+                              <p style="margin: 0; font-size: 13px; color: #2a5c2a;">${t.benefit3}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <!-- Benefit 4 -->
+                    <tr>
+                      <td style="padding: 0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="vertical-align: middle; width: 28px;">
+                              <div style="width: 28px; height: 28px; border-radius: 6px; background-color: rgba(46,158,57,0.1); text-align: center; line-height: 28px; font-size: 14px;">
+                                &#9993;
+                              </div>
+                            </td>
+                            <td style="vertical-align: middle; padding-left: 10px;">
+                              <p style="margin: 0; font-size: 13px; color: #2a5c2a;">${t.benefit4}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Expiration notice -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top: 24px;">
+              <tr>
+                <td style="border: 1px solid #f5e6b8; border-radius: 8px; background-color: #fef9ed; padding: 16px;">
+                  <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #8a6914;">
+                    <span style="font-weight: 600;">${t.expirationImportant}</span> ${t.expirationDesc}
+                  </p>
+                </td>
+              </tr>
+            </table>
           </div>
-          
+
           <!-- Footer -->
-          <div style="background-color: #f9fafb; border-top: 1px solid #e5e7eb; padding: 30px 20px; text-align: center;">
-            <p style="color: #9ca3af; font-size: 12px; margin: 0 0 10px 0;">
-              Este email fue enviado automáticamente por TrabajoYa
-            </p>
-            <p style="color: #9ca3af; font-size: 12px; margin: 0 0 20px 0;">
-              Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
-            </p>
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                ¿Necesitas ayuda? Contáctanos en 
-                <a href="mailto:soporte@trabajo-ya.com" style="color: #2563eb; text-decoration: none;">soporte@trabajo-ya.com</a>
-              </p>
-            </div>
+          <div style="border-top: 1px solid #eaeef3; background-color: #f7f9fb; padding: 24px 32px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="text-align: center;">
+                  <p style="margin: 0 0 4px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
+                    ${t.footerAutoEmail}
+                  </p>
+                  <p style="margin: 0 0 12px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
+                    ${t.footerIgnore}
+                  </p>
+                  <div style="width: 64px; height: 1px; background-color: #e0e5eb; margin: 0 auto 12px auto;"></div>
+                  <p style="margin: 0; font-size: 11px; color: #8c96a3;">
+                    ${t.footerHelp}
+                    <a href="mailto:soporte@trabajo-ya.com" style="font-weight: 500; color: #0f2b4e; text-decoration: none;">
+                      soporte@trabajo-ya.com
+                    </a>
+                  </p>
+                </td>
+              </tr>
+            </table>
           </div>
+
         </div>
       </body>
       </html>
     `;
 
-    const text = `Bienvenido a TrabajoYa
+    const text = `${t.textPlainTitle}
 
-Hola,
+${t.greeting}
 
-Gracias por registrarte en TrabajoYa. Para completar tu registro y comenzar a buscar oportunidades laborales, necesitamos verificar tu dirección de correo electrónico.
+${t.description} TrabajoYa.
+${t.descriptionCta}
 
-Para verificar tu cuenta, visita:
+${t.textPlainVerifyLink}
 ${actionUrl}
 
-Una vez verificado, podrás:
-- Buscar y aplicar a ofertas de trabajo
-- Completar tu perfil profesional
-- Recibir notificaciones de nuevas oportunidades
-- Conectar con empresas de tu interés
+${t.textPlainBenefits}
+- ${t.benefit1}
+- ${t.benefit2}
+- ${t.benefit3}
+- ${t.benefit4}
 
-Este enlace de verificación expirará en 24 horas por seguridad.
+${t.textPlainExpiry}
 
 ---
-Este correo fue enviado automáticamente por TrabajoYa.
-Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
+${t.footerAutoEmail}
+${t.footerIgnore}
 
-¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com`;
-
-    // Generar un Message-ID único y bien formateado (RFC 5322)
-    const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
-    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
-    const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
-    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe'
-      ? baseUnsubscribeUrl
-      : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+${t.textPlainContact}`;
 
     // Formatear el From con nombre si es posible
     const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
@@ -252,40 +412,113 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
 
     await this.provider.send({
       to: email,
-      subject: "Verifica tu cuenta de TrabajoYa",
+      subject: t.subject,
       html,
       text,
       from: fromFormatted,
       headers: {
-        // Headers para mejorar deliverability y evitar spam
-        "Message-ID": messageId,
         "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
-        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "MIME-Version": "1.0",
-        "Content-Type": "text/html; charset=UTF-8",
-        // Removido X-Priority ya que puede ser visto como spam
-        // Removido Importance para mejorar deliverability
       },
     });
-
-    // El email se envía usando AWS SES (configurado en mail.module.ts)
   }
 
-  async sendPasswordResetEmail(email: string, token: string): Promise<void> {
+  async sendPasswordResetEmail(email: string, token: string, lang: string = "es"): Promise<void> {
     // URL HTTPS unificada para botón HTML y versión texto plano
     const actionUrl = this.buildAppLink("/app/reset-password", { token });
 
+    const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
+
+    // Traducciones por idioma
+    const translations: Record<string, Record<string, string>> = {
+      es: {
+        subject: "Restablecer contraseña de TrabajoYa",
+        preheader: "Restablece la contraseña de tu cuenta en TrabajoYa usando el enlace seguro",
+        title: "Restablecer Contraseña",
+        greeting: "Hola,",
+        description: "Recibimos una solicitud para restablecer la contraseña de tu cuenta en",
+        descriptionCta: "Si solicitaste este cambio, haz clic en el botón para continuar.",
+        buttonText: "Restablecer Contraseña",
+        temporaryLink: "Enlace temporal",
+        temporaryLinkDesc: "Este enlace expirará en 1 hora por seguridad",
+        accountSafe: "Tu cuenta está segura",
+        accountSafeDesc: "Tu contraseña no cambiará hasta que completes el proceso",
+        notYou: "¿No fuiste tú?",
+        notYouDesc: "Si no solicitaste este cambio, puedes ignorar este email",
+        warning: "Si tienes problemas o no solicitaste este cambio, contáctanos inmediatamente para proteger tu cuenta.",
+        footerAutoEmail: "Este email fue enviado automáticamente por TrabajoYa.",
+        footerIgnore: "Si no solicitaste este cambio, puedes ignorar este mensaje.",
+        footerHelp: "¿Necesitas ayuda?",
+        textPlainTitle: "Restablecer Contraseña - TrabajoYa",
+        textPlainInfo: "INFORMACIÓN IMPORTANTE:",
+        textPlainExpiry: "Este enlace expirará en 1 hora por seguridad",
+        textPlainIgnore: "Si no solicitaste este cambio, puedes ignorar este correo",
+        textPlainNoChange: "Tu contraseña no cambiará hasta que completes el proceso",
+        textPlainContact: "Si tienes problemas o no solicitaste este cambio, contáctanos inmediatamente en soporte@trabajo-ya.com",
+      },
+      en: {
+        subject: "Reset your TrabajoYa password",
+        preheader: "Reset your TrabajoYa account password using the secure link",
+        title: "Reset Password",
+        greeting: "Hello,",
+        description: "We received a request to reset the password for your account on",
+        descriptionCta: "If you requested this change, click the button below to continue.",
+        buttonText: "Reset Password",
+        temporaryLink: "Temporary link",
+        temporaryLinkDesc: "This link will expire in 1 hour for security",
+        accountSafe: "Your account is safe",
+        accountSafeDesc: "Your password will not change until you complete the process",
+        notYou: "Wasn't you?",
+        notYouDesc: "If you didn't request this change, you can ignore this email",
+        warning: "If you're having trouble or didn't request this change, contact us immediately to protect your account.",
+        footerAutoEmail: "This email was sent automatically by TrabajoYa.",
+        footerIgnore: "If you didn't request this change, you can ignore this message.",
+        footerHelp: "Need help?",
+        textPlainTitle: "Reset Password - TrabajoYa",
+        textPlainInfo: "IMPORTANT INFORMATION:",
+        textPlainExpiry: "This link will expire in 1 hour for security",
+        textPlainIgnore: "If you didn't request this change, you can ignore this email",
+        textPlainNoChange: "Your password will not change until you complete the process",
+        textPlainContact: "If you're having trouble or didn't request this change, contact us immediately at soporte@trabajo-ya.com",
+      },
+      pt: {
+        subject: "Redefinir senha do TrabajoYa",
+        preheader: "Redefina a senha da sua conta no TrabajoYa usando o link seguro",
+        title: "Redefinir Senha",
+        greeting: "Olá,",
+        description: "Recebemos uma solicitação para redefinir a senha da sua conta no",
+        descriptionCta: "Se você solicitou esta alteração, clique no botão abaixo para continuar.",
+        buttonText: "Redefinir Senha",
+        temporaryLink: "Link temporário",
+        temporaryLinkDesc: "Este link expirará em 1 hora por segurança",
+        accountSafe: "Sua conta está segura",
+        accountSafeDesc: "Sua senha não será alterada até que você conclua o processo",
+        notYou: "Não foi você?",
+        notYouDesc: "Se você não solicitou esta alteração, pode ignorar este e-mail",
+        warning: "Se tiver problemas ou não solicitou esta alteração, entre em contato conosco imediatamente para proteger sua conta.",
+        footerAutoEmail: "Este e-mail foi enviado automaticamente pelo TrabajoYa.",
+        footerIgnore: "Se você não solicitou esta alteração, pode ignorar esta mensagem.",
+        footerHelp: "Precisa de ajuda?",
+        textPlainTitle: "Redefinir Senha - TrabajoYa",
+        textPlainInfo: "INFORMAÇÃO IMPORTANTE:",
+        textPlainExpiry: "Este link expirará em 1 hora por segurança",
+        textPlainIgnore: "Se você não solicitou esta alteração, pode ignorar este e-mail",
+        textPlainNoChange: "Sua senha não será alterada até que você conclua o processo",
+        textPlainContact: "Se tiver problemas ou não solicitou esta alteração, entre em contato conosco imediatamente em soporte@trabajo-ya.com",
+      },
+    };
+
+    const t = translations[lang] || translations["es"];
+
     const html = `
       <!DOCTYPE html>
-      <html lang="es">
+      <html lang="${lang}">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>Restablecer contraseña - TrabajoYa</title>
+        <title>${t.subject}</title>
         <!--[if !mso]><!-->
         <style type="text/css">
           .preheader { display: none !important; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0; }
@@ -295,95 +528,164 @@ Si no te registraste en TrabajoYa, puedes ignorar este mensaje de forma segura.
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
         <!-- Preheader text for email clients -->
         <div class="preheader" style="display: none; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0;">
-          Restablece la contraseña de tu cuenta en TrabajoYa usando el enlace seguro
+          ${t.preheader}
         </div>
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
+          
           <!-- Header -->
-          <div style="background-color: #2563eb; padding: 40px 20px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">🔒 Restablecer Contraseña</h1>
+          <div style="background-color: #0f2b4e; padding: 40px 32px; text-align: center; position: relative; overflow: hidden;">
+            <img src="${LOGO_URL}" alt="TrabajoYa" style="height: 48px; width: auto; margin-bottom: 16px;" />
+            <p style="margin: 0 0 4px 0; font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.5);">
+              TrabajoYa
+            </p>
+            <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #ffffff; letter-spacing: -0.025em;">
+              ${t.title}
+            </h1>
           </div>
-          
-          <!-- Content -->
-          <div style="padding: 40px 30px;">
-            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-              Hola,
+
+          <!-- Body -->
+          <div style="padding: 40px 32px;">
+            <!-- Greeting & Description -->
+            <p style="margin: 0 0 12px 0; font-size: 15px; line-height: 1.6; color: #1a1a2e;">
+              ${t.greeting}
             </p>
-            
-            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-              Recibimos una solicitud para restablecer la contraseña de tu cuenta en TrabajoYa. 
-              Si solicitaste este cambio, haz clic en el botón para continuar.
+            <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #4a4a5a;">
+              ${t.description}
+              <span style="font-weight: 600; color: #0f2b4e;">TrabajoYa</span>.
+              ${t.descriptionCta}
             </p>
-            
-            <!-- Primary Button -->
-            ${this.createEmailButton("🔑 Restablecer Contraseña", actionUrl, "#2563eb")}
-            
-            <!-- Security Warning -->
-            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 30px 0; border-radius: 4px;">
-              <p style="color: #92400e; font-size: 14px; margin: 0 0 8px 0; font-weight: 600;">
-                ⚠️ Información Importante
-              </p>
-              <ul style="color: #92400e; font-size: 13px; margin: 0; padding-left: 20px; line-height: 1.6;">
-                <li>Este enlace expirará en 1 hora por seguridad</li>
-                <li>Si no solicitaste este cambio, puedes ignorar este email</li>
-                <li>Tu contraseña no cambiará hasta que completes el proceso</li>
-              </ul>
-            </div>
-            
-            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
-              Si tienes problemas o no solicitaste este cambio, contáctanos inmediatamente.
-            </p>
+
+            <!-- CTA Button -->
+            ${this.createEmailButton(t.buttonText, actionUrl, "#0f2b4e")}
+
+            <!-- Security Info Cards -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top: 8px;">
+              <!-- Card 1: Temporary Link -->
+              <tr>
+                <td style="padding: 0 0 10px 0;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border: 1px solid #eaeef3; border-radius: 8px; background-color: #f7f9fb;">
+                    <tr>
+                      <td style="padding: 14px; vertical-align: top; width: 32px;">
+                        <div style="width: 32px; height: 32px; border-radius: 6px; background-color: rgba(15,43,78,0.08); text-align: center; line-height: 32px; font-size: 16px;">
+                          &#9200;
+                        </div>
+                      </td>
+                      <td style="padding: 14px 14px 14px 0; vertical-align: top;">
+                        <p style="margin: 0; font-size: 13px; font-weight: 500; color: #1a1a2e;">${t.temporaryLink}</p>
+                        <p style="margin: 2px 0 0 0; font-size: 12px; line-height: 1.5; color: #6b7280;">${t.temporaryLinkDesc}</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- Card 2: Account Safe -->
+              <tr>
+                <td style="padding: 0 0 10px 0;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border: 1px solid #eaeef3; border-radius: 8px; background-color: #f7f9fb;">
+                    <tr>
+                      <td style="padding: 14px; vertical-align: top; width: 32px;">
+                        <div style="width: 32px; height: 32px; border-radius: 6px; background-color: rgba(15,43,78,0.08); text-align: center; line-height: 32px; font-size: 16px;">
+                          &#128737;
+                        </div>
+                      </td>
+                      <td style="padding: 14px 14px 14px 0; vertical-align: top;">
+                        <p style="margin: 0; font-size: 13px; font-weight: 500; color: #1a1a2e;">${t.accountSafe}</p>
+                        <p style="margin: 2px 0 0 0; font-size: 12px; line-height: 1.5; color: #6b7280;">${t.accountSafeDesc}</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- Card 3: Not You -->
+              <tr>
+                <td style="padding: 0 0 10px 0;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border: 1px solid #eaeef3; border-radius: 8px; background-color: #f7f9fb;">
+                    <tr>
+                      <td style="padding: 14px; vertical-align: top; width: 32px;">
+                        <div style="width: 32px; height: 32px; border-radius: 6px; background-color: rgba(15,43,78,0.08); text-align: center; line-height: 32px; font-size: 16px;">
+                          &#8505;
+                        </div>
+                      </td>
+                      <td style="padding: 14px 14px 14px 0; vertical-align: top;">
+                        <p style="margin: 0; font-size: 13px; font-weight: 500; color: #1a1a2e;">${t.notYou}</p>
+                        <p style="margin: 2px 0 0 0; font-size: 12px; line-height: 1.5; color: #6b7280;">${t.notYouDesc}</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Warning -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top: 14px;">
+              <tr>
+                <td style="border: 1px solid #fde2e2; border-radius: 8px; background-color: #fef5f5; padding: 16px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <tr>
+                      <td style="vertical-align: top; width: 20px; padding-right: 12px;">
+                        <span style="font-size: 14px; color: #dc2626;">&#9888;</span>
+                      </td>
+                      <td style="vertical-align: top;">
+                        <p style="margin: 0; font-size: 12px; line-height: 1.6; color: #991b1b;">
+                          ${t.warning}
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
           </div>
-          
+
           <!-- Footer -->
-          <div style="background-color: #f9fafb; border-top: 1px solid #e5e7eb; padding: 30px 20px; text-align: center;">
-            <p style="color: #9ca3af; font-size: 12px; margin: 0 0 10px 0;">
-              Este email fue enviado automáticamente por TrabajoYa
-            </p>
-            <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-              Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.
-            </p>
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                ¿Necesitas ayuda? Contáctanos en 
-                <a href="mailto:soporte@trabajo-ya.com" style="color: #2563eb; text-decoration: none;">soporte@trabajo-ya.com</a>
-              </p>
-            </div>
+          <div style="border-top: 1px solid #eaeef3; background-color: #f7f9fb; padding: 24px 32px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="text-align: center;">
+                  <p style="margin: 0 0 4px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
+                    ${t.footerAutoEmail}
+                  </p>
+                  <p style="margin: 0 0 12px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
+                    ${t.footerIgnore}
+                  </p>
+                  <div style="width: 64px; height: 1px; background-color: #e0e5eb; margin: 0 auto 12px auto;"></div>
+                  <p style="margin: 0; font-size: 11px; color: #8c96a3;">
+                    ${t.footerHelp}
+                    <a href="mailto:soporte@trabajo-ya.com" style="font-weight: 500; color: #0f2b4e; text-decoration: none;">
+                      soporte@trabajo-ya.com
+                    </a>
+                  </p>
+                </td>
+              </tr>
+            </table>
           </div>
+
         </div>
       </body>
       </html>
     `;
 
-    const text = `Restablecer Contraseña - TrabajoYa
+    const text = `${t.textPlainTitle}
 
-Hola,
+${t.greeting}
 
-Recibimos una solicitud para restablecer la contraseña de tu cuenta en TrabajoYa. 
-Si solicitaste este cambio, usa el siguiente enlace para continuar:
+${t.description} TrabajoYa.
+${t.descriptionCta}
 
 ${actionUrl}
 
-INFORMACIÓN IMPORTANTE:
-- Este enlace expirará en 1 hora por seguridad
-- Si no solicitaste este cambio, puedes ignorar este correo
-- Tu contraseña no cambiará hasta que completes el proceso
+${t.textPlainInfo}
+- ${t.textPlainExpiry}
+- ${t.textPlainIgnore}
+- ${t.textPlainNoChange}
 
-Si tienes problemas o no solicitaste este cambio, contáctanos inmediatamente en soporte@trabajo-ya.com
+${t.textPlainContact}
 
 ---
-Este correo fue enviado automáticamente por TrabajoYa.
-Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
-
-    // Generar un Message-ID único y bien formateado (RFC 5322)
-    const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
-    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
-    const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
-    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe'
-      ? baseUnsubscribeUrl
-      : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+${t.footerAutoEmail}
+${t.footerIgnore}`;
 
     // Formatear el From con nombre si es posible
-    // Elegí un "From" alineado con el MAIL FROM (lo que más ayuda en Outlook)
     const fromEmail = process.env.MAIL_FROM || "noreply@trabajo-ya.com";
     const fromName = "TrabajoYa";
     const fromFormatted = fromEmail.includes("<")
@@ -392,17 +694,13 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
 
     await this.provider.send({
       to: email,
-      subject: "Restablecer contraseña de TrabajoYa",
-      html: html
-        .replace("🔒", "")   // por ahora, sacá emojis en subject/H1/botón para Outlook
-        .replace("🔑", "")
-        .replace("⚠️", ""),
+      subject: t.subject,
+      html,
       text,
       from: fromFormatted,
       headers: {
         "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
         "X-Auto-Response-Suppress": "All",
-        // opcional, no molesta:
         "X-Mailer": "TrabajoYa",
       },
     });
@@ -415,68 +713,154 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
     jobTitle: string,
     companyName: string,
     newStatus: string,
-    notes?: string
+    notes?: string,
+    lang: string = "es"
   ): Promise<void> {
-    const statusLabels: Record<string, { label: string; emoji: string; color: string; description: string }> = {
-      PENDING: {
-        label: "Pendiente",
-        emoji: "⏳",
-        color: "#f59e0b",
-        description: "Tu postulación está pendiente de revisión.",
+    const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
+
+    // Traducciones por idioma
+    const translations: Record<string, Record<string, string>> = {
+      es: {
+        title: "Actualización de Postulación",
+        greeting: "Hola",
+        description: "Queremos informarte que el estado de tu postulación al puesto",
+        descriptionIn: "en",
+        descriptionUpdated: "ha sido actualizado.",
+        newStatusLabel: "Nuevo estado",
+        companyNote: "Nota de la empresa:",
+        contactInfo: "Si tienes alguna pregunta, puedes contactar a la empresa directamente a través de la plataforma.",
+        footerAutoEmail: "Este email fue enviado automáticamente por TrabajoYa.",
+        footerActiveApplication: "Recibiste este email porque tienes una postulación activa.",
+        footerHelp: "¿Necesitas ayuda?",
+        statusPending: "Pendiente",
+        statusPendingDesc: "Tu postulación está pendiente de revisión.",
+        statusReviewed: "Revisada",
+        statusReviewedDesc: "Tu postulación ha sido revisada por la empresa.",
+        statusInterview: "Entrevista",
+        statusInterviewDesc: "La empresa quiere agendar una entrevista contigo.",
+        statusAccepted: "Aceptada",
+        statusAcceptedDesc: "Tu postulación ha sido aceptada.",
+        statusRejected: "Rechazada",
+        statusRejectedDesc: "Lamentablemente, tu postulación no fue seleccionada en esta oportunidad.",
+        statusDefault: "Actualizado",
+        statusDefaultDesc: "El estado de tu postulación ha sido actualizado.",
+        textPlainTitle: "Actualización de Postulación - TrabajoYa",
+        textPlainNewStatus: "Nuevo estado:",
+        textPlainCompanyNote: "Nota de la empresa:",
+        textPlainContact: "¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com",
       },
-      REVIEWED: {
-        label: "Revisada",
-        emoji: "👀",
-        color: "#3b82f6",
-        description: "Tu postulación ha sido revisada por la empresa.",
+      en: {
+        title: "Application Update",
+        greeting: "Hello",
+        description: "We want to let you know that the status of your application for the position",
+        descriptionIn: "at",
+        descriptionUpdated: "has been updated.",
+        newStatusLabel: "New status",
+        companyNote: "Company note:",
+        contactInfo: "If you have any questions, you can contact the company directly through the platform.",
+        footerAutoEmail: "This email was sent automatically by TrabajoYa.",
+        footerActiveApplication: "You received this email because you have an active application.",
+        footerHelp: "Need help?",
+        statusPending: "Pending",
+        statusPendingDesc: "Your application is pending review.",
+        statusReviewed: "Reviewed",
+        statusReviewedDesc: "Your application has been reviewed by the company.",
+        statusInterview: "Interview",
+        statusInterviewDesc: "The company wants to schedule an interview with you.",
+        statusAccepted: "Accepted",
+        statusAcceptedDesc: "Your application has been accepted.",
+        statusRejected: "Rejected",
+        statusRejectedDesc: "Unfortunately, your application was not selected for this opportunity.",
+        statusDefault: "Updated",
+        statusDefaultDesc: "Your application status has been updated.",
+        textPlainTitle: "Application Update - TrabajoYa",
+        textPlainNewStatus: "New status:",
+        textPlainCompanyNote: "Company note:",
+        textPlainContact: "Need help? Contact us at soporte@trabajo-ya.com",
       },
-      INTERVIEW: {
-        label: "Entrevista",
-        emoji: "📅",
-        color: "#8b5cf6",
-        description: "¡Felicitaciones! La empresa quiere agendar una entrevista contigo.",
-      },
-      ACCEPTED: {
-        label: "Aceptada",
-        emoji: "🎉",
-        color: "#10b981",
-        description: "¡Felicitaciones! Tu postulación ha sido aceptada.",
-      },
-      REJECTED: {
-        label: "Rechazada",
-        emoji: "❌",
-        color: "#ef4444",
-        description: "Lamentablemente, tu postulación no fue seleccionada en esta oportunidad.",
+      pt: {
+        title: "Atualização de Candidatura",
+        greeting: "Olá",
+        description: "Queremos informá-lo que o status da sua candidatura para a vaga",
+        descriptionIn: "em",
+        descriptionUpdated: "foi atualizado.",
+        newStatusLabel: "Novo status",
+        companyNote: "Nota da empresa:",
+        contactInfo: "Se tiver alguma dúvida, pode entrar em contato com a empresa diretamente pela plataforma.",
+        footerAutoEmail: "Este e-mail foi enviado automaticamente pelo TrabajoYa.",
+        footerActiveApplication: "Você recebeu este e-mail porque tem uma candidatura ativa.",
+        footerHelp: "Precisa de ajuda?",
+        statusPending: "Pendente",
+        statusPendingDesc: "Sua candidatura está pendente de revisão.",
+        statusReviewed: "Revisada",
+        statusReviewedDesc: "Sua candidatura foi revisada pela empresa.",
+        statusInterview: "Entrevista",
+        statusInterviewDesc: "A empresa quer agendar uma entrevista com você.",
+        statusAccepted: "Aceita",
+        statusAcceptedDesc: "Sua candidatura foi aceita.",
+        statusRejected: "Rejeitada",
+        statusRejectedDesc: "Infelizmente, sua candidatura não foi selecionada nesta oportunidade.",
+        statusDefault: "Atualizado",
+        statusDefaultDesc: "O status da sua candidatura foi atualizado.",
+        textPlainTitle: "Atualização de Candidatura - TrabajoYa",
+        textPlainNewStatus: "Novo status:",
+        textPlainCompanyNote: "Nota da empresa:",
+        textPlainContact: "Precisa de ajuda? Entre em contato em soporte@trabajo-ya.com",
       },
     };
 
-    const statusInfo = statusLabels[newStatus] || {
-      label: newStatus,
-      emoji: "📋",
-      color: "#6b7280",
-      description: "El estado de tu postulación ha sido actualizado.",
+    const t = translations[lang] || translations["es"];
+
+    // Mapeo de estados con colores y traducciones
+    const statusConfig: Record<string, { color: string; bgColor: string; borderColor: string; labelKey: string; descKey: string; icon: string }> = {
+      PENDING: { color: "#d97706", bgColor: "#fef9ed", borderColor: "#f5e6b8", labelKey: "statusPending", descKey: "statusPendingDesc", icon: "&#9200;" },
+      REVIEWED: { color: "#2563eb", bgColor: "#eff6ff", borderColor: "#bfdbfe", labelKey: "statusReviewed", descKey: "statusReviewedDesc", icon: "&#128065;" },
+      INTERVIEW: { color: "#7c3aed", bgColor: "#f5f3ff", borderColor: "#ddd6fe", labelKey: "statusInterview", descKey: "statusInterviewDesc", icon: "&#128197;" },
+      ACCEPTED: { color: "#16a34a", bgColor: "#f0fdf4", borderColor: "#bbf7d0", labelKey: "statusAccepted", descKey: "statusAcceptedDesc", icon: "&#9989;" },
+      REJECTED: { color: "#dc2626", bgColor: "#fef2f2", borderColor: "#fecaca", labelKey: "statusRejected", descKey: "statusRejectedDesc", icon: "&#10060;" },
     };
+
+    const sConf = statusConfig[newStatus] || {
+      color: "#6b7280", bgColor: "#f9fafb", borderColor: "#e5e7eb",
+      labelKey: "statusDefault", descKey: "statusDefaultDesc", icon: "&#128203;",
+    };
+
+    const statusLabel = t[sConf.labelKey];
+    const statusDesc = t[sConf.descKey];
+    const subject = `${t.title} - ${statusLabel}: "${jobTitle}"`;
 
     const notesSection = notes
       ? `
-            <div style="background-color: #f3f4f6; border-left: 4px solid #6b7280; padding: 16px; margin: 20px 0; border-radius: 4px;">
-              <p style="color: #374151; font-size: 14px; margin: 0 0 8px 0; font-weight: 600;">
-                💬 Nota de la empresa:
-              </p>
-              <p style="color: #4b5563; font-size: 14px; margin: 0; line-height: 1.6;">
-                ${notes}
-              </p>
-            </div>`
+            <!-- Company Notes -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top: 24px;">
+              <tr>
+                <td style="border: 1px solid #eaeef3; border-radius: 8px; background-color: #f7f9fb; padding: 16px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <tr>
+                      <td style="vertical-align: middle; width: 20px; padding-right: 8px;">
+                        <span style="font-size: 14px; color: #6b7280;">&#128172;</span>
+                      </td>
+                      <td style="vertical-align: middle;">
+                        <p style="margin: 0; font-size: 13px; font-weight: 600; color: #1a1a2e;">${t.companyNote}</p>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="margin: 8px 0 0 0; font-size: 13px; line-height: 1.6; color: #4a4a5a;">
+                    ${notes}
+                  </p>
+                </td>
+              </tr>
+            </table>`
       : "";
 
     const html = `
       <!DOCTYPE html>
-      <html lang="es">
+      <html lang="${lang}">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>Actualización de Postulación - TrabajoYa</title>
+        <title>${subject}</title>
         <!--[if !mso]><!-->
         <style type="text/css">
           .preheader { display: none !important; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0; }
@@ -484,85 +868,114 @@ Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura.`;
         <!--<![endif]-->
       </head>
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
+        <!-- Preheader text for email clients -->
         <div class="preheader" style="display: none; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0;">
-          Tu postulación a "${jobTitle}" en ${companyName} ha sido actualizada a: ${statusInfo.label}
+          ${t.description} "${jobTitle}" ${t.descriptionIn} ${companyName} - ${statusLabel}
         </div>
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
+
           <!-- Header -->
-          <div style="background-color: ${statusInfo.color}; padding: 40px 20px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">${statusInfo.emoji} Actualización de Postulación</h1>
+          <div style="background-color: ${sConf.color}; padding: 40px 32px; text-align: center; position: relative; overflow: hidden;">
+            <img src="${LOGO_URL}" alt="TrabajoYa" style="height: 48px; width: auto; margin-bottom: 16px;" />
+            <p style="margin: 0 0 4px 0; font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.5);">
+              TrabajoYa
+            </p>
+            <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #ffffff; letter-spacing: -0.025em;">
+              ${t.title}
+            </h1>
           </div>
-          
-          <!-- Content -->
-          <div style="padding: 40px 30px;">
-            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-              Hola${postulanteFullName ? ` ${postulanteFullName}` : ""},
+
+          <!-- Body -->
+          <div style="padding: 40px 32px;">
+            <!-- Greeting & Description -->
+            <p style="margin: 0 0 12px 0; font-size: 15px; line-height: 1.6; color: #1a1a2e;">
+              ${t.greeting}${postulanteFullName ? ` <span style="font-weight: 600;">${postulanteFullName}</span>` : ""},
             </p>
-            
-            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-              Queremos informarte que el estado de tu postulación al puesto <strong>"${jobTitle}"</strong> en <strong>${companyName}</strong> ha sido actualizado.
+            <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #4a4a5a;">
+              ${t.description}
+              <span style="font-weight: 600; color: #0f2b4e;">"${jobTitle}"</span> ${t.descriptionIn}
+              <span style="font-weight: 600; color: #0f2b4e;">${companyName}</span> ${t.descriptionUpdated}
             </p>
-            
+
             <!-- Status Badge -->
-            <div style="background-color: ${statusInfo.color}15; border-left: 4px solid ${statusInfo.color}; padding: 20px; margin: 30px 0; border-radius: 4px;">
-              <p style="color: ${statusInfo.color}; font-size: 18px; margin: 0 0 8px 0; font-weight: 700;">
-                ${statusInfo.emoji} Nuevo estado: ${statusInfo.label}
-              </p>
-              <p style="color: #374151; font-size: 14px; margin: 0; line-height: 1.6;">
-                ${statusInfo.description}
-              </p>
-            </div>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="border: 1px solid ${sConf.borderColor}; border-radius: 8px; background-color: ${sConf.bgColor}; padding: 20px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <tr>
+                      <td style="vertical-align: top; width: 40px;">
+                        <div style="width: 40px; height: 40px; border-radius: 8px; background-color: ${sConf.color}18; text-align: center; line-height: 40px; font-size: 20px;">
+                          ${sConf.icon}
+                        </div>
+                      </td>
+                      <td style="vertical-align: top; padding-left: 12px;">
+                        <p style="margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: ${sConf.color}99;">
+                          ${t.newStatusLabel}
+                        </p>
+                        <p style="margin: 2px 0 0 0; font-size: 18px; font-weight: 700; color: ${sConf.color};">
+                          ${statusLabel}
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="margin: 12px 0 0 0; font-size: 13px; line-height: 1.6; color: #4a4a5a;">
+                    ${statusDesc}
+                  </p>
+                </td>
+              </tr>
+            </table>
             ${notesSection}
-            
-            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
-              Si tienes alguna pregunta, puedes contactar a la empresa directamente a través de la plataforma.
+
+            <!-- Contact Info -->
+            <p style="margin: 24px 0 0 0; font-size: 13px; line-height: 1.6; color: #6b7280;">
+              ${t.contactInfo}
             </p>
           </div>
-          
+
           <!-- Footer -->
-          <div style="background-color: #f9fafb; border-top: 1px solid #e5e7eb; padding: 30px 20px; text-align: center;">
-            <p style="color: #9ca3af; font-size: 12px; margin: 0 0 10px 0;">
-              Este email fue enviado automáticamente por TrabajoYa
-            </p>
-            <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-              Recibiste este email porque tienes una postulación activa en la plataforma.
-            </p>
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                ¿Necesitas ayuda? Contáctanos en 
-                <a href="mailto:soporte@trabajo-ya.com" style="color: #2563eb; text-decoration: none;">soporte@trabajo-ya.com</a>
-              </p>
-            </div>
+          <div style="border-top: 1px solid #eaeef3; background-color: #f7f9fb; padding: 24px 32px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="text-align: center;">
+                  <p style="margin: 0 0 4px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
+                    ${t.footerAutoEmail}
+                  </p>
+                  <p style="margin: 0 0 12px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
+                    ${t.footerActiveApplication}
+                  </p>
+                  <div style="width: 64px; height: 1px; background-color: #e0e5eb; margin: 0 auto 12px auto;"></div>
+                  <p style="margin: 0; font-size: 11px; color: #8c96a3;">
+                    ${t.footerHelp}
+                    <a href="mailto:soporte@trabajo-ya.com" style="font-weight: 500; color: #0f2b4e; text-decoration: none;">
+                      soporte@trabajo-ya.com
+                    </a>
+                  </p>
+                </td>
+              </tr>
+            </table>
           </div>
+
         </div>
       </body>
       </html>
     `;
 
-    const text = `Actualización de Postulación - TrabajoYa
+    const text = `${t.textPlainTitle}
 
-Hola${postulanteFullName ? ` ${postulanteFullName}` : ""},
+${t.greeting}${postulanteFullName ? ` ${postulanteFullName}` : ""},
 
-Queremos informarte que el estado de tu postulación al puesto "${jobTitle}" en ${companyName} ha sido actualizado.
+${t.description} "${jobTitle}" ${t.descriptionIn} ${companyName} ${t.descriptionUpdated}
 
-${statusInfo.emoji} Nuevo estado: ${statusInfo.label}
-${statusInfo.description}
-${notes ? `\nNota de la empresa: ${notes}\n` : ""}
-Si tienes alguna pregunta, puedes contactar a la empresa directamente a través de la plataforma.
+${t.textPlainNewStatus} ${statusLabel}
+${statusDesc}
+${notes ? `\n${t.textPlainCompanyNote} ${notes}\n` : ""}
+${t.contactInfo}
 
 ---
-Este correo fue enviado automáticamente por TrabajoYa.
-Recibiste este email porque tienes una postulación activa en la plataforma.
+${t.footerAutoEmail}
+${t.footerActiveApplication}
 
-¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com`;
-
-    const domain = process.env.MAIL_FROM?.split("@")[1] || "trabajo-ya.com";
-    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
-    const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
-    const unsubscribeUrl =
-      baseUnsubscribeUrl !== "http://localhost:3000/unsubscribe"
-        ? baseUnsubscribeUrl
-        : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+${t.textPlainContact}`;
 
     const fromEmail = process.env.MAIL_FROM || "noreply@trabajo-ya.com";
     const fromName = "TrabajoYa";
@@ -570,19 +983,14 @@ Recibiste este email porque tienes una postulación activa en la plataforma.
 
     await this.provider.send({
       to: email,
-      subject: `${statusInfo.emoji} Tu postulación a "${jobTitle}" fue actualizada: ${statusInfo.label}`,
+      subject,
       html,
       text,
       from: fromFormatted,
       headers: {
-        "Message-ID": messageId,
         "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
-        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "MIME-Version": "1.0",
-        "Content-Type": "text/html; charset=UTF-8",
+        "X-Mailer": "TrabajoYa",
       },
     });
   }
@@ -591,138 +999,315 @@ Recibiste este email porque tienes una postulación activa en la plataforma.
     email: string,
     jobTitle: string,
     companyName: string,
-    jobId: string
+    jobId: string,
+    lang: string = "es"
   ): Promise<void> {
     // URL HTTPS unificada para botón HTML y versión texto plano
     const actionUrl = this.buildAppLink(`/app/job/${jobId}`);
 
+    const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
+
+    // Traducciones por idioma
+    const translations: Record<string, Record<string, string>> = {
+      es: {
+        subject: `Tu publicación "${jobTitle}" ha sido aprobada`,
+        preheader: `Tu publicación de empleo "${jobTitle}" fue aprobada y ya está activa en TrabajoYa`,
+        title: "Publicación Aprobada",
+        greeting: "Hola",
+        description: "Nos complace informarte que tu publicación de empleo",
+        descriptionApproved: "ha sido revisada y",
+        approved: "aprobada",
+        successTitle: "Tu empleo ya está activo",
+        successDesc: "Los postulantes ahora pueden ver y aplicar a tu oferta de trabajo.",
+        buttonText: "Ver mi Publicación",
+        nextStepsTitle: "Próximos pasos:",
+        step1: "Revisa las aplicaciones que recibas",
+        step2: "Contacta a los candidatos que más te interesen",
+        step3: "Gestiona tu publicación desde tu panel de empresa",
+        step4: "Considera promocionar tu empleo para mayor visibilidad",
+        contactInfo: "Si tienes alguna pregunta o necesitas ayuda, no dudes en contactarnos.",
+        footerAutoEmail: "Este email fue enviado automáticamente por TrabajoYa.",
+        footerHelp: "¿Necesitas ayuda?",
+        textPlainTitle: "Publicación Aprobada - TrabajoYa",
+        textPlainActive: "¡Tu empleo ya está activo!",
+        textPlainNextSteps: "Próximos pasos:",
+        textPlainContact: "¿Necesitas ayuda? Contáctanos en soporte@trabajo-ya.com",
+      },
+      en: {
+        subject: `Your job posting "${jobTitle}" has been approved`,
+        preheader: `Your job posting "${jobTitle}" has been approved and is now active on TrabajoYa`,
+        title: "Job Posting Approved",
+        greeting: "Hello",
+        description: "We are pleased to inform you that your job posting",
+        descriptionApproved: "has been reviewed and",
+        approved: "approved",
+        successTitle: "Your job is now active",
+        successDesc: "Applicants can now see and apply to your job offer.",
+        buttonText: "View my Posting",
+        nextStepsTitle: "Next steps:",
+        step1: "Review the applications you receive",
+        step2: "Contact the candidates you're most interested in",
+        step3: "Manage your posting from your company dashboard",
+        step4: "Consider promoting your job for greater visibility",
+        contactInfo: "If you have any questions or need help, don't hesitate to contact us.",
+        footerAutoEmail: "This email was sent automatically by TrabajoYa.",
+        footerHelp: "Need help?",
+        textPlainTitle: "Job Posting Approved - TrabajoYa",
+        textPlainActive: "Your job is now active!",
+        textPlainNextSteps: "Next steps:",
+        textPlainContact: "Need help? Contact us at soporte@trabajo-ya.com",
+      },
+      pt: {
+        subject: `Sua vaga "${jobTitle}" foi aprovada`,
+        preheader: `Sua publicação de vaga "${jobTitle}" foi aprovada e já está ativa no TrabajoYa`,
+        title: "Publicação Aprovada",
+        greeting: "Olá",
+        description: "Temos o prazer de informar que sua publicação de emprego",
+        descriptionApproved: "foi revisada e",
+        approved: "aprovada",
+        successTitle: "Sua vaga já está ativa",
+        successDesc: "Os candidatos agora podem ver e se candidatar à sua oferta de trabalho.",
+        buttonText: "Ver minha Publicação",
+        nextStepsTitle: "Próximos passos:",
+        step1: "Revise as candidaturas que receber",
+        step2: "Entre em contato com os candidatos que mais lhe interessam",
+        step3: "Gerencie sua publicação no painel da empresa",
+        step4: "Considere promover sua vaga para maior visibilidade",
+        contactInfo: "Se tiver alguma dúvida ou precisar de ajuda, não hesite em nos contatar.",
+        footerAutoEmail: "Este e-mail foi enviado automaticamente pelo TrabajoYa.",
+        footerHelp: "Precisa de ajuda?",
+        textPlainTitle: "Publicação Aprovada - TrabajoYa",
+        textPlainActive: "Sua vaga já está ativa!",
+        textPlainNextSteps: "Próximos passos:",
+        textPlainContact: "Precisa de ajuda? Entre em contato em soporte@trabajo-ya.com",
+      },
+    };
+
+    const t = translations[lang] || translations["es"];
+
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="${lang}">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Publicación Aprobada - TrabajoYa</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <title>${t.subject}</title>
+        <!--[if !mso]><!-->
+        <style type="text/css">
+          .preheader { display: none !important; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0; }
+        </style>
+        <!--<![endif]-->
       </head>
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f4;">
+        <!-- Preheader text for email clients -->
+        <div class="preheader" style="display: none; visibility: hidden; opacity: 0; color: transparent; height: 0; width: 0;">
+          ${t.preheader}
+        </div>
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 0;">
+
           <!-- Header -->
-          <div style="background-color: #10b981; padding: 40px 20px; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">✅ ¡Tu publicación ha sido aprobada!</h1>
+          <div style="background-color: #2e9e39; padding: 40px 32px; text-align: center; position: relative; overflow: hidden;">
+            <img src="${LOGO_URL}" alt="TrabajoYa" style="height: 48px; width: auto; margin-bottom: 16px;" />
+            <p style="margin: 0 0 4px 0; font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.5);">
+              TrabajoYa
+            </p>
+            <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #ffffff; letter-spacing: -0.025em;">
+              ${t.title}
+            </h1>
           </div>
-          
-          <!-- Content -->
-          <div style="padding: 40px 30px;">
-            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-              Hola${companyName ? ` ${companyName}` : ""},
+
+          <!-- Body -->
+          <div style="padding: 40px 32px;">
+            <!-- Greeting & Description -->
+            <p style="margin: 0 0 12px 0; font-size: 15px; line-height: 1.6; color: #1a1a2e;">
+              ${t.greeting}${companyName ? ` <span style="font-weight: 600;">${companyName}</span>` : ""},
             </p>
-            
-            <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
-              Nos complace informarte que tu publicación de empleo <strong>"${jobTitle}"</strong> ha sido revisada y <strong>aprobada</strong>.
+            <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #4a4a5a;">
+              ${t.description}
+              <span style="font-weight: 600; color: #0f2b4e;">"${jobTitle}"</span>
+              ${t.descriptionApproved} <span style="font-weight: 600; color: #2e9e39;">${t.approved}</span>.
             </p>
-            
-            <div style="background-color: #d1fae5; border-left: 4px solid #10b981; padding: 20px; margin: 30px 0; border-radius: 4px;">
-              <p style="color: #065f46; font-size: 16px; margin: 0 0 12px 0; font-weight: 600;">
-                🎉 ¡Tu empleo ya está activo!
-              </p>
-              <p style="color: #065f46; font-size: 14px; margin: 0; line-height: 1.6;">
-                Los postulantes ahora pueden ver y aplicar a tu oferta de trabajo. Tu publicación está visible en la plataforma y comenzará a recibir aplicaciones.
-              </p>
-            </div>
-            
-            <!-- Primary Button -->
-            ${this.createEmailButton("Ver mi Publicación", actionUrl, "#10b981")}
-            
+
+            <!-- Success Box -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="border: 1px solid #bbf7d0; border-radius: 8px; background-color: #f0fdf4; padding: 20px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <tr>
+                      <td style="vertical-align: top; width: 40px;">
+                        <div style="width: 40px; height: 40px; border-radius: 8px; background-color: rgba(46,158,57,0.1); text-align: center; line-height: 40px; font-size: 20px;">
+                          &#10004;
+                        </div>
+                      </td>
+                      <td style="vertical-align: top; padding-left: 12px;">
+                        <p style="margin: 0; font-size: 15px; font-weight: 700; color: #166534;">
+                          ${t.successTitle}
+                        </p>
+                        <p style="margin: 4px 0 0 0; font-size: 13px; line-height: 1.6; color: #2a5c2a;">
+                          ${t.successDesc}
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- CTA Button -->
+            ${this.createEmailButton(t.buttonText, actionUrl, "#2e9e39")}
+
             <!-- Next Steps -->
-            <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 20px; margin: 30px 0; border-radius: 4px;">
-              <p style="color: #1e40af; font-size: 14px; margin: 0 0 12px 0; font-weight: 600;">
-                📋 Próximos pasos:
-              </p>
-              <ul style="color: #1e40af; font-size: 14px; margin: 0; padding-left: 20px; line-height: 1.8;">
-                <li>Revisa las aplicaciones que recibas</li>
-                <li>Contacta a los candidatos que más te interesen</li>
-                <li>Gestiona tu publicación desde tu panel de empresa</li>
-                <li>Considera promocionar tu empleo para mayor visibilidad</li>
-              </ul>
-            </div>
-            
-            <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
-              Si tienes alguna pregunta o necesitas ayuda, no dudes en contactarnos.
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top: 8px;">
+              <tr>
+                <td style="border: 1px solid #e0e5eb; border-radius: 8px; background-color: #f7f9fb; padding: 20px;">
+                  <p style="margin: 0 0 12px 0; font-size: 13px; font-weight: 600; color: #0f2b4e;">
+                    ${t.nextStepsTitle}
+                  </p>
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <!-- Step 1 -->
+                    <tr>
+                      <td style="padding: 0 0 10px 0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="vertical-align: middle; width: 28px;">
+                              <div style="width: 28px; height: 28px; border-radius: 6px; background-color: rgba(15,43,78,0.08); text-align: center; line-height: 28px; font-size: 13px;">
+                                &#128203;
+                              </div>
+                            </td>
+                            <td style="vertical-align: middle; padding-left: 10px;">
+                              <p style="margin: 0; font-size: 13px; color: #4a4a5a;">${t.step1}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <!-- Step 2 -->
+                    <tr>
+                      <td style="padding: 0 0 10px 0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="vertical-align: middle; width: 28px;">
+                              <div style="width: 28px; height: 28px; border-radius: 6px; background-color: rgba(15,43,78,0.08); text-align: center; line-height: 28px; font-size: 13px;">
+                                &#128101;
+                              </div>
+                            </td>
+                            <td style="vertical-align: middle; padding-left: 10px;">
+                              <p style="margin: 0; font-size: 13px; color: #4a4a5a;">${t.step2}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <!-- Step 3 -->
+                    <tr>
+                      <td style="padding: 0 0 10px 0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="vertical-align: middle; width: 28px;">
+                              <div style="width: 28px; height: 28px; border-radius: 6px; background-color: rgba(15,43,78,0.08); text-align: center; line-height: 28px; font-size: 13px;">
+                                &#9881;
+                              </div>
+                            </td>
+                            <td style="vertical-align: middle; padding-left: 10px;">
+                              <p style="margin: 0; font-size: 13px; color: #4a4a5a;">${t.step3}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <!-- Step 4 -->
+                    <tr>
+                      <td style="padding: 0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                          <tr>
+                            <td style="vertical-align: middle; width: 28px;">
+                              <div style="width: 28px; height: 28px; border-radius: 6px; background-color: rgba(15,43,78,0.08); text-align: center; line-height: 28px; font-size: 13px;">
+                                &#128200;
+                              </div>
+                            </td>
+                            <td style="vertical-align: middle; padding-left: 10px;">
+                              <p style="margin: 0; font-size: 13px; color: #4a4a5a;">${t.step4}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Contact Info -->
+            <p style="margin: 24px 0 0 0; font-size: 13px; line-height: 1.6; color: #6b7280;">
+              ${t.contactInfo}
             </p>
           </div>
-          
+
           <!-- Footer -->
-          <div style="background-color: #f9fafb; border-top: 1px solid #e5e7eb; padding: 30px 20px; text-align: center;">
-            <p style="color: #9ca3af; font-size: 12px; margin: 0 0 10px 0;">
-              Este email fue enviado automáticamente por TrabajoYa
-            </p>
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                ¿Necesitas ayuda? Contáctanos en 
-                <a href="mailto:soporte@trabajo-ya.com" style="color: #2563eb; text-decoration: none;">soporte@trabajo-ya.com</a>
-              </p>
-            </div>
+          <div style="border-top: 1px solid #eaeef3; background-color: #f7f9fb; padding: 24px 32px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="text-align: center;">
+                  <p style="margin: 0 0 12px 0; font-size: 11px; line-height: 1.6; color: #8c96a3;">
+                    ${t.footerAutoEmail}
+                  </p>
+                  <div style="width: 64px; height: 1px; background-color: #e0e5eb; margin: 0 auto 12px auto;"></div>
+                  <p style="margin: 0; font-size: 11px; color: #8c96a3;">
+                    ${t.footerHelp}
+                    <a href="mailto:soporte@trabajo-ya.com" style="font-weight: 500; color: #0f2b4e; text-decoration: none;">
+                      soporte@trabajo-ya.com
+                    </a>
+                  </p>
+                </td>
+              </tr>
+            </table>
           </div>
+
         </div>
       </body>
       </html>
     `;
 
-    const text = `Publicación Aprobada - TrabajoYa
+    const text = `${t.textPlainTitle}
 
-Hola${companyName ? ` ${companyName}` : ""},
+${t.greeting}${companyName ? ` ${companyName}` : ""},
 
-Nos complace informarte que tu publicación de empleo "${jobTitle}" ha sido revisada y aprobada.
+${t.description} "${jobTitle}" ${t.descriptionApproved} ${t.approved}.
 
-🎉 ¡Tu empleo ya está activo!
+${t.textPlainActive}
+${t.successDesc}
 
-Los postulantes ahora pueden ver y aplicar a tu oferta de trabajo. Tu publicación está visible en la plataforma y comenzará a recibir aplicaciones.
-
-Ver tu publicación:
+${t.buttonText}:
 ${actionUrl}
 
-Próximos pasos:
-- Revisa las aplicaciones que recibas
-- Contacta a los candidatos que más te interesen
-- Gestiona tu publicación desde tu panel de empresa
-- Considera promocionar tu empleo para mayor visibilidad
+${t.textPlainNextSteps}
+- ${t.step1}
+- ${t.step2}
+- ${t.step3}
+- ${t.step4}
 
-Si tienes alguna pregunta o necesitas ayuda, no dudes en contactarnos en soporte@trabajo-ya.com
+${t.contactInfo}
 
 ---
-Este correo fue enviado automáticamente por TrabajoYa.`;
+${t.footerAutoEmail}
 
-    // Generar un Message-ID único y bien formateado (RFC 5322)
-    const domain = process.env.MAIL_FROM?.split('@')[1] || 'trabajo-ya.com';
-    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 15)}@${domain}>`;
-    const baseUnsubscribeUrl = this.buildAppLink("/unsubscribe", { email: encodeURIComponent(email) });
-    const unsubscribeUrl = baseUnsubscribeUrl !== 'http://localhost:3000/unsubscribe'
-      ? baseUnsubscribeUrl
-      : `mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe&body=Please unsubscribe ${encodeURIComponent(email)}`;
+${t.textPlainContact}`;
 
-    // Formatear el From con nombre si es posible
-    const fromEmail = process.env.MAIL_FROM || 'noreply@trabajo-ya.com';
-    const fromName = 'TrabajoYa';
-    const fromFormatted = fromEmail.includes('<') ? fromEmail : `${fromName} <${fromEmail}>`;
+    const fromEmail = process.env.MAIL_FROM || "noreply@trabajo-ya.com";
+    const fromName = "TrabajoYa";
+    const fromFormatted = fromEmail.includes("<") ? fromEmail : `${fromName} <${fromEmail}>`;
 
     await this.provider.send({
       to: email,
-      subject: `Tu publicación "${jobTitle}" ha sido aprobada`,
+      subject: t.subject,
       html,
       text,
       from: fromFormatted,
       headers: {
-        // Headers para mejorar deliverability y evitar spam
-        "Message-ID": messageId,
         "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
-        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@trabajo-ya.com?subject=Unsubscribe>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        "X-Mailer": "TrabajoYa",
         "X-Auto-Response-Suppress": "All",
-        "MIME-Version": "1.0",
-        "Content-Type": "text/html; charset=UTF-8",
-        // Removido X-Priority ya que puede ser visto como spam
-        // Removido Importance para mejorar deliverability
+        "X-Mailer": "TrabajoYa",
       },
     });
   }
