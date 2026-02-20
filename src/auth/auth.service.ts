@@ -330,7 +330,7 @@ export class AuthService {
     });
 
     await this.prisma.postulanteProfile.create({
-      data: { userId: user.id, fullName: dto.fullName ?? "Sin nombre" },
+      data: { userId: user.id, fullName: dto.fullName ?? "Sin nombre", isPublic: true },
     });
 
     // Aceptar términos y condiciones
@@ -420,6 +420,7 @@ export class AuthService {
             userId: user.id,
             fullName: payload.name ?? "Sin nombre",
             profilePicture: payload.picture,
+            isPublic: true,
           },
         });
 
@@ -626,6 +627,7 @@ export class AuthService {
           data: {
             userId: user.id,
             fullName: dto.fullName || "",
+            isPublic: true,
           },
         });
 

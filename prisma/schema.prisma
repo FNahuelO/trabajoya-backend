@@ -119,6 +119,7 @@ model PostulanteProfile {
   githubUrl               String?
   languages               Json? // Array of {language: string, level: string}
   normalizedSkills        String[] // Skills normalized for ATS parsing
+  isPublic                Boolean           @default(true) // Perfil público por defecto al registrarse
   // Relations
   applications            Application[]
   education               Education[]

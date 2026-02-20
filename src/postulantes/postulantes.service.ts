@@ -333,6 +333,7 @@ export class PostulantesService {
       "websiteUrl",
       "githubUrl",
       "languages",
+      "isPublic",
     ];
 
     for (const field of directFields) {
