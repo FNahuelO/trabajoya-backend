@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -319,6 +320,11 @@ model Message {
   fromUser    User     @relation("SentMessages", fields: [fromUserId], references: [id], onDelete: Cascade)
   toUser      User     @relation("ReceivedMessages", fields: [toUserId], references: [id], onDelete: Cascade)
   reports     Report[]
+
+  @@index([fromUserId, toUserId, createdAt(sort: Desc)])
+  @@index([toUserId, fromUserId, createdAt(sort: Desc)])
+  @@index([toUserId, isRead])
+  @@index([toUserId, isDelivered])
 }
 
 enum UserType {

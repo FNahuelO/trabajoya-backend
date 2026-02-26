@@ -26,13 +26,17 @@ steps:
       - |
         echo "📦 Configurando y ejecutando migraciones..."
         
-        # Verificar que el secreto DATABASE_URL existe
-        echo "🔍 Verificando que el secreto DATABASE_URL existe..."
+        # Verificar que los secretos de DB existan
+        echo "🔍 Verificando secretos DATABASE_URL y DIRECT_URL..."
         if ! gcloud secrets describe DATABASE_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
           echo "❌ Error: El secreto DATABASE_URL no existe en Secret Manager"
           exit 1
         fi
-        echo "✅ Secreto DATABASE_URL verificado"
+        if ! gcloud secrets describe DIRECT_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
+          echo "❌ Error: El secreto DIRECT_URL no existe en Secret Manager"
+          exit 1
+        fi
+        echo "✅ Secretos DATABASE_URL y DIRECT_URL verificados"
         
         # Verificar si el job existe y su estado
         JOB_EXISTS=$$(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(name)" 2>/dev/null || echo "")
@@ -54,9 +58,8 @@ steps:
             if ! gcloud run jobs update trabajoya-migrate \
               --region=us-central1 \
               --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-              --set-secrets=DATABASE_URL=DATABASE_URL:latest,PRISMA_DATABASE_URL=PRISMA_DATABASE_URL:latest \
+              --set-secrets=DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest \
               --set-env-vars="NODE_ENV=production" \
-              --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
               --memory=1Gi \
               --cpu=1 \
               --max-retries=1 \
@@ -81,9 +84,8 @@ steps:
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --command="node" \
             --args="scripts/run-migrations.js" \
-            --set-secrets=DATABASE_URL=DATABASE_URL:latest,PRISMA_DATABASE_URL=PRISMA_DATABASE_URL:latest \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest \
             --set-env-vars="NODE_ENV=production" \
-            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
             --cpu=1 \
             --max-retries=1 \
@@ -101,13 +103,17 @@ steps:
       - |
         echo "🌱 Configurando y ejecutando seed..."
         
-        # Verificar que el secreto DATABASE_URL existe
-        echo "🔍 Verificando que el secreto DATABASE_URL existe..."
+        # Verificar que los secretos de DB existan
+        echo "🔍 Verificando secretos DATABASE_URL y DIRECT_URL..."
         if ! gcloud secrets describe DATABASE_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
           echo "❌ Error: El secreto DATABASE_URL no existe en Secret Manager"
           exit 1
         fi
-        echo "✅ Secreto DATABASE_URL verificado"
+        if ! gcloud secrets describe DIRECT_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
+          echo "❌ Error: El secreto DIRECT_URL no existe en Secret Manager"
+          exit 1
+        fi
+        echo "✅ Secretos DATABASE_URL y DIRECT_URL verificados"
         
         # Verificar si el job existe y su estado
         JOB_EXISTS=$$(gcloud run jobs describe trabajoya-seed --region=us-central1 --format="value(name)" 2>/dev/null || echo "")
@@ -129,9 +135,8 @@ steps:
             if ! gcloud run jobs update trabajoya-seed \
               --region=us-central1 \
               --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
-              --set-secrets=DATABASE_URL=DATABASE_URL:latest,PRISMA_DATABASE_URL=PRISMA_DATABASE_URL:latest \
+              --set-secrets=DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest \
               --set-env-vars="NODE_ENV=production" \
-              --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
               --memory=1Gi \
               --cpu=1 \
               --max-retries=1 \
@@ -156,9 +161,8 @@ steps:
             --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
             --command="node" \
             --args="scripts/run-seed.js" \
-            --set-secrets=DATABASE_URL=DATABASE_URL:latest,PRISMA_DATABASE_URL=PRISMA_DATABASE_URL:latest \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest \
             --set-env-vars="NODE_ENV=production" \
-            --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
             --memory=1Gi \
             --cpu=1 \
             --max-retries=1 \
@@ -178,7 +182,7 @@ steps:
         
         # Verificar que todos los secretos existen
         echo "🔍 Verificando secretos en Secret Manager..."
-        SECRETS=("DATABASE_URL" "PRISMA_DATABASE_URL" "JWT_ACCESS_SECRET" "GOOGLE_CLIENT_ID" "GOOGLE_CLIENT_SECRET" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "RESEND_API_KEY" "OPENAI_API_KEY" "PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "APPLE_PRIVATE_KEY")
+        SECRETS=("DATABASE_URL" "DIRECT_URL" "JWT_ACCESS_SECRET" "GOOGLE_CLIENT_ID" "GOOGLE_CLIENT_SECRET" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "RESEND_API_KEY" "OPENAI_API_KEY" "PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "APPLE_PRIVATE_KEY")
         
         for SECRET in "$${SECRETS[@]}"; do
           if ! gcloud secrets describe "$${SECRET}" --project=trabajo-ya-483316 >/dev/null 2>&1; then
@@ -218,8 +222,7 @@ steps:
           --concurrency=${_CONCURRENCY} \
           --service-account=$${SERVICE_ACCOUNT} \
           --set-env-vars="NODE_ENV=production,FRONTEND_URL=https://web.trabajo-ya.com,WEB_EMPRESAS_URL=https://empresas.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-03-03T00:00:00Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
-          --set-secrets=DATABASE_URL=DATABASE_URL:latest,PRISMA_DATABASE_URL=PRISMA_DATABASE_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest \
-          --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+          --set-secrets=DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest
         
         if [ $$? -ne 0 ]; then
           echo "❌ Error al desplegar el servicio"
@@ -249,6 +252,5 @@ substitutions:
   _MIN_INSTANCES: '1'
   _MAX_INSTANCES: '10'
   _CONCURRENCY: '80'
-  _CLOUD_SQL_INSTANCE: "trabajo-ya-483316:us-central1:trabajoya-db"
 
 timeout: '900s'
