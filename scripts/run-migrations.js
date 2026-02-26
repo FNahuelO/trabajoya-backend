@@ -465,10 +465,23 @@ async function main() {
     if (!process.env.PRISMA_DATABASE_URL && process.env.DATABASE_URL) {
       process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
     }
+
+    // Si usamos Supabase, no debemos pasar por Cloud SQL Proxy.
+    // Prisma usará DIRECT_URL para migraciones cuando esté disponible.
+    const dbUrlForRouting = process.env.DIRECT_URL || process.env.DATABASE_URL || '';
+    const isSupabase = /supabase\.co|pooler\.supabase\.com/i.test(dbUrlForRouting);
+    if (isSupabase) {
+      if (process.env.DIRECT_URL) {
+        process.env.PRISMA_DATABASE_URL = process.env.DIRECT_URL;
+      } else {
+        process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
+      }
+      console.log('✅ Supabase detectado, omitiendo Cloud SQL Proxy');
+    }
     
     // 3. Configurar conexión: Como Prisma CLI no respeta PGHOST con sockets Unix,
     // debemos usar Cloud SQL Proxy desde el inicio si hay socket Unix disponible
-    const socketAvailable = existsSync('/cloudsql');
+    const socketAvailable = !isSupabase && existsSync('/cloudsql');
     const instanceConnectionName = getInstanceConnectionName();
     
     let proxyProcess = null;

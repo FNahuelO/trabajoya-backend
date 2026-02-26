@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   SendMessageDto,
@@ -133,184 +134,157 @@ export class MessagesService {
   }
 
   async getConversations(userId: string): Promise<ConversationResponseDto[]> {
-    // Obtener todas las conversaciones únicas
-    const sentMessages = await this.prisma.message.findMany({
-      where: { fromUserId: userId },
-      distinct: ["toUserId"],
-      orderBy: { createdAt: "desc" },
-      include: {
-        toUser: {
+    type ConversationRow = {
+      otherUserId: string;
+      id: string;
+      fromUserId: string;
+      toUserId: string;
+      content: string;
+      isDelivered: boolean;
+      isRead: boolean;
+      createdAt: Date;
+      unreadCount: number;
+    };
+
+    // Obtener último mensaje + no leídos por conversación en una sola consulta.
+    const rows = await this.prisma.$queryRaw<ConversationRow[]>(Prisma.sql`
+      WITH scoped AS (
+        SELECT
+          CASE
+            WHEN "fromUserId" = ${userId} THEN "toUserId"
+            ELSE "fromUserId"
+          END AS "otherUserId",
+          "id",
+          "fromUserId",
+          "toUserId",
+          "content",
+          "isDelivered",
+          "isRead",
+          "createdAt"
+        FROM "Message"
+        WHERE "fromUserId" = ${userId} OR "toUserId" = ${userId}
+      ),
+      ranked AS (
+        SELECT
+          *,
+          ROW_NUMBER() OVER (
+            PARTITION BY "otherUserId"
+            ORDER BY "createdAt" DESC
+          ) AS rn
+        FROM scoped
+      ),
+      unread AS (
+        SELECT
+          "fromUserId" AS "otherUserId",
+          COUNT(*)::int AS "unreadCount"
+        FROM "Message"
+        WHERE "toUserId" = ${userId} AND "isRead" = false
+        GROUP BY "fromUserId"
+      )
+      SELECT
+        r."otherUserId",
+        r."id",
+        r."fromUserId",
+        r."toUserId",
+        r."content",
+        r."isDelivered",
+        r."isRead",
+        r."createdAt",
+        COALESCE(u."unreadCount", 0) AS "unreadCount"
+      FROM ranked r
+      LEFT JOIN unread u ON u."otherUserId" = r."otherUserId"
+      WHERE r.rn = 1
+      ORDER BY r."createdAt" DESC
+    `);
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const participantIds = new Set<string>([userId, ...rows.map((row) => row.otherUserId)]);
+
+    const participants = await this.prisma.user.findMany({
+      where: {
+        id: { in: Array.from(participantIds) },
+      },
+      select: {
+        id: true,
+        email: true,
+        userType: true,
+        postulante: {
           select: {
             id: true,
-            email: true,
-            userType: true,
-            postulante: {
-              select: {
-                id: true,
-                fullName: true,
-                profilePicture: true,
-              },
-            },
-            empresa: {
-              select: {
-                id: true,
-                companyName: true,
-                logo: true,
-              },
-            },
+            fullName: true,
+            profilePicture: true,
+          },
+        },
+        empresa: {
+          select: {
+            id: true,
+            companyName: true,
+            logo: true,
           },
         },
       },
     });
 
-    const receivedMessages = await this.prisma.message.findMany({
-      where: { toUserId: userId },
-      distinct: ["fromUserId"],
-      orderBy: { createdAt: "desc" },
-      include: {
-        fromUser: {
-          select: {
-            id: true,
-            email: true,
-            userType: true,
-            postulante: {
-              select: {
-                id: true,
-                fullName: true,
-                profilePicture: true,
-              },
-            },
-            empresa: {
-              select: {
-                id: true,
-                companyName: true,
-                logo: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    // Combinar y obtener el último mensaje de cada conversación
-    const userIds = new Set<string>();
-    sentMessages.forEach((msg) => userIds.add(msg.toUserId));
-    receivedMessages.forEach((msg) => userIds.add(msg.fromUserId));
+    const participantMap = new Map(participants.map((user) => [user.id, user]));
+    const rowsWithUser = rows.filter((row) => participantMap.has(row.otherUserId));
 
     const conversations = await Promise.all(
-      Array.from(userIds).map(async (otherUserId) => {
-        const lastMessage = await this.prisma.message.findFirst({
-          where: {
+      rowsWithUser.map(async (row) => {
+        return {
+          user: await this.mapUserToResponse(participantMap.get(row.otherUserId)),
+          lastMessage: await this.mapMessageToResponse({
+            ...row,
+            fromUser: participantMap.get(row.fromUserId),
+            toUser: participantMap.get(row.toUserId),
+          }),
+          unreadCount: row.unreadCount,
+        };
+      })
+    );
+
+    return conversations;
+  }
+
+  async getConversationWith(
+    userId: string,
+    otherUserId: string,
+    limit: number = 50,
+    before?: string
+  ): Promise<MessageResponseDto[]> {
+    const safeLimit = this.clampLimit(limit);
+    const cursorDate = before ? new Date(before) : undefined;
+
+    if (before && (!cursorDate || Number.isNaN(cursorDate.getTime()))) {
+      throw new BadRequestException(
+        "Parámetro before inválido. Debe ser una fecha ISO válida."
+      );
+    }
+
+    const messages = await this.prisma.message.findMany({
+      where: {
+        AND: [
+          {
             OR: [
               { fromUserId: userId, toUserId: otherUserId },
               { fromUserId: otherUserId, toUserId: userId },
             ],
           },
-          orderBy: { createdAt: "desc" },
-          include: {
-            fromUser: {
-              select: {
-                id: true,
-                email: true,
-                userType: true,
-                postulante: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    profilePicture: true,
+          ...(cursorDate
+            ? [
+                {
+                  createdAt: {
+                    lt: cursorDate,
                   },
                 },
-                empresa: {
-                  select: {
-                    id: true,
-                    companyName: true,
-                    logo: true,
-                  },
-                },
-              },
-            },
-            toUser: {
-              select: {
-                id: true,
-                email: true,
-                userType: true,
-                postulante: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    profilePicture: true,
-                  },
-                },
-                empresa: {
-                  select: {
-                    id: true,
-                    companyName: true,
-                    logo: true,
-                  },
-                },
-              },
-            },
-          },
-        });
-
-        const unreadCount = await this.prisma.message.count({
-          where: {
-            fromUserId: otherUserId,
-            toUserId: userId,
-            isRead: false,
-          },
-        });
-
-        const otherUser = await this.prisma.user.findUnique({
-          where: { id: otherUserId },
-          select: {
-            id: true,
-            email: true,
-            userType: true,
-            postulante: {
-              select: {
-                id: true,
-                fullName: true,
-                profilePicture: true,
-              },
-            },
-            empresa: {
-              select: {
-                id: true,
-                companyName: true,
-                logo: true,
-              },
-            },
-          },
-        });
-
-        return {
-          user: await this.mapUserToResponse(otherUser),
-          lastMessage: await this.mapMessageToResponse(lastMessage),
-          unreadCount,
-        };
-      })
-    );
-
-    return conversations.sort(
-      (a, b) =>
-        new Date(b.lastMessage.createdAt).getTime() -
-        new Date(a.lastMessage.createdAt).getTime()
-    );
-  }
-
-  async getConversationWith(
-    userId: string,
-    otherUserId: string
-  ): Promise<MessageResponseDto[]> {
-    const messages = await this.prisma.message.findMany({
-      where: {
-        OR: [
-          { fromUserId: userId, toUserId: otherUserId },
-          { fromUserId: otherUserId, toUserId: userId },
+              ]
+            : []),
         ],
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
+      take: safeLimit,
       include: {
         fromUser: {
           select: {
@@ -367,9 +341,16 @@ export class MessagesService {
       data: { isDelivered: true, isRead: true },
     });
 
+    messages.reverse();
+
     return Promise.all(
       messages.map((message) => this.mapMessageToResponse(message))
     );
+  }
+
+  private clampLimit(limit: number): number {
+    if (!Number.isFinite(limit)) return 50;
+    return Math.min(Math.max(Math.floor(limit), 1), 100);
   }
 
   async markAsRead(
