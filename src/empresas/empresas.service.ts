@@ -1156,17 +1156,16 @@ export class EmpresasService {
     });
 
     // Determinar el estado de moderación y status basado en el resultado
-    let moderationStatus = "PENDING";
-    let status = "inactive";
+    // Para pagos PayPal exitosos: si pasa moderación automática se publica/aprueba de inmediato.
+    let moderationStatus = "APPROVED";
+    let status = "active";
     let autoRejectionReason = null;
+    const now = new Date();
 
     if (!moderationResult.isApproved) {
       moderationStatus = "AUTO_REJECTED";
       status = "inactive";
       autoRejectionReason = moderationResult.reasons.join(". ");
-    } else {
-      moderationStatus = "PENDING";
-      status = "inactive";
     }
 
     // Actualizar el empleo con el pago confirmado y pasar a moderación
@@ -1175,10 +1174,12 @@ export class EmpresasService {
       data: {
         isPaid: true,
         paymentStatus: "COMPLETED",
-        paidAt: new Date(),
+        paidAt: now,
         moderationStatus: moderationStatus as any,
         status: status,
         autoRejectionReason: autoRejectionReason,
+        publishedAt: moderationStatus === "APPROVED" ? now : null,
+        moderatedAt: moderationStatus === "APPROVED" ? now : null,
       },
     });
 
