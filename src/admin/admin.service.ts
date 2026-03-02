@@ -6,10 +6,31 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import * as bcrypt from "bcryptjs";
+import { GcpCdnService } from "../upload/gcp-cdn.service";
+import { GCSUploadService } from "../upload/gcs-upload.service";
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private gcpCdnService: GcpCdnService,
+    private gcsUploadService: GCSUploadService
+  ) {}
+
+  private async resolveMediaUrl(mediaKey?: string | null): Promise<string | null> {
+    if (!mediaKey) return null;
+    if (mediaKey.startsWith("http")) return mediaKey;
+
+    try {
+      if (this.gcpCdnService.isCdnConfigured()) {
+        return this.gcpCdnService.getCdnUrl(mediaKey);
+      }
+      return await this.gcsUploadService.getObjectUrl(mediaKey, 3600);
+    } catch {
+      // Si no se puede generar URL, conservar valor original para evitar romper UI.
+      return mediaKey;
+    }
+  }
 
   async getUsers(page: number, pageSize: number, userType?: string) {
     const skip = (page - 1) * pageSize;
@@ -93,14 +114,40 @@ export class AdminService {
               createdAt: true,
             },
           },
+          experiences: {
+            select: { id: true },
+          },
+          education: {
+            select: { id: true },
+          },
+          certifications: {
+            select: { id: true },
+          },
         },
         orderBy: { userId: "desc" },
       }),
       this.prisma.postulanteProfile.count(),
     ]);
 
+    const normalizedPostulantes = await Promise.all(
+      postulantes.map(async (postulante) => {
+        const [cvUrl, videoUrl, profilePicture] = await Promise.all([
+          this.resolveMediaUrl(postulante.cvUrl),
+          this.resolveMediaUrl(postulante.videoUrl),
+          this.resolveMediaUrl(postulante.profilePicture),
+        ]);
+
+        return {
+          ...postulante,
+          cvUrl,
+          videoUrl,
+          profilePicture,
+        };
+      })
+    );
+
     return {
-      items: postulantes,
+      items: normalizedPostulantes,
       total,
       page,
       pageSize,

@@ -10,8 +10,9 @@ async function main() {
     create: {
       email: "admin@trabajoya.com",
       passwordHash,
-      userType: "EMPRESA",
+      userType: "ADMIN",
       isVerified: true,
+
     },
   });
   // Crear catálogos
@@ -1168,7 +1169,7 @@ async function main() {
   // IMPORTANTE: Estos Product IDs deben coincidir EXACTAMENTE con los de App Store Connect
   const iapProducts = [
     {
-      productId: "job_urgent",
+      productId: "job.urgent",
       platform: "IOS",
       planKey: "URGENT",
     },
@@ -1178,7 +1179,7 @@ async function main() {
       planKey: "URGENT",
     },
     {
-      productId: "job_standard",
+      productId: "job.standard",
       platform: "IOS",
       planKey: "STANDARD",
     },
@@ -1188,7 +1189,7 @@ async function main() {
       planKey: "STANDARD",
     },
     {
-      productId: "job_premium",
+      productId: "job.premium",
       platform: "IOS",
       planKey: "PREMIUM",
     },
@@ -1198,7 +1199,7 @@ async function main() {
       planKey: "PREMIUM",
     },
     {
-      productId: "job_crystal",
+      productId: "job.crystal",
       platform: "IOS",
       planKey: "CRYSTAL",
     },
