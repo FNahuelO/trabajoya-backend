@@ -10,11 +10,72 @@ import { GCSUploadService } from "../upload/gcs-upload.service";
 
 @Injectable()
 export class JobsService {
+  private readonly SCHEDULE_LABELS: Record<string, string> = {
+    MANANA: "Mañana",
+    TARDE: "Tarde",
+    NOCHE: "Noche",
+    MADRUGADA: "Madrugada",
+    JORNADA_COMPLETA: "Jornada completa",
+    MEDIA_JORNADA: "Media jornada",
+    PART_TIME: "Medio tiempo",
+    FULL_TIME: "Tiempo completo",
+    FLEXIBLE: "Flexible",
+    ROTATIVO: "Rotativo",
+  };
+
   constructor(
     private prisma: PrismaService,
     private gcpCdnService: GcpCdnService,
     private gcsUploadService: GCSUploadService
   ) {}
+
+  private normalizeScheduleCode(value?: string | null): string {
+    return (value || "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase();
+  }
+
+  private translateSchedule(value?: string | null): string | null {
+    if (!value || typeof value !== "string" || !value.trim()) {
+      return null;
+    }
+
+    const normalizedCode = this.normalizeScheduleCode(value);
+    const mappedLabel = this.SCHEDULE_LABELS[normalizedCode];
+    if (mappedLabel) {
+      return mappedLabel;
+    }
+
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  private attachTranslatedSchedule<T extends Record<string, any>>(job: T): T {
+    const rawSchedule =
+      (typeof job.schedule === "string" && job.schedule.trim()) ||
+      (typeof job.horario === "string" && job.horario.trim()) ||
+      null;
+
+    if (!rawSchedule) {
+      return job;
+    }
+
+    const translatedSchedule = this.translateSchedule(rawSchedule);
+    if (!translatedSchedule) {
+      return job;
+    }
+
+    (job as any).scheduleCode = rawSchedule;
+    (job as any).schedule = translatedSchedule;
+    (job as any).horario = translatedSchedule;
+
+    return job;
+  }
 
   async search(q: any) {    
     const where: any = {
@@ -336,7 +397,7 @@ export class JobsService {
             console.error("Error generando URL para logo en jobs:", error);
           }
         }
-        return job;
+        return this.attachTranslatedSchedule(job);
       })
     );
 
@@ -397,7 +458,7 @@ export class JobsService {
       }
     }
 
-    return job;
+    return this.attachTranslatedSchedule(job);
   }
 
   async create(dto: any) {
