@@ -331,7 +331,7 @@ export class PromotionsService {
 
     // Obtener la duración de la promoción
     const activePromotion = await this.getActivePromotion();
-    const durationDays = activePromotion?.durationDays || 4;
+    const durationDays = activePromotion?.durationDays || 20;
 
     const publishedAt = new Date();
     const expiresAt = new Date(publishedAt);

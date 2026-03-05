@@ -275,7 +275,7 @@ export class EmpresasService {
       // Crear el aviso
       const publishedAt = new Date();
       const expiresAt = new Date(publishedAt);
-      expiresAt.setDate(expiresAt.getDate() + 4); // 4 días desde publicación
+      expiresAt.setDate(expiresAt.getDate() + 20); // 20 días desde publicación
 
       // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
       const { planId, ...jobData } = dto;
