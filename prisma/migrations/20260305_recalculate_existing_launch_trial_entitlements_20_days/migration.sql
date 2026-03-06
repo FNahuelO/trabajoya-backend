@@ -24,8 +24,7 @@ WHERE e."id" = r."id";
 -- y que ahora, con el nuevo cálculo, vuelven a estar vigentes.
 UPDATE "Job" j
 SET
-  "status" = 'active',
-  "updatedAt" = CURRENT_TIMESTAMP
+  "status" = 'active'
 FROM "JobPostEntitlement" e
 WHERE e."jobPostId" = j."id"
   AND e."source" = 'PROMO'
