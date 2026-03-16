@@ -7,7 +7,8 @@ import {
   Headers,
   UseGuards,
   Req,
-  NotFoundException,
+  HttpCode,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { PaymentsService } from "./payments.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
@@ -26,6 +27,45 @@ export class PaymentsController {
     private subscriptionsService: SubscriptionsService,
     private prisma: PrismaService
   ) {}
+
+  private validateIpnSecretOrThrow(secretFromHeader?: string) {
+    const configuredSecret = process.env.IPN_SHARED_SECRET;
+    if (!configuredSecret) {
+      return;
+    }
+
+    if (secretFromHeader !== configuredSecret) {
+      throw new UnauthorizedException("IPN secret inválido");
+    }
+  }
+
+  private extractOrderIdFromIpnBody(body: any): string | null {
+    const payload = body?.payload ?? body;
+    const candidates = [
+      body?.orderId,
+      body?.order_id,
+      payload?.orderId,
+      payload?.order_id,
+      payload?.resource?.id,
+      payload?.resource?.supplementary_data?.related_ids?.order_id,
+      payload?.data?.orderId,
+      payload?.data?.order_id,
+      payload?.external_reference,
+      payload?.reference,
+    ];
+
+    for (const value of candidates) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  }
+
+  private extractIpnPayload(body: any) {
+    return body?.payload ?? body;
+  }
 
   /**
    * Crear orden de pago
@@ -518,6 +558,80 @@ export class PaymentsController {
     return createResponse({
       success: true,
       message: "Webhook procesado",
+    });
+  }
+
+  /**
+   * IPN de confirmación de pago (sin autenticación JWT)
+   */
+  @Post("ipn/confirm")
+  @HttpCode(200)
+  async handleIpnConfirm(
+    @Headers("x-ipn-secret") ipnSecret: string | undefined,
+    @Body() body: any
+  ) {
+    this.validateIpnSecretOrThrow(ipnSecret);
+
+    const orderId = this.extractOrderIdFromIpnBody(body);
+    const payload = this.extractIpnPayload(body);
+    let updated = 0;
+
+    if (orderId) {
+      const result = await this.prisma.paymentTransaction.updateMany({
+        where: { orderId },
+        data: {
+          status: PaymentStatus.COMPLETED,
+          paypalData: payload,
+          updatedAt: new Date(),
+        },
+      });
+      updated = result.count;
+    }
+
+    return createResponse({
+      success: true,
+      message: "IPN de confirmación procesado",
+      data: {
+        orderId,
+        updatedTransactions: updated,
+      },
+    });
+  }
+
+  /**
+   * IPN de rechazo de pago (sin autenticación JWT)
+   */
+  @Post("ipn/reject")
+  @HttpCode(200)
+  async handleIpnReject(
+    @Headers("x-ipn-secret") ipnSecret: string | undefined,
+    @Body() body: any
+  ) {
+    this.validateIpnSecretOrThrow(ipnSecret);
+
+    const orderId = this.extractOrderIdFromIpnBody(body);
+    const payload = this.extractIpnPayload(body);
+    let updated = 0;
+
+    if (orderId) {
+      const result = await this.prisma.paymentTransaction.updateMany({
+        where: { orderId },
+        data: {
+          status: PaymentStatus.FAILED,
+          paypalData: payload,
+          updatedAt: new Date(),
+        },
+      });
+      updated = result.count;
+    }
+
+    return createResponse({
+      success: true,
+      message: "IPN de rechazo procesado",
+      data: {
+        orderId,
+        updatedTransactions: updated,
+      },
     });
   }
 }

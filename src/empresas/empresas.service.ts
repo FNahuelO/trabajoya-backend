@@ -327,8 +327,8 @@ export class EmpresasService {
     const activeSubscription =
       await this.subscriptionsService.getActiveSubscription(profile.id);
 
-    // Precio por publicación (configurable)
-    const jobPublicationPrice = parseFloat(
+    // Precio por publicación por defecto (fallback)
+    const defaultJobPublicationPrice = parseFloat(
       process.env.JOB_PUBLICATION_PRICE || "10.00"
     );
 
@@ -343,6 +343,25 @@ export class EmpresasService {
 
     // Si NO incluye publicaciones gratis, requiere pago
     if (!planIncludesFreeJobs) {
+      let paymentAmount = defaultJobPublicationPrice;
+      let paymentCurrency = "USD";
+
+      if (dto.planId) {
+        const selectedPlan = await this.prisma.plan.findFirst({
+          where: {
+            id: dto.planId,
+            isActive: true,
+          },
+        });
+
+        if (!selectedPlan) {
+          throw new BadRequestException("El plan seleccionado no es válido");
+        }
+
+        paymentAmount = parseFloat(selectedPlan.price.toString());
+        paymentCurrency = selectedPlan.currency || "USD";
+      }
+
       // Asegurar que el título original se preserve siempre
       // Si el título viene vacío o no viene, no crear el job (debe fallar la validación)
       if (!dto.title || dto.title.trim() === '') {
@@ -361,8 +380,8 @@ export class EmpresasService {
           status: "inactive",
           isPaid: false,
           paymentStatus: "PENDING",
-          paymentAmount: jobPublicationPrice,
-          paymentCurrency: "USD",
+          paymentAmount,
+          paymentCurrency,
         },
       });
     }

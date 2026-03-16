@@ -82,6 +82,8 @@ export class PromotionsService {
           title: promotion.title,
           description: promotion.description,
           durationDays: promotion.durationDays,
+          startAt: promotion.startAt,
+          endAt: promotion.endAt,
           metadata: promotion.metadata,
         }
       : null;
