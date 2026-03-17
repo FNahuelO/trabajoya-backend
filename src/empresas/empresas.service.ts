@@ -358,8 +358,13 @@ export class EmpresasService {
           throw new BadRequestException("El plan seleccionado no es válido");
         }
 
-        paymentAmount = parseFloat(selectedPlan.price.toString());
-        paymentCurrency = selectedPlan.currency || "USD";
+        paymentAmount = parseFloat(
+          (
+            (selectedPlan as any).priceUsd ??
+            selectedPlan.price
+          ).toString()
+        );
+        paymentCurrency = "USD";
       }
 
       // Asegurar que el título original se preserve siempre
@@ -1097,7 +1102,13 @@ export class EmpresasService {
       if (job.paymentAmount) {
         // Intentar encontrar el plan por precio
         const plan = await this.prisma.plan.findFirst({
-          where: { price: job.paymentAmount, isActive: true },
+          where: {
+            OR: [
+              { priceUsd: job.paymentAmount },
+              { price: job.paymentAmount },
+            ],
+            isActive: true,
+          },
         });
         if (plan) {
           planId = plan.id;

@@ -129,12 +129,26 @@ export class PlansService {
       order = maxOrder ? maxOrder.order + 10 : 10;
     }
 
+    const dtoAny = dto as any;
+    const priceUsd = Number(
+      dtoAny.priceUsd ??
+        ((dtoAny.currency || "USD").toUpperCase() === "USD" ? dtoAny.price : 0)
+    );
+    const priceArs = Number(
+      dtoAny.priceArs ??
+        ((dtoAny.currency || "USD").toUpperCase() === "ARS" ? dtoAny.price : 0)
+    );
+
     return this.prisma.plan.create({
       data: {
         name: dto.name,
         code: dto.code,
-        price: dto.price,
-        currency: dto.currency || "USD",
+        // Campos nuevos
+        priceUsd: Number.isFinite(priceUsd) ? priceUsd : 0,
+        priceArs: Number.isFinite(priceArs) ? priceArs : 0,
+        // Compatibilidad hacia atrás
+        price: Number.isFinite(priceUsd) ? priceUsd : 0,
+        currency: "USD",
         durationDays: dto.durationDays,
         unlimitedCvs: dto.unlimitedCvs ?? true,
         allowedModifications: dto.allowedModifications ?? 0,
@@ -168,9 +182,24 @@ export class PlansService {
       }
     }
 
+    const dtoAny = dto as any;
+    const data: any = { ...dto };
+
+    if (dtoAny.priceUsd !== undefined) {
+      data.price = dtoAny.priceUsd;
+      data.currency = "USD";
+    } else if (dtoAny.price !== undefined && dtoAny.currency) {
+      if (String(dtoAny.currency).toUpperCase() === "USD") {
+        data.priceUsd = dtoAny.price;
+      }
+      if (String(dtoAny.currency).toUpperCase() === "ARS") {
+        data.priceArs = dtoAny.price;
+      }
+    }
+
     return this.prisma.plan.update({
       where: { id },
-      data: dto,
+      data,
     });
   }
 

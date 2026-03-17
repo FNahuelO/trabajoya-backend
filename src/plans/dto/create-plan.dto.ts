@@ -31,6 +31,26 @@ export class CreatePlanDto {
   @IsString({ message: i18nValidationMessage("validation.isString") })
   currency?: string;
 
+  @ApiProperty({
+    example: 19.99,
+    required: false,
+    description: "Precio del plan para pagos en USD (PayPal)",
+  })
+  @IsOptional()
+  @IsNumber({}, { message: i18nValidationMessage("validation.isNumber") })
+  @Min(0, { message: i18nValidationMessage("validation.min") })
+  priceUsd?: number;
+
+  @ApiProperty({
+    example: 25000,
+    required: false,
+    description: "Precio del plan para pagos en ARS (Cobro Inmediato)",
+  })
+  @IsOptional()
+  @IsNumber({}, { message: i18nValidationMessage("validation.isNumber") })
+  @Min(0, { message: i18nValidationMessage("validation.min") })
+  priceArs?: number;
+
   @ApiProperty({ example: 7 })
   @IsInt({ message: i18nValidationMessage("validation.isNumber") })
   @Min(1, { message: i18nValidationMessage("validation.min") })

@@ -590,8 +590,10 @@ model Plan {
   name                   String               @unique
   code                   String               @unique // Código único para identificar el plan (URGENT, STANDARD, PREMIUM)
   subscriptionPlan       SubscriptionPlan     @default(PREMIUM) // Tipo de suscripción al que pertenece este plan
-  price                  Float // Precio del plan
-  currency               String               @default("USD") // Moneda del plan (USD para PayPal, ARS para otras pasarelas)
+  price                  Float // Campo legado (equivale a priceUsd)
+  currency               String               @default("USD") // Campo legado (equivale a USD)
+  priceUsd               Float                @default(0) // Precio del plan para PayPal (USD)
+  priceArs               Float                @default(0) // Precio del plan para Cobro Inmediato (ARS)
   durationDays           Int // Duración en días desde la publicación
   unlimitedCvs           Boolean              @default(true) // Siempre true según los requisitos
   allowedModifications   Int                  @default(0) // Número de modificaciones permitidas del anuncio
