@@ -345,9 +345,10 @@ export class EmpresasService {
     if (!planIncludesFreeJobs) {
       let paymentAmount = defaultJobPublicationPrice;
       let paymentCurrency = "USD";
+      let selectedPlan: any = null;
 
       if (dto.planId) {
-        const selectedPlan = await this.prisma.plan.findFirst({
+        selectedPlan = await this.prisma.plan.findFirst({
           where: {
             id: dto.planId,
             isActive: true,
@@ -376,7 +377,7 @@ export class EmpresasService {
       // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
       const { planId, ...jobData } = dto;
       
-      return this.prisma.job.create({
+      const job = await this.prisma.job.create({
         data: {
           ...jobData,
           title: dto.title.trim(), // Asegurar que el título original se preserve
@@ -389,6 +390,39 @@ export class EmpresasService {
           paymentCurrency,
         },
       });
+
+      // Persistir el plan elegido aun cuando el pago quede pendiente.
+      // Se deja en REVOKED y se activa al confirmar el pago.
+      if (selectedPlan) {
+        const now = new Date();
+        const reservedExpiresAt = new Date(now);
+        reservedExpiresAt.setDate(
+          reservedExpiresAt.getDate() + Number(selectedPlan.durationDays || 30)
+        );
+
+        await this.prisma.jobPostEntitlement.create({
+          data: {
+            userId: userId,
+            jobPostId: job.id,
+            source: "MANUAL",
+            planKey: selectedPlan.code,
+            expiresAt: reservedExpiresAt,
+            status: "REVOKED",
+            maxEdits: selectedPlan.allowedModifications || 0,
+            editsUsed: 0,
+            allowCategoryChange: selectedPlan.canModifyCategory || false,
+            maxCategoryChanges: selectedPlan.categoryModifications || 0,
+            categoryChangesUsed: 0,
+            rawPayload: {
+              pendingPayment: true,
+              selectedPlanId: selectedPlan.id,
+              selectedPlanCode: selectedPlan.code,
+            },
+          },
+        });
+      }
+
+      return job;
     }
 
     // Si el plan incluye publicaciones gratis (PREMIUM/ENTERPRISE), pasa directo a moderación automática
@@ -460,7 +494,9 @@ export class EmpresasService {
         },
         entitlements: {
           where: {
-            status: 'ACTIVE',
+            status: {
+              in: ['ACTIVE', 'EXPIRED', 'REVOKED'],
+            },
           },
           take: 1,
           orderBy: {
@@ -1100,16 +1136,15 @@ export class EmpresasService {
       let planId: string | null = null;
       let planType: any = null;
       if (job.paymentAmount) {
-        // Intentar encontrar el plan por precio
-        const plan = await this.prisma.plan.findFirst({
-          where: {
-            OR: [
-              { priceUsd: job.paymentAmount },
-              { price: job.paymentAmount },
-            ],
-            isActive: true,
-          },
+        // Intentar encontrar el plan por precio USD legacy.
+        const activePlans = await this.prisma.plan.findMany({
+          where: { isActive: true },
         });
+        const plan =
+          activePlans.find((item: any) => {
+            const usd = Number((item as any).priceUsd ?? item.price);
+            return Number.isFinite(usd) && Math.abs(usd - Number(job.paymentAmount)) < 0.01;
+          }) || null;
         if (plan) {
           planId = plan.id;
           planType = plan.subscriptionPlan;
@@ -1236,6 +1271,83 @@ export class EmpresasService {
       });
     } catch (error) {
       console.error("Error actualizando PaymentTransaction en confirmJobPayment:", error);
+    }
+
+    // Activar entitlement reservado para esta publicación (si existe) o crearlo.
+    try {
+      const reservedEntitlement = await this.prisma.jobPostEntitlement.findUnique({
+        where: { jobPostId: jobId },
+      });
+
+      let plan: any = null;
+
+      if (reservedEntitlement?.planKey) {
+        plan = await this.prisma.plan.findFirst({
+          where: {
+            code: reservedEntitlement.planKey,
+            isActive: true,
+          },
+        });
+      }
+
+      if (!plan && job.paymentAmount) {
+        const activePlans = await this.prisma.plan.findMany({
+          where: { isActive: true },
+        });
+        plan =
+          activePlans.find((item: any) => {
+            const usd = Number((item as any).priceUsd ?? item.price);
+            return Number.isFinite(usd) && Math.abs(usd - Number(job.paymentAmount)) < 0.01;
+          }) || null;
+      }
+
+      if (plan) {
+        const expiresAt = new Date(now);
+        expiresAt.setDate(expiresAt.getDate() + Number(plan.durationDays || 30));
+
+        if (reservedEntitlement) {
+          await this.prisma.jobPostEntitlement.update({
+            where: { id: reservedEntitlement.id },
+            data: {
+              source: "MANUAL",
+              planKey: plan.code,
+              expiresAt,
+              status: "ACTIVE",
+              maxEdits: plan.allowedModifications || 0,
+              editsUsed: 0,
+              allowCategoryChange: plan.canModifyCategory || false,
+              maxCategoryChanges: plan.categoryModifications || 0,
+              categoryChangesUsed: 0,
+              rawPayload: {
+                activatedFromPayment: true,
+                paypalOrderId: orderId,
+              },
+            },
+          });
+        } else {
+          await this.prisma.jobPostEntitlement.create({
+            data: {
+              userId,
+              jobPostId: jobId,
+              source: "MANUAL",
+              planKey: plan.code,
+              expiresAt,
+              status: "ACTIVE",
+              maxEdits: plan.allowedModifications || 0,
+              editsUsed: 0,
+              allowCategoryChange: plan.canModifyCategory || false,
+              maxCategoryChanges: plan.categoryModifications || 0,
+              categoryChangesUsed: 0,
+              rawPayload: {
+                activatedFromPayment: true,
+                paypalOrderId: orderId,
+              },
+            },
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error activando JobPostEntitlement en confirmJobPayment:", error);
     }
 
     return updatedJob;
