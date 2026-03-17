@@ -7,6 +7,7 @@ const { PrismaClient } = require("@prisma/client");
 const { execSync } = require("child_process");
 
 const prisma = new PrismaClient();
+const PRISMA_CMD = "npm exec -- prisma";
 
 async function checkTablesExist() {
   try {
@@ -56,7 +57,7 @@ async function ensureSchema() {
     try {
       // Si las tablas no existen, usar db push directamente
       console.log("📦 Sincronizando esquema con db push...");
-      execSync("npx prisma db push --accept-data-loss --skip-generate", { 
+      execSync(`${PRISMA_CMD} db push --accept-data-loss --skip-generate`, {
         stdio: "inherit",
         env: process.env 
       });
@@ -89,7 +90,7 @@ async function ensureSchema() {
       
       // Ejecutar migrate deploy para aplicar migraciones pendientes
       console.log("📦 Aplicando migraciones con migrate deploy...");
-      execSync("npx prisma migrate deploy", { 
+      execSync(`${PRISMA_CMD} migrate deploy`, {
         stdio: "inherit",
         env: process.env 
       });
@@ -104,7 +105,7 @@ async function ensureSchema() {
       } else {
         // Si migrate deploy no funcionó, intentar db push como fallback
         console.log("⚠️  migrate deploy no creó la tabla. Intentando db push...");
-        execSync("npx prisma db push --accept-data-loss --skip-generate", { 
+        execSync(`${PRISMA_CMD} db push --accept-data-loss --skip-generate`, {
           stdio: "inherit",
           env: process.env 
         });
@@ -125,7 +126,7 @@ async function ensureSchema() {
       // Aún así, ejecutar migrate deploy para asegurar que no hay migraciones pendientes
       try {
         console.log("📦 Verificando migraciones pendientes...");
-        execSync("npx prisma migrate deploy", { 
+        execSync(`${PRISMA_CMD} migrate deploy`, {
           stdio: "inherit",
           env: process.env 
         });

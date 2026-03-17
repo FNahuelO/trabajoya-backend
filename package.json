@@ -14,7 +14,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:create": "prisma migrate dev --name",
     "prisma:migrate:docker": "docker exec -it trabajoya_api npx prisma migrate dev --name",
-    "prisma:deploy": "echo '📦 Ejecutando migraciones...' && prisma migrate deploy && echo '✅ Migraciones completadas'",
+    "prisma:deploy": "node scripts/run-migrations.js",
     "prisma:reset": "prisma migrate reset",
     "prisma:status": "prisma migrate status",
     "prisma:seed": "ts-node --transpile-only prisma/seed.ts",

@@ -9,6 +9,27 @@ const { existsSync, chmodSync } = require('fs');
 const path = require('path');
 const http = require('http');
 
+const PRISMA_CMD = 'npm exec -- prisma';
+
+function runPrisma(command, options = {}) {
+  return execSync(`${PRISMA_CMD} ${command}`, options);
+}
+
+function validateDatabaseUrl() {
+  const url = process.env.DATABASE_URL || '';
+  if (!url) {
+    console.error('❌ ERROR: DATABASE_URL no está configurada');
+    process.exit(1);
+  }
+
+  // Evita despliegues con placeholders manuales
+  if (/USUARIO|PASS|HOST|DB\?/i.test(url)) {
+    console.error('❌ ERROR: DATABASE_URL contiene placeholders (USUARIO/PASS/HOST/DB)');
+    console.error('💡 Configura la URL real desde Secret Manager o variables de entorno');
+    process.exit(1);
+  }
+}
+
 // Función para cargar secrets desde TRABAJOYA_SECRETS (opcional)
 // Si TRABAJOYA_SECRETS no está disponible, asume que los secretos individuales
 // ya están disponibles como variables de entorno (montados desde Secret Manager)
@@ -456,10 +477,7 @@ async function main() {
     loadSecrets();
     
     // 2. Verificar DATABASE_URL
-    if (!process.env.DATABASE_URL) {
-      console.error('❌ ERROR: DATABASE_URL no está configurada');
-      process.exit(1);
-    }
+    validateDatabaseUrl();
     
     // Asegurar que PRISMA_DATABASE_URL esté configurada (Prisma usa esta variable)
     if (!process.env.PRISMA_DATABASE_URL && process.env.DATABASE_URL) {
@@ -472,6 +490,7 @@ async function main() {
     const isSupabase = /supabase\.co|pooler\.supabase\.com/i.test(dbUrlForRouting);
     if (isSupabase) {
       if (process.env.DIRECT_URL) {
+        process.env.DATABASE_URL = process.env.DIRECT_URL;
         process.env.PRISMA_DATABASE_URL = process.env.DIRECT_URL;
       } else {
         process.env.PRISMA_DATABASE_URL = process.env.DATABASE_URL;
@@ -544,7 +563,7 @@ async function main() {
       let hasFailedMigrations = false;
       
       try {
-        migrateStatus = execSync('npx prisma migrate status', {
+        migrateStatus = runPrisma('migrate status', {
           encoding: 'utf8',
           env: process.env,
           cwd: process.cwd(),
@@ -563,12 +582,12 @@ async function main() {
         console.log('⚠️  Se detectaron migraciones fallidas, resolviéndolas automáticamente...');
         
         // Intentar resolver migraciones fallidas específicas mencionadas en el error
-        const failedMigrationMatch = migrateStatus.match(/migration.*?(?:started|failed).*?(\d+_\w+)/i);
+        const failedMigrationMatch = migrateStatus.match(/migration.*?(?:started|failed).*?(\d+[_a-zA-Z0-9]+)/i);
         if (failedMigrationMatch) {
           const failedMigrationName = failedMigrationMatch[1];
           try {
             console.log(`🔄 Resolviendo migración fallida específica: ${failedMigrationName}`);
-            execSync(`npx prisma migrate resolve --rolled-back ${failedMigrationName}`, {
+            runPrisma(`migrate resolve --rolled-back ${failedMigrationName}`, {
               encoding: 'utf8',
               env: process.env,
               cwd: process.cwd(),
@@ -576,41 +595,15 @@ async function main() {
             });
             console.log(`✅ Migración ${failedMigrationName} marcada como rolled-back`);
           } catch (resolveError) {
-            console.log(`⚠️  No se pudo resolver ${failedMigrationName}: ${resolveError.message}`);
-          }
-        }
-        
-        // También intentar resolver todas las migraciones antiguas (excepto 0_init) como rolled-back
-        // para que solo se ejecute la migración inicial consolidada
-        const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
-        if (existsSync(migrationsDir)) {
-          const fs = require('fs');
-          const migrations = fs.readdirSync(migrationsDir, { withFileTypes: true })
-            .filter(dirent => dirent.isDirectory() && dirent.name !== '0_init')
-            .map(dirent => dirent.name)
-            .sort();
-          
-          console.log(`🔄 Resolviendo migraciones antiguas (${migrations.length} encontradas)...`);
-          for (const migrationName of migrations) {
-            try {
-              execSync(`npx prisma migrate resolve --rolled-back ${migrationName}`, {
-                encoding: 'utf8',
-                env: process.env,
-                cwd: process.cwd(),
-                stdio: 'pipe'
-              });
-              console.log(`✅ Migración antigua ${migrationName} marcada como rolled-back`);
-            } catch (resolveError) {
-              // Si la migración no está fallida o no existe, ignorar el error
-              if (!resolveError.message.includes('not found') && 
-                  !resolveError.message.includes('does not exist') &&
-                  !resolveError.message.includes('is not in a failed state')) {
-                // Ignorar errores silenciosamente para migraciones que no están fallidas
-              }
+            const resolveMessage = resolveError.message || String(resolveError);
+            if (resolveMessage.includes('is not in a failed state')) {
+              console.log(`ℹ️  ${failedMigrationName} no estaba en estado failed, se omite resolve.`);
+            } else {
+              console.log(`⚠️  No se pudo resolver ${failedMigrationName}: ${resolveMessage}`);
             }
           }
         }
-        
+
         console.log('✅ Migraciones fallidas resueltas, continuando con migración inicial...');
       } else {
         console.log('✅ No se detectaron migraciones fallidas');
@@ -630,13 +623,26 @@ async function main() {
       
       try {
         // Ejecutar prisma migrate deploy
-        execSync('npx prisma migrate deploy', {
+        runPrisma('migrate deploy', {
           stdio: 'inherit',
           env: process.env,
           cwd: process.cwd()
         });
-        
-        console.log('✅ Migraciones ejecutadas exitosamente');
+
+        // Verificación final: debe quedar sin pendientes
+        const finalStatus = runPrisma('migrate status', {
+          encoding: 'utf8',
+          env: process.env,
+          cwd: process.cwd(),
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+        if (/following migration\(s\) have not yet been applied|failed migrations/i.test(finalStatus)) {
+          console.error('❌ migrate deploy finalizó pero el estado no quedó consistente.');
+          console.error(finalStatus);
+          process.exit(1);
+        }
+
+        console.log('✅ Migraciones ejecutadas y verificadas exitosamente');
         process.exit(0);
         
       } catch (error) {
