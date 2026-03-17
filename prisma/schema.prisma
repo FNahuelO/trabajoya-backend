@@ -256,6 +256,7 @@ model Job {
   paymentAmount       Float?
   paymentCurrency     String?              @default("USD")
   paymentStatus       String? // PENDING, COMPLETED, FAILED, REFUNDED
+  coinPaymentLinkUrl  String?
   paidAt              DateTime?
   // Moderation fields
   moderationStatus    ModerationStatus     @default(PENDING)
