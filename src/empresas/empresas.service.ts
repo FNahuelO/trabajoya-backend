@@ -1131,6 +1131,42 @@ export class EmpresasService {
       currency = "USD";
     }
 
+    // Si no vino planId desde frontend, intentar reconstruirlo desde el entitlement
+    // reservado del job pendiente de pago.
+    if (!selectedPlan) {
+      const reservedEntitlement = await this.prisma.jobPostEntitlement.findUnique({
+        where: { jobPostId: jobId },
+      });
+
+      const rawSelectedPlanId =
+        typeof (reservedEntitlement?.rawPayload as any)?.selectedPlanId === "string"
+          ? String((reservedEntitlement?.rawPayload as any).selectedPlanId).trim()
+          : "";
+
+      if (rawSelectedPlanId) {
+        selectedPlan = await this.prisma.plan.findFirst({
+          where: {
+            id: rawSelectedPlanId,
+            isActive: true,
+          },
+        });
+      }
+
+      if (!selectedPlan && reservedEntitlement?.planKey) {
+        selectedPlan = await this.prisma.plan.findFirst({
+          where: {
+            code: reservedEntitlement.planKey,
+            isActive: true,
+          },
+        });
+      }
+
+      if (selectedPlan) {
+        amount = Number((selectedPlan as any).priceUsd ?? selectedPlan.price);
+        currency = "USD";
+      }
+    }
+
     // Crear orden de pago en PayPal
     const order = await this.paymentsService.createOrder(
       amount,
