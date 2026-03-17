@@ -58,6 +58,8 @@ steps:
             if ! gcloud run jobs update trabajoya-migrate \
               --region=us-central1 \
               --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+              --command="node" \
+              --args="scripts/run-migrations.js" \
               --set-secrets=DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest \
               --set-env-vars="NODE_ENV=production" \
               --memory=1Gi \
@@ -135,6 +137,8 @@ steps:
             if ! gcloud run jobs update trabajoya-seed \
               --region=us-central1 \
               --image=gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA \
+              --command="node" \
+              --args="scripts/run-seed.js" \
               --set-secrets=DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest \
               --set-env-vars="NODE_ENV=production" \
               --memory=1Gi \
