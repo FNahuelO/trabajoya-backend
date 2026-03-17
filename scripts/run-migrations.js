@@ -5,7 +5,7 @@
  */
 
 const { execSync, spawn } = require('child_process');
-const { existsSync, chmodSync } = require('fs');
+const { existsSync, chmodSync, readdirSync } = require('fs');
 const path = require('path');
 const http = require('http');
 
@@ -13,6 +13,19 @@ const PRISMA_CMD = 'npm exec -- prisma';
 
 function runPrisma(command, options = {}) {
   return execSync(`${PRISMA_CMD} ${command}`, options);
+}
+
+function getLocalMigrations() {
+  const migrationsDir = path.join(process.cwd(), 'prisma', 'migrations');
+  if (!existsSync(migrationsDir)) {
+    return [];
+  }
+
+  return readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) => name !== 'migration_lock.toml')
+    .sort();
 }
 
 function validateDatabaseUrl() {
@@ -473,6 +486,15 @@ async function main() {
   console.log('🚀 Iniciando ejecución de migraciones...');
   
   try {
+    const localMigrations = getLocalMigrations();
+    if (localMigrations.length === 0) {
+      console.error('❌ No se encontraron carpetas en prisma/migrations dentro del contenedor.');
+      console.error('❌ Se cancela deploy para evitar falsos OK sin migraciones.');
+      process.exit(1);
+    }
+    console.log(`📚 Migraciones locales detectadas: ${localMigrations.length}`);
+    console.log(`📌 Última migración local: ${localMigrations[localMigrations.length - 1]}`);
+
     // 1. Cargar secrets
     loadSecrets();
     
@@ -555,8 +577,9 @@ async function main() {
       console.log('⚠️  Socket Unix no disponible, usando DATABASE_URL original');
     }
     
-    // 4. Resolver migraciones fallidas antes de ejecutar nuevas
-    console.log('🔍 Verificando migraciones fallidas...');
+    // 4. Validar estado de migraciones antes de ejecutar nuevas
+    // Importante: no hacemos rollback ni resolve automático en deploy.
+    console.log('🔍 Verificando estado de migraciones...');
     try {
       // Verificar estado de migraciones (capturar stderr también porque Prisma puede escribir errores allí)
       let migrateStatus = '';
@@ -577,39 +600,29 @@ async function main() {
                              statusError.message.includes('failed migrations');
       }
       
-      // Si hay migraciones fallidas, resolverlas
+      // Si hay migraciones fallidas, fallar explícitamente.
       if (hasFailedMigrations || migrateStatus.includes('failed') || migrateStatus.includes('P3009')) {
-        console.log('⚠️  Se detectaron migraciones fallidas, resolviéndolas automáticamente...');
-        
-        // Intentar resolver migraciones fallidas específicas mencionadas en el error
-        const failedMigrationMatch = migrateStatus.match(/migration.*?(?:started|failed).*?(\d+[_a-zA-Z0-9]+)/i);
-        if (failedMigrationMatch) {
-          const failedMigrationName = failedMigrationMatch[1];
-          try {
-            console.log(`🔄 Resolviendo migración fallida específica: ${failedMigrationName}`);
-            runPrisma(`migrate resolve --rolled-back ${failedMigrationName}`, {
-              encoding: 'utf8',
-              env: process.env,
-              cwd: process.cwd(),
-              stdio: 'pipe'
-            });
-            console.log(`✅ Migración ${failedMigrationName} marcada como rolled-back`);
-          } catch (resolveError) {
-            const resolveMessage = resolveError.message || String(resolveError);
-            if (resolveMessage.includes('is not in a failed state')) {
-              console.log(`ℹ️  ${failedMigrationName} no estaba en estado failed, se omite resolve.`);
-            } else {
-              console.log(`⚠️  No se pudo resolver ${failedMigrationName}: ${resolveMessage}`);
-            }
-          }
+        console.error('❌ Se detectaron migraciones en estado failed (P3009).');
+        console.error('❌ Este deploy no aplica rollback/resolve automático.');
+        if (migrateStatus) {
+          console.error(migrateStatus);
         }
-
-        console.log('✅ Migraciones fallidas resueltas, continuando con migración inicial...');
+        process.exit(1);
       } else {
         console.log('✅ No se detectaron migraciones fallidas');
       }
     } catch (statusError) {
-      // Si hay un error al verificar el estado, continuar
+      // Si migrate status devuelve error de migración fallida, cortar el deploy.
+      const statusMessage = statusError?.stdout?.toString() ||
+                            statusError?.stderr?.toString() ||
+                            statusError?.message ||
+                            String(statusError);
+      if (/P3009|failed migrations|failed/i.test(statusMessage)) {
+        console.error('❌ Se detectó estado inválido de migraciones. Se cancela deploy sin rollback.');
+        console.error(statusMessage);
+        process.exit(1);
+      }
+      // Si es otro tipo de error de status, continuar y dejar que migrate deploy decida.
       console.log('⚠️  No se pudo verificar estado de migraciones, continuando...');
     }
     
