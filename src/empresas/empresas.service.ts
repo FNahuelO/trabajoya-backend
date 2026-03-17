@@ -1079,7 +1079,7 @@ export class EmpresasService {
   /**
    * Crear orden de pago para una publicación
    */
-  async createJobPaymentOrder(userId: string, jobId: string) {
+  async createJobPaymentOrder(userId: string, jobId: string, requestedPlanId?: string | null) {
     const profile = await this.prisma.empresaProfile.findUnique({
       where: { userId },
     });
@@ -1109,10 +1109,27 @@ export class EmpresasService {
       );
     }
 
-    const amount =
+    let amount =
       job.paymentAmount ||
       parseFloat(process.env.JOB_PUBLICATION_PRICE || "10.00");
-    const currency = job.paymentCurrency || "USD";
+    let currency = job.paymentCurrency || "USD";
+    let selectedPlan: any = null;
+
+    if (requestedPlanId) {
+      selectedPlan = await this.prisma.plan.findFirst({
+        where: {
+          id: requestedPlanId,
+          isActive: true,
+        },
+      });
+
+      if (!selectedPlan) {
+        throw new BadRequestException("El plan seleccionado no es válido");
+      }
+
+      amount = Number((selectedPlan as any).priceUsd ?? selectedPlan.price);
+      currency = "USD";
+    }
 
     // Crear orden de pago en PayPal
     const order = await this.paymentsService.createOrder(
@@ -1127,6 +1144,8 @@ export class EmpresasService {
       data: {
         paymentOrderId: order.orderId,
         paymentStatus: "PENDING",
+        paymentAmount: amount,
+        paymentCurrency: currency,
       },
     });
 
@@ -1135,7 +1154,10 @@ export class EmpresasService {
       // Buscar el plan asociado al job si existe
       let planId: string | null = null;
       let planType: any = null;
-      if (job.paymentAmount) {
+      if (selectedPlan) {
+        planId = selectedPlan.id;
+        planType = selectedPlan.subscriptionPlan;
+      } else if (job.paymentAmount) {
         // Intentar encontrar el plan por precio USD legacy.
         const activePlans = await this.prisma.plan.findMany({
           where: { isActive: true },

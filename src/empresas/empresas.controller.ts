@@ -141,11 +141,19 @@ export class EmpresasController {
   @Post("jobs/:id/payment/create-order")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async createJobPaymentOrder(@Req() req: any, @Param("id") id: string) {
+  async createJobPaymentOrder(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() body: { planId?: string }
+  ) {
     return createResponse({
       success: true,
       message: "Orden de pago creada correctamente",
-      data: await this.service.createJobPaymentOrder(req.user?.sub, id),
+      data: await this.service.createJobPaymentOrder(
+        req.user?.sub,
+        id,
+        body?.planId || null
+      ),
     });
   }
 
