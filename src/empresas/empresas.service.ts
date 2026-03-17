@@ -1167,6 +1167,38 @@ export class EmpresasService {
       }
     }
 
+    // Fallback adicional: si el job ya tuvo un intento de pago, reutilizar su plan de la
+    // transacción anterior para no caer en el monto por defecto.
+    if (!selectedPlan && job.paymentOrderId) {
+      const previousTx = await this.prisma.paymentTransaction.findUnique({
+        where: { orderId: job.paymentOrderId },
+      });
+
+      if (previousTx?.planId) {
+        selectedPlan = await this.prisma.plan.findFirst({
+          where: {
+            id: previousTx.planId,
+            isActive: true,
+          },
+        });
+      }
+
+      if (!selectedPlan && previousTx?.planType) {
+        selectedPlan = await this.prisma.plan.findFirst({
+          where: {
+            subscriptionPlan: previousTx.planType,
+            isActive: true,
+          },
+          orderBy: { order: "asc" },
+        });
+      }
+
+      if (selectedPlan) {
+        amount = Number((selectedPlan as any).priceUsd ?? selectedPlan.price);
+        currency = "USD";
+      }
+    }
+
     // Crear orden de pago en PayPal
     const order = await this.paymentsService.createOrder(
       amount,
