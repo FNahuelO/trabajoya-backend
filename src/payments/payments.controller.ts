@@ -50,6 +50,11 @@ export class PaymentsController {
       const match = concept.match(orderPattern);
       if (match?.[1]) return match[1].trim();
 
+      const firstSegment = concept.split("|")[0]?.trim();
+      if (/^[A-Za-z0-9][A-Za-z0-9\-_]{8,}$/.test(firstSegment || "")) {
+        return firstSegment || null;
+      }
+
       if (!concept.includes(" ")) {
         return concept;
       }
@@ -211,8 +216,6 @@ export class PaymentsController {
     }
 
     const now = new Date();
-    const moderationStatus =
-      job.moderationStatus === "PENDING_PAYMENT" ? "PENDING" : job.moderationStatus;
 
     await this.prisma.job.update({
       where: { id: job.id },
@@ -220,7 +223,9 @@ export class PaymentsController {
         isPaid: true,
         paymentStatus: "COMPLETED",
         paidAt: now,
-        moderationStatus: moderationStatus as any,
+        // En flujo COIN, al confirmar pago la publicación debe quedar visible.
+        moderationStatus: "APPROVED" as any,
+        status: "active",
       },
     });
 
