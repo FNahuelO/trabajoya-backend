@@ -67,6 +67,206 @@ export class PaymentsController {
     return body?.payload ?? body;
   }
 
+  private extractJobIdFromIpnBody(body: any): string | null {
+    const payload = body?.payload ?? body;
+    const candidates = [
+      body?.jobId,
+      body?.job_id,
+      payload?.jobId,
+      payload?.job_id,
+      payload?.data?.jobId,
+      payload?.data?.job_id,
+      payload?.metadata?.jobId,
+      payload?.meta?.jobId,
+    ];
+
+    for (const value of candidates) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  }
+
+  private async resolvePlanForIpn(job: any, orderId: string | null) {
+    const reservedEntitlement = await this.prisma.jobPostEntitlement.findUnique({
+      where: { jobPostId: job.id },
+    });
+
+    if (reservedEntitlement?.planKey) {
+      const reservedPlan = await this.prisma.plan.findFirst({
+        where: {
+          code: reservedEntitlement.planKey,
+          isActive: true,
+        },
+      });
+      if (reservedPlan) {
+        return { plan: reservedPlan, reservedEntitlement };
+      }
+    }
+
+    if (orderId) {
+      const tx = await this.prisma.paymentTransaction.findUnique({
+        where: { orderId },
+      });
+      if (tx?.planId) {
+        const byPlanId = await this.prisma.plan.findFirst({
+          where: {
+            id: tx.planId,
+            isActive: true,
+          },
+        });
+        if (byPlanId) {
+          return { plan: byPlanId, reservedEntitlement };
+        }
+      }
+    }
+
+    const activePlans = await this.prisma.plan.findMany({
+      where: { isActive: true },
+    });
+    const amount = Number(job.paymentAmount);
+    const currency = String(job.paymentCurrency || "USD").toUpperCase();
+    if (Number.isFinite(amount) && amount > 0) {
+      const byAmount =
+        activePlans.find((item: any) => {
+          const expected =
+            currency === "ARS"
+              ? Number((item as any).priceArs ?? 0)
+              : Number((item as any).priceUsd ?? item.price);
+          return Number.isFinite(expected) && Math.abs(expected - amount) < 0.01;
+        }) || null;
+      if (byAmount) {
+        return { plan: byAmount, reservedEntitlement };
+      }
+    }
+
+    return { plan: null, reservedEntitlement };
+  }
+
+  private async markJobPaymentCompletedFromIpn(
+    orderId: string | null,
+    jobId: string | null,
+    payload: any
+  ) {
+    const whereCandidates: any[] = [];
+    if (orderId) whereCandidates.push({ paymentOrderId: orderId });
+    if (jobId) whereCandidates.push({ id: jobId });
+
+    if (!whereCandidates.length) {
+      return { updatedJobs: 0, activatedEntitlements: 0, jobId: null };
+    }
+
+    const job = await this.prisma.job.findFirst({
+      where: {
+        OR: whereCandidates,
+      },
+    });
+
+    if (!job) {
+      return { updatedJobs: 0, activatedEntitlements: 0, jobId: null };
+    }
+
+    const now = new Date();
+    const moderationStatus =
+      job.moderationStatus === "PENDING_PAYMENT" ? "PENDING" : job.moderationStatus;
+
+    await this.prisma.job.update({
+      where: { id: job.id },
+      data: {
+        isPaid: true,
+        paymentStatus: "COMPLETED",
+        paidAt: now,
+        moderationStatus: moderationStatus as any,
+      },
+    });
+
+    const { plan, reservedEntitlement } = await this.resolvePlanForIpn(job, orderId);
+    if (!plan || !reservedEntitlement) {
+      return { updatedJobs: 1, activatedEntitlements: 0, jobId: job.id };
+    }
+
+    const expiresAt = new Date(now);
+    expiresAt.setDate(expiresAt.getDate() + Number(plan.durationDays || 30));
+
+    const currentRawPayload =
+      reservedEntitlement.rawPayload && typeof reservedEntitlement.rawPayload === "object"
+        ? (reservedEntitlement.rawPayload as Record<string, any>)
+        : {};
+
+    await this.prisma.jobPostEntitlement.update({
+      where: { id: reservedEntitlement.id },
+      data: {
+        source: "MANUAL",
+        planKey: plan.code,
+        expiresAt,
+        status: "ACTIVE",
+        maxEdits: plan.allowedModifications || 0,
+        editsUsed: 0,
+        allowCategoryChange: plan.canModifyCategory || false,
+        maxCategoryChanges: plan.categoryModifications || 0,
+        categoryChangesUsed: 0,
+        rawPayload: {
+          ...currentRawPayload,
+          activatedFromPayment: true,
+          activatedFromIpn: true,
+          orderId: orderId || null,
+          ipnPayload: payload,
+        },
+      },
+    });
+
+    return { updatedJobs: 1, activatedEntitlements: 1, jobId: job.id };
+  }
+
+  private async markJobPaymentFailedFromIpn(orderId: string | null, jobId: string | null) {
+    const whereCandidates: any[] = [];
+    if (orderId) whereCandidates.push({ paymentOrderId: orderId });
+    if (jobId) whereCandidates.push({ id: jobId });
+
+    if (!whereCandidates.length) {
+      return { updatedJobs: 0, revokedEntitlements: 0, jobId: null };
+    }
+
+    const job = await this.prisma.job.findFirst({
+      where: {
+        OR: whereCandidates,
+      },
+    });
+
+    if (!job) {
+      return { updatedJobs: 0, revokedEntitlements: 0, jobId: null };
+    }
+
+    await this.prisma.job.update({
+      where: { id: job.id },
+      data: {
+        isPaid: false,
+        paymentStatus: "FAILED",
+        moderationStatus: "PENDING_PAYMENT" as any,
+        status: "inactive",
+      },
+    });
+
+    const reservedEntitlement = await this.prisma.jobPostEntitlement.findUnique({
+      where: { jobPostId: job.id },
+    });
+
+    if (!reservedEntitlement) {
+      return { updatedJobs: 1, revokedEntitlements: 0, jobId: job.id };
+    }
+
+    await this.prisma.jobPostEntitlement.update({
+      where: { id: reservedEntitlement.id },
+      data: {
+        status: "REVOKED",
+      },
+    });
+
+    return { updatedJobs: 1, revokedEntitlements: 1, jobId: job.id };
+  }
+
   /**
    * Crear orden de pago
    */
@@ -573,6 +773,7 @@ export class PaymentsController {
     this.validateIpnSecretOrThrow(ipnSecret);
 
     const orderId = this.extractOrderIdFromIpnBody(body);
+    const jobId = this.extractJobIdFromIpnBody(body);
     const payload = this.extractIpnPayload(body);
     let updated = 0;
 
@@ -588,12 +789,17 @@ export class PaymentsController {
       updated = result.count;
     }
 
+    const jobUpdate = await this.markJobPaymentCompletedFromIpn(orderId, jobId, payload);
+
     return createResponse({
       success: true,
       message: "IPN de confirmación procesado",
       data: {
         orderId,
+        jobId,
         updatedTransactions: updated,
+        updatedJobs: jobUpdate.updatedJobs,
+        activatedEntitlements: jobUpdate.activatedEntitlements,
       },
     });
   }
@@ -610,6 +816,7 @@ export class PaymentsController {
     this.validateIpnSecretOrThrow(ipnSecret);
 
     const orderId = this.extractOrderIdFromIpnBody(body);
+    const jobId = this.extractJobIdFromIpnBody(body);
     const payload = this.extractIpnPayload(body);
     let updated = 0;
 
@@ -625,12 +832,17 @@ export class PaymentsController {
       updated = result.count;
     }
 
+    const jobUpdate = await this.markJobPaymentFailedFromIpn(orderId, jobId);
+
     return createResponse({
       success: true,
       message: "IPN de rechazo procesado",
       data: {
         orderId,
+        jobId,
         updatedTransactions: updated,
+        updatedJobs: jobUpdate.updatedJobs,
+        revokedEntitlements: jobUpdate.revokedEntitlements,
       },
     });
   }
