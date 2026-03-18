@@ -26,7 +26,7 @@ export class PaymentsController {
     private paymentsService: PaymentsService,
     private subscriptionsService: SubscriptionsService,
     private prisma: PrismaService
-  ) {}
+  ) { }
 
   private validateIpnSecretOrThrow(secretFromHeader?: string) {
     const configuredSecret = process.env.IPN_SHARED_SECRET;
@@ -41,6 +41,22 @@ export class PaymentsController {
 
   private extractOrderIdFromIpnBody(body: any): string | null {
     const payload = body?.payload ?? body;
+    const parseConceptOrderId = (rawConcept: unknown): string | null => {
+      const concept = String(rawConcept || "").trim();
+      if (!concept) return null;
+
+      const orderPattern =
+        /(?:^|[|,;\s])(?:ORDER|ORDER_ID|PAYMENT_ORDER_ID|PAYMENTORDERID)\s*[:=]\s*([A-Za-z0-9\-_]+)/i;
+      const match = concept.match(orderPattern);
+      if (match?.[1]) return match[1].trim();
+
+      if (!concept.includes(" ")) {
+        return concept;
+      }
+
+      return null;
+    };
+
     const candidates = [
       body?.orderId,
       body?.order_id,
@@ -52,6 +68,15 @@ export class PaymentsController {
       payload?.data?.order_id,
       payload?.external_reference,
       payload?.reference,
+      parseConceptOrderId(body?.concept),
+      parseConceptOrderId(body?.query_ticket_text),
+      parseConceptOrderId(payload?.concept),
+      parseConceptOrderId(payload?.query_ticket_text),
+      parseConceptOrderId(payload?.data?.concept),
+      parseConceptOrderId(payload?.data?.query_ticket_text),
+      parseConceptOrderId(payload?.resource?.concept),
+      parseConceptOrderId(payload?.metadata?.concept),
+      parseConceptOrderId(payload?.meta?.concept),
     ];
 
     for (const value of candidates) {
@@ -69,6 +94,17 @@ export class PaymentsController {
 
   private extractJobIdFromIpnBody(body: any): string | null {
     const payload = body?.payload ?? body;
+    const parseConceptJobId = (rawConcept: unknown): string | null => {
+      const concept = String(rawConcept || "").trim();
+      if (!concept) return null;
+
+      const jobPattern = /(?:^|[|,;\s])JOB(?:_ID)?\s*[:=]\s*([A-Za-z0-9\-_]+)/i;
+      const match = concept.match(jobPattern);
+      if (match?.[1]) return match[1].trim();
+
+      return null;
+    };
+
     const candidates = [
       body?.jobId,
       body?.job_id,
@@ -78,6 +114,12 @@ export class PaymentsController {
       payload?.data?.job_id,
       payload?.metadata?.jobId,
       payload?.meta?.jobId,
+      parseConceptJobId(body?.concept),
+      parseConceptJobId(payload?.concept),
+      parseConceptJobId(payload?.data?.concept),
+      parseConceptJobId(payload?.resource?.concept),
+      parseConceptJobId(payload?.metadata?.concept),
+      parseConceptJobId(payload?.meta?.concept),
     ];
 
     for (const value of candidates) {
@@ -378,8 +420,8 @@ export class PaymentsController {
       capture.status === "COMPLETED"
         ? PaymentStatus.COMPLETED
         : capture.status === "FAILED"
-        ? PaymentStatus.FAILED
-        : PaymentStatus.PENDING;
+          ? PaymentStatus.FAILED
+          : PaymentStatus.PENDING;
 
     // Guardar la transacción de pago
     try {
