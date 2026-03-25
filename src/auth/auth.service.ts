@@ -21,7 +21,8 @@ import { TermsType } from "@prisma/client";
 export class AuthService {
   private googleClient: OAuth2Client;
   // Tiempo de vida del token de verificación de email (en horas)
-  private readonly verificationTokenTtlHours = 3;
+  // El template del email indica 24 horas; mantener consistencia con la lógica real.
+  private readonly verificationTokenTtlHours = 24;
 
   constructor(
     private prisma: PrismaService,

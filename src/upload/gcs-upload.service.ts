@@ -238,13 +238,13 @@ export class GCSUploadService {
         ? "videos"
         : "logos";
     
-    // Si hay un nombre de archivo original, usarlo (sanitizado)
-    // Si no, usar UUID como antes
+    // Si hay un nombre de archivo original, mantenerlo legible pero
+    // agregar un sufijo aleatorio para evitar colisiones en claves únicas.
     let fileName: string;
     if (originalFileName) {
-      // Sanitizar el nombre del archivo: eliminar caracteres especiales y espacios
-      // Mantener solo letras, números, guiones y puntos
-      fileName = this.sanitizeFileName(originalFileName, fileExtension);
+      const sanitizedBaseName = this.sanitizeFileNameBase(originalFileName);
+      const uuid = customUuid || this.generateUUID();
+      fileName = `${sanitizedBaseName}-${uuid}${fileExtension}`;
     } else {
       const uuid = customUuid || this.generateUUID();
       fileName = `${uuid}${fileExtension}`;
@@ -256,7 +256,7 @@ export class GCSUploadService {
   /**
    * Sanitiza el nombre del archivo para que sea seguro para usar en URLs y storage
    */
-  private sanitizeFileName(fileName: string, fileExtension: string): string {
+  private sanitizeFileNameBase(fileName: string): string {
     // Obtener el nombre sin la extensión
     const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
     
@@ -279,8 +279,7 @@ export class GCSUploadService {
       sanitized = sanitized.substring(0, 200);
     }
     
-    // Asegurar que la extensión sea la correcta
-    return `${sanitized}${fileExtension}`;
+    return sanitized;
   }
 
   /**
