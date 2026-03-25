@@ -9,6 +9,39 @@ export class MailService {
     @Inject(MAIL_PROVIDER_TOKEN) private readonly provider: MailProvider
   ) { }
 
+  async sendMailTesterEmail(params: {
+    to: string;
+    subject?: string;
+    html?: string;
+    text?: string;
+  }): Promise<void> {
+    const fromEmail = process.env.MAIL_FROM || "noreply@trabajo-ya.com";
+    const fromName = "TrabajoYa";
+    const fromFormatted = fromEmail.includes("<")
+      ? fromEmail
+      : `${fromName} <${fromEmail}>`;
+
+    const subject = params.subject || "Test entregabilidad - TrabajoYa";
+    const text =
+      params.text ||
+      "Este es un correo de prueba para validar entregabilidad en Mail-Tester.";
+    const html =
+      params.html ||
+      "<p>Este es un correo de prueba para validar entregabilidad en Mail-Tester.</p>";
+
+    await this.provider.send({
+      to: params.to,
+      subject,
+      text,
+      html,
+      from: fromFormatted,
+      headers: {
+        "Reply-To": process.env.MAIL_REPLY_TO || "soporte@trabajo-ya.com",
+        "X-Mailer": "TrabajoYa",
+      },
+    });
+  }
+
   /**
    * Construye una URL HTTPS para la aplicación web
    * Centraliza la generación de URLs usando APP_WEB_URL como base

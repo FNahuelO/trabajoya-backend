@@ -9,6 +9,7 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -24,13 +25,18 @@ import {
   NotificationPreferencesDto,
   NotificationPreferencesResponseDto,
 } from "./dto/notification-preferences.dto";
+import { TestEmailDto } from "./dto/test-email.dto";
+import { MailService } from "../mail/mail.service";
 
 @ApiTags("notifications")
 @Controller("api/notifications")
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class NotificationsController {
-  constructor(private notificationsService: NotificationsService) {}
+  constructor(
+    private notificationsService: NotificationsService,
+    private mailService: MailService
+  ) { }
 
   @Post("register-token")
   @HttpCode(HttpStatus.OK)
@@ -185,6 +191,39 @@ export class NotificationsController {
         data: { error: error instanceof Error ? error.message : String(error) },
       });
     }
+  }
+
+  @Post("test-email")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "TEST: Enviar email a Mail-Tester (solo ADMIN)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Email de prueba enviado correctamente",
+  })
+  async sendMailTesterEmail(@Req() req: any, @Body() dto: TestEmailDto) {
+    if (req.user?.userType !== "ADMIN") {
+      throw new ForbiddenException(
+        "Solo usuarios ADMIN pueden usar este endpoint de prueba"
+      );
+    }
+
+    await this.mailService.sendMailTesterEmail({
+      to: dto.to,
+      subject: dto.subject,
+      text: dto.text,
+      html: dto.html,
+    });
+
+    return createResponse({
+      success: true,
+      message: "Email de prueba enviado correctamente",
+      data: {
+        to: dto.to,
+        subject: dto.subject || "Test entregabilidad - TrabajoYa",
+      },
+    });
   }
 
   @Get("debug-tokens/:userId")

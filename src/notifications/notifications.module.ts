@@ -3,9 +3,10 @@ import { NotificationsController } from "./notifications.controller";
 import { NotificationsService } from "./notifications.service";
 import { ExpoPushService } from "./expo-push.service";
 import { PrismaModule } from "../prisma/prisma.module";
+import { MailModule } from "../mail/mail.module";
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, MailModule],
   controllers: [NotificationsController],
   providers: [NotificationsService, ExpoPushService],
   exports: [NotificationsService, ExpoPushService],
