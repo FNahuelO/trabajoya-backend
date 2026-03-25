@@ -234,40 +234,15 @@ export class CatalogsService {
   // Endpoint público: obtener catálogos activos por idioma
   async getPublicCatalogs(lang: "es" | "en" | "pt" = "es") {
     const langUpper = lang.toUpperCase() as "ES" | "EN" | "PT";
-
-    const catalogTypes: Array<"JOB_AREA" | "JOB_TYPE" | "JOB_LEVEL" | "JOB_TYPES" | "EXPERIENCE_LEVELS" | "APPLICATION_STATUSES" | "MODALITIES" | "LANGUAGE_LEVELS" | "COMPANY_SIZES" | "SECTORS" | "STUDY_TYPES" | "STUDY_STATUSES" | "MARITAL_STATUSES" | "JOB_SCHEDULES"> = [
-      "JOB_AREA",
-      "JOB_TYPE",
-      "JOB_LEVEL",
-      "JOB_TYPES",
-      "EXPERIENCE_LEVELS",
-      "APPLICATION_STATUSES",
-      "MODALITIES",
-      "LANGUAGE_LEVELS",
-      "COMPANY_SIZES",
-      "SECTORS",
-      "STUDY_TYPES",
-      "STUDY_STATUSES",
-      "MARITAL_STATUSES",
-      "JOB_SCHEDULES",
-    ];
-
-    const catalogsByType = await Promise.all(
-      catalogTypes.map((type) =>
-        this.prisma.catalog.findMany({
-          where: {
-            type,
-            isActive: true,
-          },
-          include: {
-            translations: {
-              where: { lang: langUpper },
-            },
-          },
-          orderBy: { order: "asc" },
-        })
-      )
-    );
+    const catalogs = await this.prisma.catalog.findMany({
+      where: { isActive: true },
+      include: {
+        translations: {
+          where: { lang: langUpper },
+        },
+      },
+      orderBy: [{ type: "asc" }, { order: "asc" }],
+    });
 
     // Mapear los tipos a sus claves en camelCase para mantener compatibilidad
     const typeKeyMap: Record<string, string> = {
@@ -288,15 +263,21 @@ export class CatalogsService {
     };
 
     const result: Record<string, Array<{ code: string; label: string; order: number }>> = {};
+    Object.values(typeKeyMap).forEach((key) => {
+      result[key] = [];
+    });
 
-    catalogTypes.forEach((type, index) => {
-      const key = typeKeyMap[type] || type.toLowerCase();
-      result[key] = catalogsByType[index].map((item) => ({
+    for (const item of catalogs) {
+      const key = typeKeyMap[item.type] || item.type.toLowerCase();
+      if (!result[key]) {
+        result[key] = [];
+      }
+      result[key].push({
         code: item.code,
         label: item.translations[0]?.label || "",
         order: item.order,
-      }));
-    });
+      });
+    }
 
     return result;
   }

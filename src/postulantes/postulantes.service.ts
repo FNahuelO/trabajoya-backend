@@ -597,25 +597,57 @@ export class PostulantesService {
       throw new NotFoundException("Mensaje de error");
     }
 
-    return this.prisma.application.findMany({
-      where: { postulanteId: profile.id },
-      orderBy: { appliedAt: "desc" },
-      include: {
-        job: {
-          include: {
-            empresa: {
-              select: {
-                companyName: true,
-                logo: true,
-                ciudad: true,
-                provincia: true,
-                pais: true,
-              } as any,
+    try {
+      return await this.prisma.application.findMany({
+        where: { postulanteId: profile.id },
+        orderBy: { appliedAt: "desc" },
+        include: {
+          job: {
+            include: {
+              empresa: {
+                select: {
+                  companyName: true,
+                  logo: true,
+                  ciudad: true,
+                  provincia: true,
+                  pais: true,
+                } as any,
+              },
             },
           },
         },
-      },
-    });
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `Fallo la consulta completa de applications; aplicando fallback: ${error?.message || "unknown"}`
+      );
+      return this.prisma.application.findMany({
+        where: { postulanteId: profile.id },
+        orderBy: { appliedAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          appliedAt: true,
+          jobId: true,
+          coverLetter: true,
+          isRead: true,
+          job: {
+            select: {
+              id: true,
+              title: true,
+              location: true,
+              status: true,
+              empresa: {
+                select: {
+                  companyName: true,
+                  logo: true,
+                },
+              },
+            },
+          },
+        },
+      });
+    }
   }
 
   async deleteApplication(userId: string, applicationId: string) {
