@@ -24,6 +24,33 @@ export class AuthService {
   // El template del email indica 24 horas; mantener consistencia con la lógica real.
   private readonly verificationTokenTtlHours = 24;
 
+  private maskTokenForLogs(token?: string | null): string {
+    if (!token || typeof token !== "string") return "n/a";
+    const trimmed = token.trim();
+    if (!trimmed) return "n/a";
+    return `${trimmed.substring(0, 8)}...`;
+  }
+
+  private logVerifyEmailEvent(
+    reason:
+      | "INVALID_FORMAT"
+      | "NOT_FOUND_OR_ROTATED"
+      | "EXPIRED"
+      | "ALREADY_VERIFIED"
+      | "SUCCESS",
+    details: {
+      token?: string | null;
+      email?: string | null;
+      userId?: string | null;
+    } = {}
+  ): void {
+    console.info(
+      `[verifyEmail][${reason}] token=${this.maskTokenForLogs(
+        details.token
+      )} userId=${details.userId || "n/a"} email=${details.email || "n/a"}`
+    );
+  }
+
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
@@ -1134,7 +1161,9 @@ export class AuthService {
     }
 
     // Login con email/password
-    if (!dto.email || !dto.password) {
+    const normalizedEmail =
+      typeof dto.email === "string" ? dto.email.trim().toLowerCase() : dto.email;
+    if (!normalizedEmail || !dto.password) {
       throw new BadRequestException(
         await this.getTranslation(
           "auth.invalidCredentials",
@@ -1144,7 +1173,7 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email: normalizedEmail },
     });
     if (!user)
       throw new UnauthorizedException(
@@ -1289,8 +1318,11 @@ export class AuthService {
   }
 
   async forgotPassword(email: string) {
+    const normalizedEmail =
+      typeof email === "string" ? email.trim().toLowerCase() : email;
+
     // Validar que el email esté presente
-    if (!email || typeof email !== "string" || !email.trim()) {
+    if (!normalizedEmail || typeof normalizedEmail !== "string") {
       throw new BadRequestException(
         await this.getTranslation(
           "validation.isEmail",
@@ -1300,7 +1332,7 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { email: email.trim() },
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
@@ -1335,7 +1367,11 @@ export class AuthService {
     });
 
     // Enviar email de recuperación en el idioma del usuario
-    await this.mailService.sendPasswordResetEmail(email.trim(), resetToken, user.language || "es");
+    await this.mailService.sendPasswordResetEmail(
+      normalizedEmail,
+      resetToken,
+      user.language || "es"
+    );
 
     return {
       message: await this.getTranslation(
@@ -1347,9 +1383,11 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string) {
+    const normalizedToken = typeof token === "string" ? token.trim() : token;
+
     const user = await this.prisma.user.findFirst({
       where: {
-        resetToken: token,
+        resetToken: normalizedToken,
         resetTokenExpiry: { gte: new Date() },
       },
     });
@@ -1489,7 +1527,11 @@ export class AuthService {
   }
 
   async verifyEmail(token: string) {
-    if (!token || typeof token !== "string" || !token.trim()) {
+    const normalizedToken =
+      typeof token === "string" ? token.trim() : token;
+
+    if (!normalizedToken || typeof normalizedToken !== "string") {
+      this.logVerifyEmailEvent("INVALID_FORMAT", { token: normalizedToken });
       throw new BadRequestException(
         await this.getTranslation(
           "auth.invalidVerificationToken",
@@ -1499,14 +1541,12 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findFirst({
-      where: { verificationToken: token.trim() },
+      where: { verificationToken: normalizedToken },
     });
 
     if (!user) {
-      // Log para debug
-      console.log(
-        `[verifyEmail] Token no encontrado en DB: ${token.substring(0, 8)}...`
-      );
+      // Muy frecuente cuando se usa un enlace viejo tras resend-verification.
+      this.logVerifyEmailEvent("NOT_FOUND_OR_ROTATED", { token: normalizedToken });
 
       throw new UnauthorizedException(
         await this.getTranslation(
@@ -1518,6 +1558,11 @@ export class AuthService {
 
     // Verificar si el usuario ya está verificado
     if (user.isVerified) {
+      this.logVerifyEmailEvent("ALREADY_VERIFIED", {
+        token: normalizedToken,
+        email: user.email,
+        userId: user.id,
+      });
       return {
         message: await this.getTranslation(
           "auth.alreadyVerified",
@@ -1532,9 +1577,11 @@ export class AuthService {
       !user.verificationTokenExpiry ||
       user.verificationTokenExpiry < new Date()
     ) {
-      console.log(
-        `[verifyEmail] Token expirado para usuario ${user.email}. Expiry: ${user.verificationTokenExpiry}`
-      );
+      this.logVerifyEmailEvent("EXPIRED", {
+        token: normalizedToken,
+        email: user.email,
+        userId: user.id,
+      });
 
       // Invalidar el token expirado para forzar reenvío
       await this.prisma.user.update({
@@ -1562,7 +1609,11 @@ export class AuthService {
       },
     });
 
-    console.log(`[verifyEmail] Email verificado exitosamente: ${user.email}`);
+    this.logVerifyEmailEvent("SUCCESS", {
+      token: normalizedToken,
+      email: user.email,
+      userId: user.id,
+    });
 
     return {
       message: await this.getTranslation(
@@ -1616,8 +1667,11 @@ export class AuthService {
   }
 
   async resendVerificationEmail(email: string) {
+    const normalizedEmail =
+      typeof email === "string" ? email.trim().toLowerCase() : email;
+
     // Validar que el email esté presente
-    if (!email || typeof email !== "string" || !email.trim()) {
+    if (!normalizedEmail || typeof normalizedEmail !== "string") {
       throw new BadRequestException(
         await this.getTranslation(
           "validation.isEmail",
@@ -1627,7 +1681,7 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { email: email.trim() },
+      where: { email: normalizedEmail },
     });
 
     // Por seguridad, no revelar si el email existe o no
@@ -1655,10 +1709,17 @@ export class AuthService {
     const verificationTokenExpiry = new Date(
       Date.now() + this.verificationTokenTtlHours * 60 * 60 * 1000
     );
+    const hadPreviousToken = !!user.verificationToken;
     await this.prisma.user.update({
       where: { id: user.id },
       data: { verificationToken, verificationTokenExpiry },
     });
+
+    console.info(
+      `[resendVerification][TOKEN_ROTATED] userId=${user.id} email=${user.email} hadPreviousToken=${hadPreviousToken} newToken=${this.maskTokenForLogs(
+        verificationToken
+      )}`
+    );
 
     // Enviar email con el token (usar userType para determinar destino)
     await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType, user.language || "es");

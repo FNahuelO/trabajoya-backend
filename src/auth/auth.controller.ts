@@ -8,6 +8,7 @@ import { ChangePasswordDto } from "./dto/change-password.dto";
 import { SetPasswordDto } from "./dto/set-password.dto";
 import { ResendVerificationDto } from "./dto/resend-verification.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { Public } from "../common/decorators/public.decorator";
 import { createResponse } from "../common/mapper/api-response.mapper";
@@ -91,7 +92,7 @@ export class AuthController {
 
   @Public()
   @Post("reset-password")
-  async resetPassword(@Body() dto: { token: string; password: string }) {
+  async resetPassword(@Body() dto: ResetPasswordDto) {
     return createResponse({
       success: true,
       message: "Contraseña restablecida correctamente",
