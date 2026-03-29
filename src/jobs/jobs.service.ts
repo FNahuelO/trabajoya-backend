@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
@@ -10,6 +11,7 @@ import { GCSUploadService } from "../upload/gcs-upload.service";
 
 @Injectable()
 export class JobsService {
+  private logger = new Logger("JobsService");
   private readonly SCHEDULE_LABELS: Record<string, string> = {
     MANANA: "Mañana",
     TARDE: "Tarde",
@@ -486,6 +488,9 @@ export class JobsService {
   }
 
   async delete(id: string, userId: string) {
+    this.logger.log(
+      `[AUDIT] jobs.delete requested | userId=${userId} | jobId=${id}`
+    );
     const job = await this.prisma.job.findUnique({
       where: { id },
       include: { empresa: true },
@@ -499,7 +504,17 @@ export class JobsService {
       throw new ForbiddenException("Mensaje de error");
     }
 
-    return this.prisma.job.delete({ where: { id } });
+    const applicationsToCascade = await this.prisma.application.count({
+      where: { jobId: id },
+    });
+
+    const deletedJob = await this.prisma.job.delete({ where: { id } });
+
+    this.logger.warn(
+      `[AUDIT] jobs.delete completed | userId=${userId} | jobId=${id} | cascadedApplications=${applicationsToCascade}`
+    );
+
+    return deletedJob;
   }
 
   async getByEmpresa(empresaId: string) {

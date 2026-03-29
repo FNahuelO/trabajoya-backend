@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { APP_INTERCEPTOR } from "@nestjs/core";
 import { ConfigModule } from "./config/config.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./auth/auth.module";
@@ -27,6 +28,7 @@ import { IapModule } from "./iap/iap.module";
 import { BlockedUsersModule } from "./blocked-users/blocked-users.module";
 import { ReportsModule } from "./reports/reports.module";
 import { CronJobsModule } from "./cron-jobs/cron-jobs.module";
+import { AuditInterceptor } from "./common/interceptors/audit.interceptor";
 
 @Module({
   imports: [
@@ -58,6 +60,12 @@ import { CronJobsModule } from "./cron-jobs/cron-jobs.module";
     BlockedUsersModule,
     ReportsModule,
     CronJobsModule,
+  ],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
+    },
   ],
 })
 export class AppModule {}

@@ -504,6 +504,9 @@ export class PostulantesService {
   }
 
   async applyToJob(userId: string, jobId: string, coverLetter?: string) {
+    this.logger.log(
+      `[AUDIT] applyToJob requested | userId=${userId} | jobId=${jobId}`
+    );
     const profile = await this.prisma.postulanteProfile.findUnique({
       where: { userId },
     });
@@ -560,6 +563,10 @@ export class PostulantesService {
         },
       },
     });
+
+    this.logger.log(
+      `[AUDIT] application created | applicationId=${application.id} | jobId=${application.jobId} | postulanteId=${profile.id} | userId=${userId}`
+    );
 
     // Enviar notificación push a la empresa (en background, no bloquea la respuesta)
     try {
@@ -651,6 +658,9 @@ export class PostulantesService {
   }
 
   async deleteApplication(userId: string, applicationId: string) {
+    this.logger.log(
+      `[AUDIT] deleteApplication requested | userId=${userId} | applicationId=${applicationId}`
+    );
     const profile = await this.prisma.postulanteProfile.findUnique({
       where: { userId },
     });
@@ -667,9 +677,15 @@ export class PostulantesService {
       throw new NotFoundException("Postulación no encontrada");
     }
 
-    return this.prisma.application.delete({
+    const deleted = await this.prisma.application.delete({
       where: { id: applicationId },
     });
+
+    this.logger.warn(
+      `[AUDIT] application deleted | applicationId=${deleted.id} | jobId=${deleted.jobId} | postulanteId=${deleted.postulanteId} | userId=${userId}`
+    );
+
+    return deleted;
   }
 
   async updateApplicationCoverLetter(

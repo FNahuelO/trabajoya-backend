@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { I18nService } from "nestjs-i18n";
 import * as fs from "fs";
@@ -6,6 +6,7 @@ import * as path from "path";
 
 @Injectable()
 export class UsersService {
+  private logger = new Logger("UsersService");
   private readonly uploadDir = path.join(process.cwd(), "uploads");
 
   constructor(private prisma: PrismaService, private i18n: I18nService) {}
@@ -38,6 +39,7 @@ export class UsersService {
    * Elimina: perfil, archivos, mensajes, aplicaciones, favoritos, llamadas, etc.
    */
   async deleteUserAccount(userId: string): Promise<void> {
+    this.logger.warn(`[AUDIT] users.deleteAccount requested | userId=${userId}`);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -49,6 +51,23 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException("Usuario no encontrado");
     }
+
+    const [applicationsCount, jobsCount] = await Promise.all([
+      user.postulante
+        ? this.prisma.application.count({
+            where: { postulanteId: user.postulante.id },
+          })
+        : Promise.resolve(0),
+      user.empresa
+        ? this.prisma.job.count({
+            where: { empresaId: user.empresa.id },
+          })
+        : Promise.resolve(0),
+    ]);
+
+    this.logger.warn(
+      `[AUDIT] users.deleteAccount impact | userId=${userId} | userType=${user.userType} | postulanteApplications=${applicationsCount} | empresaJobs=${jobsCount}`
+    );
 
     // Eliminar archivos físicos
     if (user.postulante) {
@@ -197,5 +216,7 @@ export class UsersService {
         where: { id: userId },
       });
     });
+
+    this.logger.warn(`[AUDIT] users.deleteAccount completed | userId=${userId}`);
   }
 }

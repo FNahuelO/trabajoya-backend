@@ -485,7 +485,7 @@ export class EmpresasService {
       throw new NotFoundException("Mensaje de error");
     }
 
-    return this.prisma.job.findMany({
+    const jobs = await this.prisma.job.findMany({
       where: { empresaId: profile.id },
       orderBy: { publishedAt: "desc" },
       include: {
@@ -505,6 +505,12 @@ export class EmpresasService {
         },
       },
     });
+
+    // Campo explícito para clientes que no reciben bien `_count` en el JSON
+    return jobs.map((j) => ({
+      ...j,
+      applicationsCount: j._count.applications,
+    }));
   }
 
   async updateJob(userId: string, jobId: string, dto: any) {
@@ -700,6 +706,9 @@ export class EmpresasService {
   }
 
   async deleteJob(userId: string, jobId: string) {
+    this.logger.log(
+      `[AUDIT] empresa.deleteJob requested | userId=${userId} | jobId=${jobId}`
+    );
     const profile = await this.prisma.empresaProfile.findUnique({
       where: { userId },
     });
@@ -723,7 +732,17 @@ export class EmpresasService {
       );
     }
 
-    return this.prisma.job.delete({ where: { id: jobId } });
+    const applicationsToCascade = await this.prisma.application.count({
+      where: { jobId },
+    });
+
+    const deletedJob = await this.prisma.job.delete({ where: { id: jobId } });
+
+    this.logger.warn(
+      `[AUDIT] empresa.deleteJob completed | userId=${userId} | jobId=${jobId} | cascadedApplications=${applicationsToCascade}`
+    );
+
+    return deletedJob;
   }
 
   async getJobApplicants(userId: string, jobId: string) {
