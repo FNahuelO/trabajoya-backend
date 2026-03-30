@@ -1118,11 +1118,22 @@ export class EmpresasService {
       throw new NotFoundException("Empleo no encontrado");
     }
 
-    if (job.isPaid) {
+    const latestEntitlement = await this.prisma.jobPostEntitlement.findFirst({
+      where: { jobPostId: jobId },
+      orderBy: { createdAt: "desc" },
+    });
+    const isExpiredEntitlement =
+      latestEntitlement?.status === "EXPIRED" ||
+      (latestEntitlement?.expiresAt
+        ? new Date(latestEntitlement.expiresAt) < new Date()
+        : false);
+    const isRenewalFlow = !!job.isPaid && isExpiredEntitlement;
+
+    if (job.isPaid && !isRenewalFlow) {
       throw new BadRequestException("Este empleo ya ha sido pagado");
     }
 
-    if (job.moderationStatus !== "PENDING_PAYMENT") {
+    if (job.moderationStatus !== "PENDING_PAYMENT" && !isRenewalFlow) {
       throw new BadRequestException(
         "Este empleo no requiere pago o ya fue procesado"
       );
@@ -1218,6 +1229,65 @@ export class EmpresasService {
       }
     }
 
+    if (isRenewalFlow) {
+      if (!selectedPlan) {
+        throw new BadRequestException(
+          "Para renovar un empleo expirado debés seleccionar un plan"
+        );
+      }
+
+      const now = new Date();
+      const reservedExpiresAt = new Date(now);
+      reservedExpiresAt.setDate(
+        reservedExpiresAt.getDate() + Number(selectedPlan.durationDays || 30)
+      );
+
+      if (latestEntitlement) {
+        await this.prisma.jobPostEntitlement.update({
+          where: { id: latestEntitlement.id },
+          data: {
+            source: "MANUAL",
+            planKey: selectedPlan.code,
+            expiresAt: reservedExpiresAt,
+            status: "REVOKED",
+            maxEdits: selectedPlan.allowedModifications || 0,
+            editsUsed: 0,
+            allowCategoryChange: selectedPlan.canModifyCategory || false,
+            maxCategoryChanges: selectedPlan.categoryModifications || 0,
+            categoryChangesUsed: 0,
+            rawPayload: {
+              pendingPayment: true,
+              renewalFlow: true,
+              selectedPlanId: selectedPlan.id,
+              selectedPlanCode: selectedPlan.code,
+            },
+          },
+        });
+      } else {
+        await this.prisma.jobPostEntitlement.create({
+          data: {
+            userId: userId,
+            jobPostId: jobId,
+            source: "MANUAL",
+            planKey: selectedPlan.code,
+            expiresAt: reservedExpiresAt,
+            status: "REVOKED",
+            maxEdits: selectedPlan.allowedModifications || 0,
+            editsUsed: 0,
+            allowCategoryChange: selectedPlan.canModifyCategory || false,
+            maxCategoryChanges: selectedPlan.categoryModifications || 0,
+            categoryChangesUsed: 0,
+            rawPayload: {
+              pendingPayment: true,
+              renewalFlow: true,
+              selectedPlanId: selectedPlan.id,
+              selectedPlanCode: selectedPlan.code,
+            },
+          },
+        });
+      }
+    }
+
     // Crear orden de pago en PayPal
     const order = await this.paymentsService.createOrder(
       amount,
@@ -1233,6 +1303,9 @@ export class EmpresasService {
         paymentStatus: "PENDING",
         paymentAmount: amount,
         paymentCurrency: currency,
+        isPaid: false,
+        moderationStatus: "PENDING_PAYMENT" as any,
+        status: "inactive",
       },
     });
 
