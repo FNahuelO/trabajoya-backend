@@ -14,6 +14,7 @@ import { GCSUploadService } from "../upload/gcs-upload.service";
 import { PromotionsService } from "../promotions/promotions.service";
 import { MailService } from "../mail/mail.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { getArgentinaLocalNow } from "../common/services/timezone-date.service";
 import { PaymentMethod, PaymentStatus } from "@prisma/client";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
@@ -273,7 +274,7 @@ export class EmpresasService {
       }
       
       // Crear el aviso
-      const publishedAt = new Date();
+      const publishedAt = getArgentinaLocalNow();
       const expiresAt = new Date(publishedAt);
       expiresAt.setDate(expiresAt.getDate() + 20); // 20 días desde publicación
 
@@ -1030,7 +1031,7 @@ export class EmpresasService {
         moderationStatus: "APPROVED" as any,
         moderationReason: reason || null,
         moderatedBy: moderatorId,
-        moderatedAt: new Date(),
+        moderatedAt: getArgentinaLocalNow(),
         status: "active", // Activar el empleo cuando se aprueba
       } as any,
     });
@@ -1069,7 +1070,7 @@ export class EmpresasService {
         moderationStatus: "REJECTED" as any,
         moderationReason: reason,
         moderatedBy: moderatorId,
-        moderatedAt: new Date(),
+        moderatedAt: getArgentinaLocalNow(),
       } as any,
     });
   }

@@ -28,7 +28,15 @@ export class AdminController {
     const page = parseInt(query.page) || 1;
     const pageSize = parseInt(query.pageSize) || 20;
     const userType = query.userType;
-    const data = await this.adminService.getUsers(page, pageSize, userType);
+    const sortBy = query.sortBy;
+    const sortOrder = query.sortOrder;
+    const data = await this.adminService.getUsers(
+      page,
+      pageSize,
+      userType,
+      sortBy,
+      sortOrder
+    );
     return createResponse({
       success: true,
       message: "Usuarios obtenidos correctamente",
@@ -40,7 +48,14 @@ export class AdminController {
   async getEmpresas(@Query() query: any) {
     const page = parseInt(query.page) || 1;
     const pageSize = parseInt(query.pageSize) || 20;
-    const data = await this.adminService.getEmpresas(page, pageSize);
+    const sortBy = query.sortBy;
+    const sortOrder = query.sortOrder;
+    const data = await this.adminService.getEmpresas(
+      page,
+      pageSize,
+      sortBy,
+      sortOrder
+    );
     return createResponse({
       success: true,
       message: "Empresas obtenidas correctamente",
@@ -52,7 +67,14 @@ export class AdminController {
   async getPostulantes(@Query() query: any) {
     const page = parseInt(query.page) || 1;
     const pageSize = parseInt(query.pageSize) || 20;
-    const data = await this.adminService.getPostulantes(page, pageSize);
+    const sortBy = query.sortBy;
+    const sortOrder = query.sortOrder;
+    const data = await this.adminService.getPostulantes(
+      page,
+      pageSize,
+      sortBy,
+      sortOrder
+    );
     return createResponse({
       success: true,
       message: "Postulantes obtenidos correctamente",
@@ -66,11 +88,15 @@ export class AdminController {
     const pageSize = parseInt(query.pageSize) || 20;
     const status = query.status;
     const moderationStatus = query.moderationStatus;
+    const sortBy = query.sortBy;
+    const sortOrder = query.sortOrder;
     const data = await this.adminService.getAllJobs(
       page,
       pageSize,
       status,
-      moderationStatus
+      moderationStatus,
+      sortBy,
+      sortOrder
     );
     return createResponse({
       success: true,
@@ -84,10 +110,14 @@ export class AdminController {
     const page = parseInt(query.page) || 1;
     const pageSize = parseInt(query.pageSize) || 20;
     const status = query.status;
+    const sortBy = query.sortBy;
+    const sortOrder = query.sortOrder;
     const data = await this.adminService.getApplications(
       page,
       pageSize,
-      status
+      status,
+      sortBy,
+      sortOrder
     );
     return createResponse({
       success: true,

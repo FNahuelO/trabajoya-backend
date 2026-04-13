@@ -32,12 +32,81 @@ export class AdminService {
     }
   }
 
-  async getUsers(page: number, pageSize: number, userType?: string) {
+  private normalizeSortOrder(sortOrder?: string): "asc" | "desc" {
+    return sortOrder === "asc" ? "asc" : "desc";
+  }
+
+  private getUsersOrderBy(sortBy?: string, sortOrder?: string) {
+    const order = this.normalizeSortOrder(sortOrder);
+    const sortMap: Record<string, any> = {
+      email: { email: order },
+      userType: { userType: order },
+      isVerified: { isVerified: order },
+      createdAt: { createdAt: order },
+    };
+    return sortMap[sortBy || ""] || { createdAt: "desc" as const };
+  }
+
+  private getEmpresasOrderBy(sortBy?: string, sortOrder?: string) {
+    const order = this.normalizeSortOrder(sortOrder);
+    const sortMap: Record<string, any> = {
+      companyName: { companyName: order },
+      razonSocial: { razonSocial: order },
+      cuit: { cuit: order },
+      email: { user: { email: order } },
+      createdAt: { user: { createdAt: order } },
+    };
+    return sortMap[sortBy || ""] || { user: { createdAt: "desc" as const } };
+  }
+
+  private getPostulantesOrderBy(sortBy?: string, sortOrder?: string) {
+    const order = this.normalizeSortOrder(sortOrder);
+    const sortMap: Record<string, any> = {
+      fullName: { fullName: order },
+      phone: { phone: order },
+      resumeTitle: { resumeTitle: order },
+      email: { user: { email: order } },
+      createdAt: { user: { createdAt: order } },
+    };
+    return sortMap[sortBy || ""] || { user: { createdAt: "desc" as const } };
+  }
+
+  private getJobsOrderBy(sortBy?: string, sortOrder?: string) {
+    const order = this.normalizeSortOrder(sortOrder);
+    const sortMap: Record<string, any> = {
+      title: { title: order },
+      status: { status: order },
+      moderationStatus: { moderationStatus: order },
+      publishedAt: { publishedAt: order },
+      createdAt: { createdAt: order },
+    };
+    return sortMap[sortBy || ""] || { publishedAt: "desc" as const };
+  }
+
+  private getApplicationsOrderBy(sortBy?: string, sortOrder?: string) {
+    const order = this.normalizeSortOrder(sortOrder);
+    const sortMap: Record<string, any> = {
+      status: { status: order },
+      isRead: { isRead: order },
+      appliedAt: { appliedAt: order },
+      createdAt: { createdAt: order },
+    };
+    return sortMap[sortBy || ""] || { appliedAt: "desc" as const };
+  }
+
+  async getUsers(
+    page: number,
+    pageSize: number,
+    userType?: string,
+    sortBy?: string,
+    sortOrder?: string
+  ) {
     const skip = (page - 1) * pageSize;
     const where: any = {};
     if (userType) {
       where.userType = userType;
     }
+    const orderBy = this.getUsersOrderBy(sortBy, sortOrder);
 
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -48,7 +117,7 @@ export class AdminService {
           empresa: true,
           postulante: true,
         },
-        orderBy: { createdAt: "desc" },
+        orderBy,
       }),
       this.prisma.user.count({ where }),
     ]);
@@ -62,8 +131,14 @@ export class AdminService {
     };
   }
 
-  async getEmpresas(page: number, pageSize: number) {
+  async getEmpresas(
+    page: number,
+    pageSize: number,
+    sortBy?: string,
+    sortOrder?: string
+  ) {
     const skip = (page - 1) * pageSize;
+    const orderBy = this.getEmpresasOrderBy(sortBy, sortOrder);
 
     const [empresas, total] = await Promise.all([
       this.prisma.empresaProfile.findMany({
@@ -84,7 +159,7 @@ export class AdminService {
             take: 1,
           },
         },
-        orderBy: { userId: "desc" },
+        orderBy,
       }),
       this.prisma.empresaProfile.count(),
     ]);
@@ -98,8 +173,14 @@ export class AdminService {
     };
   }
 
-  async getPostulantes(page: number, pageSize: number) {
+  async getPostulantes(
+    page: number,
+    pageSize: number,
+    sortBy?: string,
+    sortOrder?: string
+  ) {
     const skip = (page - 1) * pageSize;
+    const orderBy = this.getPostulantesOrderBy(sortBy, sortOrder);
 
     const [postulantes, total] = await Promise.all([
       this.prisma.postulanteProfile.findMany({
@@ -124,7 +205,7 @@ export class AdminService {
             select: { id: true },
           },
         },
-        orderBy: { userId: "desc" },
+        orderBy,
       }),
       this.prisma.postulanteProfile.count(),
     ]);
@@ -159,7 +240,9 @@ export class AdminService {
     page: number,
     pageSize: number,
     status?: string,
-    moderationStatus?: string
+    moderationStatus?: string,
+    sortBy?: string,
+    sortOrder?: string
   ) {
     const skip = (page - 1) * pageSize;
     const where: any = {};
@@ -169,6 +252,8 @@ export class AdminService {
     if (moderationStatus) {
       where.moderationStatus = moderationStatus;
     }
+
+    const orderBy = this.getJobsOrderBy(sortBy, sortOrder);
 
     const [jobs, total] = await Promise.all([
       this.prisma.job.findMany({
@@ -192,7 +277,7 @@ export class AdminService {
             },
           },
         },
-        orderBy: { publishedAt: "desc" },
+        orderBy,
       }),
       this.prisma.job.count({ where }),
     ]);
@@ -206,12 +291,20 @@ export class AdminService {
     };
   }
 
-  async getApplications(page: number, pageSize: number, status?: string) {
+  async getApplications(
+    page: number,
+    pageSize: number,
+    status?: string,
+    sortBy?: string,
+    sortOrder?: string
+  ) {
     const skip = (page - 1) * pageSize;
     const where: any = {};
     if (status) {
       where.status = status;
     }
+
+    const orderBy = this.getApplicationsOrderBy(sortBy, sortOrder);
 
     const [applications, total] = await Promise.all([
       this.prisma.application.findMany({
@@ -240,7 +333,7 @@ export class AdminService {
             },
           },
         },
-        orderBy: { appliedAt: "desc" },
+        orderBy,
       }),
       this.prisma.application.count({ where }),
     ]);

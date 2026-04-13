@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ContentModerationService } from "../common/services/content-moderation.service";
 import { MailService } from "../mail/mail.service";
 import { ReportsService } from "../reports/reports.service";
+import { getArgentinaLocalNow } from "../common/services/timezone-date.service";
 
 @Injectable()
 export class ModerationService {
@@ -156,7 +157,7 @@ export class ModerationService {
       data: {
         moderationStatus: "APPROVED",
         moderatedBy: moderatorId,
-        moderatedAt: new Date(),
+        moderatedAt: getArgentinaLocalNow(),
         moderationReason: null,
         // Si está aprobado, activar el empleo
         status: "active",
@@ -196,7 +197,7 @@ export class ModerationService {
       data: {
         moderationStatus: "REJECTED",
         moderatedBy: moderatorId,
-        moderatedAt: new Date(),
+        moderatedAt: getArgentinaLocalNow(),
         moderationReason: reason,
         // Si está rechazado, desactivar el empleo
         status: "inactive",

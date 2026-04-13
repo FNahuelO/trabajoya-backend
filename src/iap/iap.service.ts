@@ -11,6 +11,7 @@ import { VerifyGoogleDto } from './dto/verify-google.dto';
 import { RestoreDto } from './dto/restore.dto';
 import { PaymentMethod, PaymentStatus } from '@prisma/client';
 import axios from 'axios';
+import { getArgentinaLocalNow } from '../common/services/timezone-date.service';
 
 @Injectable()
 export class IapService {
@@ -225,7 +226,7 @@ export class IapService {
       //   signedTransactionInfo: dto.signedTransactionInfo,
       // });
 
-      const publishedAt = new Date();
+      const publishedAt = getArgentinaLocalNow();
       const expiresAt = new Date(publishedAt);
       expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
 
@@ -316,10 +317,10 @@ export class IapService {
             data: {
               moderationStatus: 'APPROVED',
               paymentStatus: 'PAID',
-              paidAt: new Date(),
+              paidAt: getArgentinaLocalNow(),
               isPaid: true,
               status: 'active',
-              publishedAt: new Date(), // Actualizar fecha de publicación al momento del pago
+              publishedAt: getArgentinaLocalNow(), // Actualizar fecha de publicación al momento del pago
             },
           });
           console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs)');
@@ -465,10 +466,10 @@ export class IapService {
                     data: {
                       moderationStatus: 'APPROVED',
                       paymentStatus: 'PAID',
-                      paidAt: new Date(),
+                      paidAt: getArgentinaLocalNow(),
                       isPaid: true,
                       status: 'active',
-                      publishedAt: new Date(),
+                      publishedAt: getArgentinaLocalNow(),
                     },
                   });
                   console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs)');
@@ -651,7 +652,7 @@ export class IapService {
     //   },
     // });
 
-    const publishedAt = new Date();
+    const publishedAt = getArgentinaLocalNow();
     const expiresAt = new Date(publishedAt);
     expiresAt.setDate(expiresAt.getDate() + plan.durationDays);
 
@@ -739,10 +740,10 @@ export class IapService {
         data: {
           moderationStatus: 'APPROVED',
           paymentStatus: 'PAID',
-          paidAt: new Date(),
+          paidAt: getArgentinaLocalNow(),
           isPaid: true,
           status: 'active',
-          publishedAt: new Date(),
+          publishedAt: getArgentinaLocalNow(),
         },
       });
       console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs) (Google)');

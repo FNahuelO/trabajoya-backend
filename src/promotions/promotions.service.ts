@@ -7,6 +7,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
 import { Prisma } from "@prisma/client";
+import { getArgentinaLocalNow } from "../common/services/timezone-date.service";
 
 @Injectable()
 export class PromotionsService {
@@ -335,7 +336,7 @@ export class PromotionsService {
     const activePromotion = await this.getActivePromotion();
     const durationDays = activePromotion?.durationDays || 20;
 
-    const publishedAt = new Date();
+    const publishedAt = getArgentinaLocalNow();
     const expiresAt = new Date(publishedAt);
     expiresAt.setDate(expiresAt.getDate() + durationDays);
 
