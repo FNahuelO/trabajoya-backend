@@ -86,6 +86,10 @@ export class AdminService {
   private getApplicationsOrderBy(sortBy?: string, sortOrder?: string) {
     const order = this.normalizeSortOrder(sortOrder);
     const sortMap: Record<string, any> = {
+      postulante: { postulante: { fullName: order } },
+      job: { job: { title: order } },
+      empresa: { job: { empresa: { companyName: order } } },
+      coverLetter: { coverLetter: order },
       status: { status: order },
       isRead: { isRead: order },
       appliedAt: { appliedAt: order },
