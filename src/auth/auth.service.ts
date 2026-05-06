@@ -469,16 +469,12 @@ export class AuthService {
         }
       }
 
-      const tokens = await this.issueTokens(user.id, user.userType);
+      const tokens = await this.issueTokens(user.id);
+      const authUser = await this.buildAuthUserResponse(user.id);
 
       return {
         ...tokens,
-        user: {
-          id: user.id,
-          email: user.email,
-          tipo: user.userType.toLowerCase() as "postulante" | "empresa",
-          verificado: user.isVerified,
-        },
+        user: authUser,
       };
     } catch (error) {
       console.error("Error verificando token de Google:", error);
@@ -676,16 +672,12 @@ export class AuthService {
         }
       }
 
-      const tokens = await this.issueTokens(user.id, user.userType);
+      const tokens = await this.issueTokens(user.id);
+      const authUser = await this.buildAuthUserResponse(user.id);
 
       return {
         ...tokens,
-        user: {
-          id: user.id,
-          email: user.email,
-          tipo: user.userType.toLowerCase() as "postulante" | "empresa",
-          verificado: user.isVerified,
-        },
+        user: authUser,
       };
     } catch (error) {
       // Si es un error de validación conocido, lanzarlo directamente
@@ -793,16 +785,12 @@ export class AuthService {
       // Validar que el tipo de usuario sea compatible con el origen del login
       await this.validateUserTypeForSource(user.userType, source);
 
-      const tokens = await this.issueTokens(user.id, user.userType);
+      const tokens = await this.issueTokens(user.id);
+      const authUser = await this.buildAuthUserResponse(user.id);
 
       return {
         ...tokens,
-        user: {
-          id: user.id,
-          email: user.email,
-          tipo: user.userType.toLowerCase() as "postulante" | "empresa" | "admin",
-          verificado: user.isVerified,
-        },
+        user: authUser,
       };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
@@ -941,16 +929,12 @@ export class AuthService {
       // Validar que el tipo de usuario sea compatible con el origen del login
       await this.validateUserTypeForSource(user.userType, source);
 
-      const tokens = await this.issueTokens(user.id, user.userType);
+      const tokens = await this.issueTokens(user.id);
+      const authUser = await this.buildAuthUserResponse(user.id);
 
       return {
         ...tokens,
-        user: {
-          id: user.id,
-          email: user.email,
-          tipo: user.userType.toLowerCase() as "postulante" | "empresa" | "admin",
-          verificado: user.isVerified,
-        },
+        user: authUser,
       };
     } catch (error) {
       // Si es un error de validación conocido, lanzarlo directamente
@@ -1205,33 +1189,67 @@ export class AuthService {
     // Validar que el tipo de usuario sea compatible con el origen del login
     await this.validateUserTypeForSource(user.userType, dto.source);
 
-    const tokens = await this.issueTokens(user.id, user.userType);
+    const tokens = await this.issueTokens(user.id);
+    const authUser = await this.buildAuthUserResponse(user.id);
 
     // Devolver tokens junto con información básica del usuario
     return {
       ...tokens,
-      user: {
-        id: user.id,
-        email: user.email,
-        tipo: user.userType.toLowerCase() as "postulante" | "empresa" | "admin",
-        verificado: user.isVerified,
-      },
+      user: authUser,
     };
   }
 
-  private async issueTokens(userId: string, role: string) {
-    // Obtener el usuario para incluir userType en el token
+  private async buildAuthUserResponse(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, userType: true, email: true },
+      select: {
+        id: true,
+        email: true,
+        userType: true,
+        isVerified: true,
+        role: {
+          select: {
+            name: true,
+            permissions: true,
+          },
+        },
+      },
+    });
+
+    return {
+      id: user?.id,
+      email: user?.email,
+      tipo: user?.userType?.toLowerCase(),
+      verificado: user?.isVerified,
+      rol: user?.role?.name || null,
+      permisos: user?.role?.permissions || [],
+    };
+  }
+
+  private async issueTokens(userId: string) {
+    // Obtener el usuario para incluir userType y rol interno en el token
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        userType: true,
+        email: true,
+        role: {
+          select: {
+            name: true,
+            permissions: true,
+          },
+        },
+      },
     });
 
     const accessToken = await this.jwt.signAsync(
       {
         sub: userId,
-        role,
+        role: user?.role?.name || user?.userType,
         userType: user?.userType,
         email: user?.email,
+        permissions: user?.role?.permissions || [],
       },
       {
         secret: process.env.JWT_ACCESS_SECRET,
@@ -1292,7 +1310,7 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
-    return this.issueTokens(token.userId, token.user.userType);
+    return this.issueTokens(token.userId);
   }
 
   async logout(userId: string, refreshToken?: string) {
@@ -1849,15 +1867,11 @@ export class AuthService {
     await this.mailService.sendVerificationEmail(user.email, verificationToken, user.userType, user.language || "es");
 
     // Generar tokens
-    const tokens = await this.issueTokens(user.id, user.userType);
+    const tokens = await this.issueTokens(user.id);
+    const authUser = await this.buildAuthUserResponse(user.id);
 
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        tipo: user.userType.toLowerCase(),
-        verificado: user.isVerified,
-      },
+      user: authUser,
       token: tokens.accessToken,
       refreshToken: tokens.refreshToken,
     };
