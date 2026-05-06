@@ -28,12 +28,14 @@ export class AdminController {
     const page = parseInt(query.page) || 1;
     const pageSize = parseInt(query.pageSize) || 20;
     const userType = query.userType;
+    const search = query.search;
     const sortBy = query.sortBy;
     const sortOrder = query.sortOrder;
     const data = await this.adminService.getUsers(
       page,
       pageSize,
       userType,
+      search,
       sortBy,
       sortOrder
     );
@@ -98,6 +100,7 @@ export class AdminController {
     const pageSize = parseInt(query.pageSize) || 20;
     const status = query.status;
     const moderationStatus = query.moderationStatus;
+    const search = query.search;
     const sortBy = query.sortBy;
     const sortOrder = query.sortOrder;
     const data = await this.adminService.getAllJobs(
@@ -105,6 +108,7 @@ export class AdminController {
       pageSize,
       status,
       moderationStatus,
+      search,
       sortBy,
       sortOrder
     );
@@ -382,6 +386,7 @@ export class AdminController {
 
   @Post("internal-users")
   async createInternalUser(
+    @Req() req: any,
     @Body()
     body: {
       email: string;
@@ -389,7 +394,10 @@ export class AdminController {
       roleId?: string;
     }
   ) {
-    const data = await this.adminService.createInternalUser(body);
+    const data = await this.adminService.createInternalUser(body, {
+      role: req.user?.role,
+      userType: req.user?.userType,
+    });
     return createResponse({
       success: true,
       message: "Usuario interno creado correctamente",

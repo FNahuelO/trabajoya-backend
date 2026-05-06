@@ -83,6 +83,7 @@ export class PromotionsService {
           title: promotion.title,
           description: promotion.description,
           durationDays: promotion.durationDays,
+          freePublications: promotion.freePublications,
           startAt: promotion.startAt,
           endAt: promotion.endAt,
           metadata: promotion.metadata,

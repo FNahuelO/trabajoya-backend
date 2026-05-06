@@ -21,6 +21,9 @@ import { PaymentMethod, PaymentStatus } from "@prisma/client";
 @Injectable()
 export class EmpresasService {
   private logger = new Logger("EmpresasService");
+  private readonly FREE_PUBLICATION_PLAN_KEY = "FREE_PUBLICATION";
+  private readonly DEFAULT_FREE_PUBLICATIONS_PER_PROMO = 2;
+  private readonly DEFAULT_FREE_PUBLICATION_DURATION_DAYS = 35;
 
   constructor(
     private prisma: PrismaService,
@@ -34,6 +37,26 @@ export class EmpresasService {
     private mailService: MailService,
     private notificationsService: NotificationsService
   ) {}
+
+  private getFreePublicationsPerPromo(): number {
+    const raw = this.configService.get<string>(
+      "FREE_JOB_PUBLICATIONS_PER_PROMO"
+    );
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return this.DEFAULT_FREE_PUBLICATIONS_PER_PROMO;
+    }
+    return Math.floor(parsed);
+  }
+
+  private getFreePublicationDurationDays(): number {
+    const raw = this.configService.get<string>("FREE_JOB_PUBLICATION_DAYS");
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return this.DEFAULT_FREE_PUBLICATION_DURATION_DAYS;
+    }
+    return Math.floor(parsed);
+  }
 
   async getByUser(userId: string) {
     const profile = await this.prisma.empresaProfile.findUnique({
@@ -342,8 +365,39 @@ export class EmpresasService {
       activeSubscription?.planType === "PREMIUM" ||
       activeSubscription?.planType === "ENTERPRISE";
 
+    // Publicación gratis atada a promoción reclamada/activa para el usuario.
+    const userPromotion = await this.promotionsService.getClaimedPromotion(userId);
+    const hasPromotionForFreePublication =
+      !!userPromotion &&
+      (userPromotion.status === "CLAIMED" || userPromotion.status === "USED");
+    const activePromotion = await this.promotionsService.getActivePromotion(
+      userPromotion?.promoKey
+    );
+    const promotionFreePublications = Number(activePromotion?.freePublications);
+    const freePublicationsPerPromo =
+      Number.isFinite(promotionFreePublications) && promotionFreePublications > 0
+        ? Math.floor(promotionFreePublications)
+        : this.getFreePublicationsPerPromo();
+
+    // Cupo de publicaciones gratis usadas dentro de la promoción.
+    const freePublicationsUsed = await this.prisma.job.count({
+      where: {
+        empresaId: profile.id,
+        entitlements: {
+          some: {
+            source: "PROMO",
+            planKey: {
+              in: [this.FREE_PUBLICATION_PLAN_KEY, "LAUNCH_TRIAL"],
+            },
+          },
+        },
+      },
+    });
+    const hasFreePublicationAvailable =
+      hasPromotionForFreePublication && freePublicationsUsed < freePublicationsPerPromo;
+
     // Si NO incluye publicaciones gratis, requiere pago
-    if (!planIncludesFreeJobs) {
+    if (!planIncludesFreeJobs && !hasFreePublicationAvailable) {
       let paymentAmount = defaultJobPublicationPrice;
       let paymentCurrency = "USD";
       let selectedPlan: any = null;
@@ -426,7 +480,8 @@ export class EmpresasService {
       return job;
     }
 
-    // Si el plan incluye publicaciones gratis (PREMIUM/ENTERPRISE), pasa directo a moderación automática
+    // Si el plan incluye publicaciones gratis o la empresa tiene cupo gratis disponible,
+    // pasa directo a moderación automática.
     // Aplicar filtro automático de moderación
     const moderationResult = this.contentModeration.analyzeJobContent({
       title: dto.title || "",
@@ -463,7 +518,7 @@ export class EmpresasService {
     // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
     const { planId, ...jobData } = dto;
     
-    return this.prisma.job.create({
+    const job = await this.prisma.job.create({
       data: {
         ...jobData,
         title: dto.title.trim(), // Asegurar que el título original se preserve
@@ -471,10 +526,59 @@ export class EmpresasService {
         moderationStatus: moderationStatus as any,
         status: status,
         autoRejectionReason: autoRejectionReason,
-        isPaid: true, // Con suscripción activa se considera pagado
+        isPaid: true, // Con suscripción activa o cupo gratis se considera pagado
         paymentStatus: "COMPLETED",
+        paymentAmount: hasFreePublicationAvailable ? 0 : undefined,
+        paymentCurrency: "USD",
       },
     });
+
+    if (hasFreePublicationAvailable) {
+      const expiresAt = new Date();
+      const promotionDurationDays =
+        (activePromotion?.durationDays || 0) > 0
+          ? activePromotion!.durationDays
+          : this.getFreePublicationDurationDays();
+      expiresAt.setDate(expiresAt.getDate() + promotionDurationDays);
+
+      await this.prisma.jobPostEntitlement.create({
+        data: {
+          userId,
+          jobPostId: job.id,
+          source: "PROMO",
+          planKey: this.FREE_PUBLICATION_PLAN_KEY,
+          expiresAt,
+          status: "ACTIVE",
+          maxEdits: 0,
+          editsUsed: 0,
+          allowCategoryChange: false,
+          maxCategoryChanges: 0,
+          categoryChangesUsed: 0,
+          rawPayload: {
+            freePublication: true,
+            freePublicationNumber: freePublicationsUsed + 1,
+            freePublicationLimit: freePublicationsPerPromo,
+            promoKey: userPromotion?.promoKey || null,
+            claimedAt: userPromotion?.claimedAt || null,
+          },
+        },
+      });
+
+      // Mantener CLAIMED mientras tenga cupo; marcar USED al consumir el último.
+      if (userPromotion) {
+        const usedNow = freePublicationsUsed + 1;
+        const nextStatus = usedNow >= freePublicationsPerPromo ? "USED" : "CLAIMED";
+        await this.prisma.userPromotion.update({
+          where: { id: userPromotion.id },
+          data: {
+            status: nextStatus as any,
+            ...(nextStatus === "USED" ? { usedAt: new Date() } : { usedAt: null }),
+          },
+        });
+      }
+    }
+
+    return job;
   }
 
   async getJobs(userId: string) {

@@ -103,6 +103,7 @@ export class AdminService {
     page: number,
     pageSize: number,
     userType?: string,
+    search?: string,
     sortBy?: string,
     sortOrder?: string
   ) {
@@ -110,6 +111,22 @@ export class AdminService {
     const where: any = {};
     if (userType) {
       where.userType = userType;
+    }
+    if (search?.trim()) {
+      const searchTerm = search.trim();
+      where.OR = [
+        { email: { contains: searchTerm, mode: "insensitive" } },
+        {
+          empresa: {
+            companyName: { contains: searchTerm, mode: "insensitive" },
+          },
+        },
+        {
+          postulante: {
+            fullName: { contains: searchTerm, mode: "insensitive" },
+          },
+        },
+      ];
     }
     const orderBy = this.getUsersOrderBy(sortBy, sortOrder);
 
@@ -287,6 +304,7 @@ export class AdminService {
     pageSize: number,
     status?: string,
     moderationStatus?: string,
+    search?: string,
     sortBy?: string,
     sortOrder?: string
   ) {
@@ -297,6 +315,17 @@ export class AdminService {
     }
     if (moderationStatus) {
       where.moderationStatus = moderationStatus;
+    }
+    if (search?.trim()) {
+      const searchTerm = search.trim();
+      where.OR = [
+        { title: { contains: searchTerm, mode: "insensitive" } },
+        {
+          empresa: {
+            companyName: { contains: searchTerm, mode: "insensitive" },
+          },
+        },
+      ];
     }
 
     const orderBy = this.getJobsOrderBy(sortBy, sortOrder);
@@ -1018,7 +1047,25 @@ export class AdminService {
     email: string;
     password: string;
     roleId?: string;
-  }) {
+  }, requester?: { role?: string; userType?: string }) {
+    const normalizedRole = requester?.role?.toUpperCase?.() || "";
+    const normalizedUserType = requester?.userType?.toUpperCase?.() || "";
+    const allowedCreatorRoles = new Set([
+      "ADMIN",
+      "SUPER_ADMIN",
+      "SUPERADMIN",
+      "MODERADOR",
+      "MODERATOR",
+    ]);
+    const canCreateInternalUsers =
+      normalizedUserType === "ADMIN" && allowedCreatorRoles.has(normalizedRole || "ADMIN");
+
+    if (!canCreateInternalUsers) {
+      throw new ForbiddenException(
+        "Solo usuarios con rol ADMIN o MODERADOR pueden crear usuarios internos"
+      );
+    }
+
     const existing = await this.prisma.user.findUnique({
       where: { email: data.email },
     });
