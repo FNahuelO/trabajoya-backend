@@ -44,6 +44,16 @@ export class AdminController {
     });
   }
 
+  @Patch("users/:id/reset-password")
+  async resetUserPassword(@Param("id") id: string) {
+    const data = await this.adminService.resetUserPassword(id);
+    return createResponse({
+      success: true,
+      message: "Contraseña reseteada correctamente",
+      data,
+    });
+  }
+
   @Get("empresas")
   async getEmpresas(@Query() query: any) {
     const page = parseInt(query.page) || 1;
@@ -101,6 +111,16 @@ export class AdminController {
     return createResponse({
       success: true,
       message: "Trabajos obtenidos correctamente",
+      data,
+    });
+  }
+
+  @Patch("jobs/:id/mark-paid")
+  async markJobAsPaid(@Param("id") id: string) {
+    const data = await this.adminService.markJobAsPaid(id);
+    return createResponse({
+      success: true,
+      message: "Trabajo marcado como pagado correctamente",
       data,
     });
   }

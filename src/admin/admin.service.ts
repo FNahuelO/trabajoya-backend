@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import * as bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 
@@ -133,6 +134,47 @@ export class AdminService {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
     };
+  }
+
+  async resetUserPassword(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException("Usuario no encontrado");
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash,
+      },
+    });
+
+    return {
+      userId: user.id,
+      email: user.email,
+      temporaryPassword,
+    };
+  }
+
+  private generateTemporaryPassword(length = 12): string {
+    const charset =
+      "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    const bytes = randomBytes(length);
+    let password = "";
+    for (let i = 0; i < length; i++) {
+      password += charset[bytes[i] % charset.length];
+    }
+    return password;
   }
 
   async getEmpresas(
@@ -293,6 +335,39 @@ export class AdminService {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
     };
+  }
+
+  async markJobAsPaid(jobId: string) {
+    const job = await this.prisma.job.findUnique({
+      where: { id: jobId },
+    });
+
+    if (!job) {
+      throw new NotFoundException("Trabajo no encontrado");
+    }
+
+    if (job.isPaid && job.paymentStatus === "COMPLETED") {
+      throw new BadRequestException("Este trabajo ya está marcado como pagado");
+    }
+
+    const shouldMoveToModeration = job.moderationStatus === "PENDING_PAYMENT";
+
+    return this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        isPaid: true,
+        paymentStatus: "COMPLETED",
+        paidAt: new Date(),
+        paymentAmount: job.paymentAmount ?? 0,
+        paymentCurrency: job.paymentCurrency ?? "USD",
+        ...(shouldMoveToModeration
+          ? {
+              moderationStatus: "PENDING",
+              status: "inactive",
+            }
+          : {}),
+      } as any,
+    });
   }
 
   async getApplications(
