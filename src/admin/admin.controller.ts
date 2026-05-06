@@ -120,8 +120,8 @@ export class AdminController {
   }
 
   @Patch("jobs/:id/mark-paid")
-  async markJobAsPaid(@Param("id") id: string) {
-    const data = await this.adminService.markJobAsPaid(id);
+  async markJobAsPaid(@Param("id") id: string, @Req() req: any) {
+    const data = await this.adminService.markJobAsPaid(id, req.user?.sub);
     return createResponse({
       success: true,
       message: "Trabajo marcado como pagado correctamente",

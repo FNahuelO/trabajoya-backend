@@ -366,7 +366,7 @@ export class AdminService {
     };
   }
 
-  async markJobAsPaid(jobId: string) {
+  async markJobAsPaid(jobId: string, moderatorId?: string) {
     const job = await this.prisma.job.findUnique({
       where: { id: jobId },
     });
@@ -379,8 +379,6 @@ export class AdminService {
       throw new BadRequestException("Este trabajo ya está marcado como pagado");
     }
 
-    const shouldMoveToModeration = job.moderationStatus === "PENDING_PAYMENT";
-
     return this.prisma.job.update({
       where: { id: jobId },
       data: {
@@ -389,12 +387,12 @@ export class AdminService {
         paidAt: new Date(),
         paymentAmount: job.paymentAmount ?? 0,
         paymentCurrency: job.paymentCurrency ?? "USD",
-        ...(shouldMoveToModeration
-          ? {
-              moderationStatus: "PENDING",
-              status: "inactive",
-            }
-          : {}),
+        // Al marcar pago se aprueba automáticamente la moderación.
+        moderationStatus: "APPROVED",
+        moderationReason: null,
+        moderatedAt: new Date(),
+        ...(moderatorId ? { moderatedBy: moderatorId } : {}),
+        status: "active",
       } as any,
     });
   }
