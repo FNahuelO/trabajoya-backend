@@ -12,6 +12,7 @@ import { getArgentinaLocalNow } from "../common/services/timezone-date.service";
 @Injectable()
 export class PromotionsService {
   private readonly DEFAULT_PROMO_KEY = "LAUNCH_TRIAL_4D";
+  private readonly FREE_PUBLICATION_PLAN_KEY = "FREE_PUBLICATION";
 
   constructor(
     private prisma: PrismaService,
@@ -70,7 +71,7 @@ export class PromotionsService {
   async getLaunchTrialStatus(userId: string) {
     const windowOpen = await this.isLaunchTrialWindow();
     const promotion = await this.getActivePromotion();
-    
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { empresa: true },
@@ -100,9 +101,38 @@ export class PromotionsService {
       };
     }
 
-    const promoKey = promotion?.code || this.DEFAULT_PROMO_KEY;
+    if (!user.empresa) {
+      return {
+        eligible: false,
+        alreadyUsed: false,
+        windowOpen,
+        reason: "No se encontró perfil de empresa",
+        promotion: promotionData,
+      };
+    }
 
-    // Buscar promoción existente del usuario
+    const promoKey = promotion?.code || this.DEFAULT_PROMO_KEY;
+    const limit =
+      promotion && promotion.freePublications > 0
+        ? promotion.freePublications
+        : 2;
+
+    const freePublicationsUsed = await this.prisma.job.count({
+      where: {
+        empresaId: user.empresa.id,
+        entitlements: {
+          some: {
+            source: "PROMO",
+            planKey: {
+              in: [this.FREE_PUBLICATION_PLAN_KEY, "LAUNCH_TRIAL"],
+            },
+          },
+        },
+      },
+    });
+
+    const freePublicationsRemaining = Math.max(0, limit - freePublicationsUsed);
+
     const userPromotion = await this.prisma.userPromotion.findUnique({
       where: {
         userId_promoKey: {
@@ -112,36 +142,42 @@ export class PromotionsService {
       },
     });
 
-    if (!userPromotion) {
+    const baseExtras = {
+      freePublicationsUsed,
+      freePublicationsRemaining,
+      promotionLimit: limit,
+    };
+
+    // Sin cupo: misma regla que createJob — no mostrar promo como disponible
+    if (freePublicationsRemaining <= 0) {
       return {
-        eligible: windowOpen,
+        eligible: false,
+        alreadyUsed: true,
+        windowOpen,
+        reason: "Ya utilizaste todas las publicaciones gratuitas de esta promoción",
+        promotion: promotionData,
+        ...baseExtras,
+      };
+    }
+
+    if (!windowOpen) {
+      return {
+        eligible: false,
         alreadyUsed: false,
         windowOpen,
-        reason: windowOpen
-          ? undefined
-          : "La ventana de promoción no está abierta",
+        reason: "La ventana de promoción no está abierta",
         promotion: promotionData,
+        ...baseExtras,
       };
     }
 
-    if (userPromotion.status === "USED") {
+    if (!userPromotion) {
       return {
-        eligible: false,
-        alreadyUsed: true,
+        eligible: true,
+        alreadyUsed: false,
         windowOpen,
-        reason: "Ya has utilizado esta promoción",
         promotion: promotionData,
-      };
-    }
-
-    if (userPromotion.status === "CLAIMED") {
-      // Si ya reclamó la promoción, marcar como ya usada para que no se muestre la card
-      return {
-        eligible: false,
-        alreadyUsed: true,
-        windowOpen,
-        reason: "Ya has reclamado esta promoción",
-        promotion: promotionData,
+        ...baseExtras,
       };
     }
 
@@ -152,18 +188,35 @@ export class PromotionsService {
         windowOpen,
         reason: "La promoción ha expirado",
         promotion: promotionData,
+        ...baseExtras,
       };
     }
 
-    // AVAILABLE
+    // CLAIMED / USED / AVAILABLE: si queda cupo y la ventana está abierta, el frontend puede mostrar la card
+    if (
+      userPromotion.status === "AVAILABLE" ||
+      userPromotion.status === "CLAIMED" ||
+      userPromotion.status === "USED"
+    ) {
+      return {
+        eligible: true,
+        alreadyUsed: false,
+        windowOpen,
+        reason:
+          freePublicationsUsed > 0
+            ? `Te quedan ${freePublicationsRemaining} publicación(es) gratis`
+            : undefined,
+        promotion: promotionData,
+        ...baseExtras,
+      };
+    }
+
     return {
-      eligible: windowOpen,
+      eligible: false,
       alreadyUsed: false,
       windowOpen,
-      reason: windowOpen
-        ? undefined
-        : "La ventana de promoción no está abierta",
       promotion: promotionData,
+      ...baseExtras,
     };
   }
 
