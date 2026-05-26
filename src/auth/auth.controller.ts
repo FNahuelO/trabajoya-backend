@@ -86,7 +86,7 @@ export class AuthController {
     return createResponse({
       success: true,
       message: "Email de recuperación enviado correctamente",
-      data: await this.service.forgotPassword(dto.email),
+      data: await this.service.forgotPassword(dto.email, dto.source),
     });
   }
 

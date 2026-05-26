@@ -459,9 +459,17 @@ ${t.textPlainContact}`;
     });
   }
 
-  async sendPasswordResetEmail(email: string, token: string, lang: string = "es"): Promise<void> {
-    // URL HTTPS unificada para botón HTML y versión texto plano
-    const actionUrl = this.buildAppLink("/app/reset-password", { token });
+  async sendPasswordResetEmail(
+    email: string,
+    token: string,
+    source: "app" | "web-empresas" = "app",
+    lang: string = "es"
+  ): Promise<void> {
+    // El destino depende del origen del pedido, no del rol del usuario.
+    const actionUrl =
+      source === "web-empresas"
+        ? this.buildEmpresasLink("/reset-password", { token })
+        : this.buildAppLink("/app/reset-password", { token });
 
     const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/icon-blanco-jkfiLxis7MIQA4G57Mqpv0A1Wgs9wA.png";
     const LOGO_FULL_URL = this.buildAppLink("/logo.png");

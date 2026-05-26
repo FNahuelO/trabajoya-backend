@@ -1335,7 +1335,7 @@ export class AuthService {
     };
   }
 
-  async forgotPassword(email: string) {
+  async forgotPassword(email: string, source: "app" | "web-empresas" = "app") {
     const normalizedEmail =
       typeof email === "string" ? email.trim().toLowerCase() : email;
 
@@ -1388,6 +1388,7 @@ export class AuthService {
     await this.mailService.sendPasswordResetEmail(
       normalizedEmail,
       resetToken,
+      source,
       user.language || "es"
     );
 
