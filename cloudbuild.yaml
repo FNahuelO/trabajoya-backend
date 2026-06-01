@@ -1,31 +1,31 @@
 steps:
   # Construir la imagen Docker
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: "gcr.io/cloud-builders/docker"
     args:
-      - 'build'
-      - '-f'
-      - 'Dockerfile.gcp'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/trabajoya-backend:latest'
-      - '.'
+      - "build"
+      - "-f"
+      - "Dockerfile.gcp"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/trabajoya-backend:$SHORT_SHA"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/trabajoya-backend:latest"
+      - "."
 
   # Enviar la imagen al Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: "gcr.io/cloud-builders/docker"
     args:
-      - 'push'
-      - '--all-tags'
-      - 'gcr.io/$PROJECT_ID/trabajoya-backend'
+      - "push"
+      - "--all-tags"
+      - "gcr.io/$PROJECT_ID/trabajoya-backend"
 
   # Paso 1: Configurar y ejecutar migraciones
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         echo "📦 Configurando y ejecutando migraciones..."
-        
+
         # Verificar que los secretos de DB existan
         echo "🔍 Verificando secretos DATABASE_URL y DIRECT_URL..."
         if ! gcloud secrets describe DATABASE_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
@@ -37,11 +37,11 @@ steps:
           exit 1
         fi
         echo "✅ Secretos DATABASE_URL y DIRECT_URL verificados"
-        
+
         # Verificar si el job existe y su estado
         JOB_EXISTS=$$(gcloud run jobs describe trabajoya-migrate --region=us-central1 --format="value(name)" 2>/dev/null || echo "")
         NEEDS_CREATE=false
-        
+
         if [ -n "$${JOB_EXISTS}" ]; then
           echo "ℹ️  El job trabajoya-migrate ya existe, verificando estado..."
           
@@ -77,7 +77,7 @@ steps:
         else
           NEEDS_CREATE=true
         fi
-        
+
         # Crear el job si es necesario
         if [ "$${NEEDS_CREATE}" = "true" ]; then
           echo "📝 Creando job trabajoya-migrate..."
@@ -93,18 +93,18 @@ steps:
             --max-retries=1 \
             --task-timeout=300
         fi
-        
+
         echo "🚀 Ejecutando migraciones..."
         gcloud run jobs execute trabajoya-migrate --region=us-central1 --wait
 
   # Paso 2: Ejecutar seed después de migraciones
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         echo "🌱 Configurando y ejecutando seed..."
-        
+
         # Verificar que los secretos de DB existan
         echo "🔍 Verificando secretos DATABASE_URL y DIRECT_URL..."
         if ! gcloud secrets describe DATABASE_URL --project=trabajo-ya-483316 >/dev/null 2>&1; then
@@ -116,11 +116,11 @@ steps:
           exit 1
         fi
         echo "✅ Secretos DATABASE_URL y DIRECT_URL verificados"
-        
+
         # Verificar si el job existe y su estado
         JOB_EXISTS=$$(gcloud run jobs describe trabajoya-seed --region=us-central1 --format="value(name)" 2>/dev/null || echo "")
         NEEDS_CREATE=false
-        
+
         if [ -n "$${JOB_EXISTS}" ]; then
           echo "ℹ️  El job trabajoya-seed ya existe, verificando estado..."
           
@@ -156,7 +156,7 @@ steps:
         else
           NEEDS_CREATE=true
         fi
-        
+
         # Crear el job si es necesario
         if [ "$${NEEDS_CREATE}" = "true" ]; then
           echo "📝 Creando job trabajoya-seed..."
@@ -172,22 +172,22 @@ steps:
             --max-retries=1 \
             --task-timeout=300
         fi
-        
+
         echo "🚀 Ejecutando seed..."
         gcloud run jobs execute trabajoya-seed --region=us-central1 --wait
 
   # Paso 3: Desplegar servicio principal
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         echo "🚀 Desplegando servicio..."
-        
+
         # Verificar que todos los secretos existen
         echo "🔍 Verificando secretos en Secret Manager..."
         SECRETS=("DATABASE_URL" "DIRECT_URL" "JWT_ACCESS_SECRET" "GOOGLE_CLIENT_ID" "GOOGLE_CLIENT_SECRET" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY" "RESEND_API_KEY" "OPENAI_API_KEY" "PAYPAL_CLIENT_ID" "PAYPAL_CLIENT_SECRET" "APPLE_PRIVATE_KEY" "IPN_SHARED_SECRET")
-        
+
         for SECRET in "$${SECRETS[@]}"; do
           if ! gcloud secrets describe "$${SECRET}" --project=trabajo-ya-483316 >/dev/null 2>&1; then
             echo "❌ Error: El secreto $${SECRET} no existe en Secret Manager"
@@ -195,21 +195,21 @@ steps:
           fi
         done
         echo "✅ Todos los secretos verificados"
-        
+
         # Service account
         SERVICE_ACCOUNT="335199126550-compute@developer.gserviceaccount.com"
-        
+
         echo "🔐 Configurando permisos del service account: $${SERVICE_ACCOUNT}"
-        
+
         # Otorgar rol de Secret Manager Secret Accessor
         gcloud projects add-iam-policy-binding trabajo-ya-483316 \
           --member="serviceAccount:$${SERVICE_ACCOUNT}" \
           --role="roles/secretmanager.secretAccessor" \
           --condition=None \
           --quiet 2>/dev/null || true
-        
+
         echo "✅ Permisos configurados"
-        
+
         # Deploy del servicio (update si existe, create si no)
         echo "🚀 Desplegando servicio trabajoya-backend..."
         gcloud run deploy trabajoya-backend \
@@ -225,16 +225,16 @@ steps:
           --timeout=300 \
           --concurrency=${_CONCURRENCY} \
           --service-account=$${SERVICE_ACCOUNT} \
-          --set-env-vars="NODE_ENV=production,PAYPAL_MODE=live,FRONTEND_URL=https://web.trabajo-ya.com,WEB_EMPRESAS_URL=https://empresas.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-05-30T23:59:59Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
+          --set-env-vars="NODE_ENV=production,PAYPAL_MODE=live,FRONTEND_URL=https://web.trabajo-ya.com,WEB_EMPRESAS_URL=https://empresas.trabajo-ya.com,MAIL_PROVIDER=resend,MAIL_FROM=noreply@trabajo-ya.com,S3_BUCKET_NAME=trabajoya-prod-media,GCS_BUCKET_NAME=trabajoya-storage,GCP_PROJECT_ID=trabajo-ya-483316,AWS_REGION=us-east-1,CLOUDFRONT_DOMAIN=d193dyce2cbipr.cloudfront.net,OPENAI_MODEL=gpt-4o-mini,LAUNCH_TRIAL_START_AT=2026-02-01T00:00:00Z,LAUNCH_TRIAL_END_AT=2026-06-30T23:59:59Z,LAUNCH_TRIAL_DURATION_DAYS=4,JWT_ACCESS_EXPIRES_IN=15m,JWT_REFRESH_EXPIRES_IN=7d,GOOGLE_ANDROID_CLIENT_ID=335199126550-bbmp5fmhlbipkgc4vm1njl0grvdhicrb.apps.googleusercontent.com,GOOGLE_IOS_CLIENT_ID=335199126550-u4amua613a69oc4dpkau6rgt5uijiu98.apps.googleusercontent.com,APPLE_REDIRECT_URI=https://trabajo-ya.com/api/auth/apple/callback,APPLE_TEAM_ID=CC32GQQZ82,APPLE_KEY_ID=BH7JD8AKZ4,APPLE_CLIENT_ID=com.trabajoya.web,APPLE_BUNDLE_ID=com.trabajoya.app" \
           --set-secrets=DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest,JWT_ACCESS_SECRET=JWT_ACCESS_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID:latest,AWS_SECRET_ACCESS_KEY=AWS_SECRET_ACCESS_KEY:latest,RESEND_API_KEY=RESEND_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PAYPAL_CLIENT_ID=PAYPAL_CLIENT_ID:latest,PAYPAL_CLIENT_SECRET=PAYPAL_CLIENT_SECRET:latest,APPLE_PRIVATE_KEY=APPLE_PRIVATE_KEY:latest,IPN_SHARED_SECRET=IPN_SHARED_SECRET:latest
-        
+
         if [ $$? -ne 0 ]; then
           echo "❌ Error al desplegar el servicio"
           exit 1
         fi
-        
+
         echo "✅ Servicio desplegado correctamente"
-        
+
         # Verificar la revisión
         LATEST_REVISION=$$(gcloud run services describe trabajoya-backend --region=${_REGION} --format="value(status.latestReadyRevisionName)" 2>/dev/null || echo "")
         if [ -n "$${LATEST_REVISION}" ]; then
@@ -247,14 +247,14 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: 'E2_HIGHCPU_8'
+  machineType: "E2_HIGHCPU_8"
 
 substitutions:
-  _REGION: 'us-central1'
-  _MEMORY: '2Gi'
-  _CPU: '2'
-  _MIN_INSTANCES: '1'
-  _MAX_INSTANCES: '10'
-  _CONCURRENCY: '80'
+  _REGION: "us-central1"
+  _MEMORY: "2Gi"
+  _CPU: "2"
+  _MIN_INSTANCES: "1"
+  _MAX_INSTANCES: "10"
+  _CONCURRENCY: "80"
 
-timeout: '900s'
+timeout: "900s"
