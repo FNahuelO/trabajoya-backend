@@ -9,7 +9,6 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ContentModerationService } from "../common/services/content-moderation.service";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PaymentsService } from "../payments/payments.service";
-import { MercadoPagoService } from "../payments/mercadopago.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 import { PromotionsService } from "../promotions/promotions.service";
@@ -32,7 +31,6 @@ export class EmpresasService {
     private contentModeration: ContentModerationService,
     private subscriptionsService: SubscriptionsService,
     private paymentsService: PaymentsService,
-    private mercadoPagoService: MercadoPagoService,
     private gcpCdnService: GcpCdnService,
     private gcsUploadService: GCSUploadService,
     private configService: ConfigService,
