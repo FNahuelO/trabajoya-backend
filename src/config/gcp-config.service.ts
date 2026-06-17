@@ -17,6 +17,8 @@ export class GcpConfigService implements OnModuleInit {
     this.readyResolve = resolve;
   });
 
+  private readyResolved = false;
+
   constructor(private configService: ConfigService) {
     this.projectId =
       this.configService.get<string>("GCP_PROJECT_ID") ||
@@ -26,6 +28,20 @@ export class GcpConfigService implements OnModuleInit {
     this.secretManagerClient = new SecretManagerServiceClient({
       projectId: this.projectId,
     });
+
+    // Cloud Run monta DATABASE_URL antes del bootstrap: liberar de inmediato
+    if (process.env.DATABASE_URL?.trim()) {
+      this.markDatabaseUrlReady();
+      this.resolveReady();
+    }
+  }
+
+  private resolveReady() {
+    if (this.readyResolved) {
+      return;
+    }
+    this.readyResolved = true;
+    this.readyResolve();
   }
 
   /** Esperar a que los secretos críticos estén disponibles */
@@ -34,12 +50,25 @@ export class GcpConfigService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    if (process.env.NODE_ENV === "production") {
-      await this.loadSecretsFromGCP();
-    } else {
+    if (process.env.NODE_ENV !== "production") {
       this.logger.log("Modo desarrollo: usando variables de entorno locales");
-      this.readyResolve();
+      this.resolveReady();
+      return;
     }
+
+    // Ya resuelto en constructor si Cloud Run montó DATABASE_URL
+    if (this.readyResolved) {
+      this.loadRemainingSecrets().catch((error) => {
+        this.logger.error(
+          "Error cargando secretos adicionales (no crítico):",
+          error
+        );
+      });
+      return;
+    }
+
+    // Sin DATABASE_URL montada: cargar secretos sin bloquear más de lo necesario
+    void this.loadSecretsFromGCP();
   }
 
   private markDatabaseUrlReady() {
@@ -55,7 +84,7 @@ export class GcpConfigService implements OnModuleInit {
           "⚠️  GCP_PROJECT_ID no está configurado. No se cargarán secrets de GCP."
         );
         this.markDatabaseUrlReady();
-        this.readyResolve();
+        this.resolveReady();
         return;
       }
 
@@ -65,7 +94,7 @@ export class GcpConfigService implements OnModuleInit {
         this.logger.log(
           "✅ DATABASE_URL ya disponible (montada en Cloud Run)"
         );
-        this.readyResolve();
+        this.resolveReady();
 
         // Cargar el resto de secretos en background
         this.loadRemainingSecrets().catch((error) => {
@@ -93,7 +122,7 @@ export class GcpConfigService implements OnModuleInit {
             this.logger.log(
               `✅ TRABAJOYA_SECRETS cargado con ${Object.keys(parsed).length} propiedades`
             );
-            this.readyResolve();
+            this.resolveReady();
             return;
           }
         } catch {
@@ -112,13 +141,13 @@ export class GcpConfigService implements OnModuleInit {
       }
 
       this.markDatabaseUrlReady();
-      this.readyResolve();
+      this.resolveReady();
 
       await this.loadRemainingSecrets();
     } catch (error) {
       this.logger.error("Error cargando configuración de Google Cloud:", error);
       this.markDatabaseUrlReady();
-      this.readyResolve();
+      this.resolveReady();
     }
   }
 

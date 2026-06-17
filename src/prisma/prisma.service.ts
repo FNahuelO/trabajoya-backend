@@ -5,7 +5,6 @@ import {
   Logger,
 } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
-import { GcpConfigService } from "../config/gcp-config.service";
 import { normalizeDatabaseUrl } from "./database-url.util";
 
 @Injectable()
@@ -16,7 +15,7 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
   private databaseUrl: string;
 
-  constructor(private readonly gcpConfigService: GcpConfigService) {
+  constructor() {
     const databaseUrl = normalizeDatabaseUrl(
       process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL
     );
@@ -50,17 +49,8 @@ export class PrismaService
   }
 
   async onModuleInit() {
-    await this.gcpConfigService.whenReady();
-
-    const refreshedUrl = normalizeDatabaseUrl(
-      process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL
-    );
-    if (refreshedUrl && refreshedUrl !== this.databaseUrl) {
-      this.databaseUrl = refreshedUrl;
-      this.logger.log("ℹ️  DATABASE_URL actualizada después de cargar secretos");
-    }
-
-    this.connectWithRetry().catch((error) => {
+    // No bloquear app.listen(): la conexión a DB corre en background
+    void this.connectWithRetry().catch((error) => {
       this.logger.error("Error crítico conectando a la base de datos:", error);
     });
   }
