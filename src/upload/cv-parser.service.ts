@@ -1,6 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { ExtractedCVData } from "../cv/types/extracted-cv-data.type";
+import {
+  normalizeBirthDate,
+  normalizeDocumentNumber,
+  normalizeDocumentType,
+  normalizeGender,
+  normalizeMaritalStatus,
+  splitFullName,
+} from "../cv/personal-data-normalizer";
 import OpenAI from "openai";
 
 @Injectable()
@@ -66,12 +74,19 @@ export class CVParserService {
 
       // Prompt optimizado y más corto para reducir tokens
       const prompt = `Extrae datos del CV en JSON. Estructura:
-{"fullName":string|null,"phone":string|null,"email":string|null,"city":string|null,"province":string|null,"country":string|null,"postalCode":string|null,"linkedInUrl":string|null,"githubUrl":string|null,"portfolioUrl":string|null,"websiteUrl":string|null,"resumeTitle":string|null,"professionalDescription":string|null,"skills":string[],"education":[{"degree":string|null,"institution":string|null,"startDate":string|null,"endDate":string|null,"isCurrent":boolean|null,"country":string|null,"studyArea":string|null,"studyType":string|null,"status":string|null}],"experiences":[{"position":string|null,"company":string|null,"startDate":string|null,"endDate":string|null,"isCurrent":boolean|null,"description":string|null,"companyCountry":string|null,"jobArea":string|null,"companyActivity":string|null,"experienceLevel":"JUNIOR"|"SEMISENIOR"|"SENIOR"|null}]}
+{"fullName":string|null,"firstName":string|null,"lastName":string|null,"phone":string|null,"email":string|null,"address":string|null,"city":string|null,"province":string|null,"country":string|null,"postalCode":string|null,"birthDate":string|null,"gender":string|null,"nationality":string|null,"maritalStatus":string|null,"documentType":string|null,"documentNumber":string|null,"hasOwnVehicle":boolean|null,"hasDriverLicense":boolean|null,"linkedInUrl":string|null,"githubUrl":string|null,"portfolioUrl":string|null,"websiteUrl":string|null,"resumeTitle":string|null,"professionalDescription":string|null,"skills":string[],"education":[{"degree":string|null,"institution":string|null,"startDate":string|null,"endDate":string|null,"isCurrent":boolean|null,"country":string|null,"studyArea":string|null,"studyType":string|null,"status":string|null}],"experiences":[{"position":string|null,"company":string|null,"startDate":string|null,"endDate":string|null,"isCurrent":boolean|null,"description":string|null,"companyCountry":string|null,"jobArea":string|null,"companyActivity":string|null,"experienceLevel":"JUNIOR"|"SEMISENIOR"|"SENIOR"|null}]}
 
 Reglas:
 - JSON válido, sin markdown
 - null si no existe, [] para arrays vacíos
 - Fechas: "YYYY-MM-DD" (año solo: "YYYY-01-01"/"YYYY-12-31")
+- birthDate: fecha de nacimiento si aparece
+- gender: "Masculino", "Femenino", "No binario" o "Prefiero no decir"
+- maritalStatus: "Soltero/a", "Casado/a", "Divorciado/a" o "Viudo/a"
+- documentType: "DNI", "Pasaporte", "CI" u "Otro"
+- documentNumber: solo números del documento
+- nationality: nombre del país (ej: "Argentina")
+- hasOwnVehicle/hasDriverLicense: true solo si el CV lo menciona explícitamente
 - isCurrent: true si "presente"/"actual"/"current"
 - Skills: normaliza ("JS"→"JavaScript", "React.js"→"React")
 - experienceLevel: "senior"/"sr"/"lead"→SENIOR, "semi"/"middle"→SEMISENIOR, "junior"/"jr"/"trainee"→JUNIOR
@@ -144,8 +159,13 @@ CV:
    * Validar y limpiar datos extraídos
    */
   private validateAndCleanExtractedData(data: any): ExtractedCVData {
+    const fullName = data.fullName || null;
+    const splitName = splitFullName(fullName);
+
     const cleaned: ExtractedCVData = {
-      fullName: data.fullName || null,
+      fullName,
+      firstName: data.firstName || splitName.firstName,
+      lastName: data.lastName || splitName.lastName,
       phone: data.phone || null,
       email: data.email || null,
       address: data.address || null,
@@ -153,6 +173,24 @@ CV:
       province: data.province || null,
       country: data.country || null,
       postalCode: data.postalCode || null,
+      birthDate: normalizeBirthDate(data.birthDate),
+      gender: normalizeGender(data.gender),
+      nationality: data.nationality || data.country || null,
+      maritalStatus: normalizeMaritalStatus(data.maritalStatus),
+      documentType: normalizeDocumentType(data.documentType),
+      documentNumber: normalizeDocumentNumber(data.documentNumber),
+      hasOwnVehicle:
+        data.hasOwnVehicle === true
+          ? true
+          : data.hasOwnVehicle === false
+          ? false
+          : null,
+      hasDriverLicense:
+        data.hasDriverLicense === true
+          ? true
+          : data.hasDriverLicense === false
+          ? false
+          : null,
       linkedInUrl: data.linkedInUrl || null,
       githubUrl: data.githubUrl || null,
       portfolioUrl: data.portfolioUrl || null,
@@ -236,6 +274,53 @@ CV:
     const emailMatch = normalizedText.match(emailRegex);
     data.email = emailMatch?.[0] || null;
 
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const firstLines = lines.slice(0, 5).join(" ");
+    const nameCandidate = lines[0]?.replace(/^(cv|curriculum vitae|hoja de vida)\s*[:\-]?\s*/i, "");
+    if (nameCandidate && nameCandidate.length > 2 && nameCandidate.length < 80) {
+      data.fullName = nameCandidate;
+      const splitName = splitFullName(nameCandidate);
+      data.firstName = splitName.firstName;
+      data.lastName = splitName.lastName;
+    }
+
+    const birthDateMatch =
+      firstLines.match(
+        /(?:fecha de nacimiento|nacimiento|born|birth(?:day| date)?)\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i
+      ) || normalizedText.match(/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\b/);
+    data.birthDate = normalizeBirthDate(birthDateMatch?.[1] || null);
+
+    const dniMatch =
+      normalizedText.match(
+        /(?:dni|documento(?:\s+nacional)?(?:\s+de\s+identidad)?|c\.?u\.?i\.?l\.?)\s*[:\-#]?\s*([\d\.]{7,11})/i
+      ) || normalizedText.match(/\b(\d{7,8})\b/);
+    if (dniMatch?.[1]) {
+      data.documentType = "DNI";
+      data.documentNumber = normalizeDocumentNumber(dniMatch[1]);
+    }
+
+    const genderMatch = normalizedText.match(
+      /(?:género|genero|sexo|gender)\s*[:\-]?\s*(masculino|femenino|hombre|mujer|male|female)/i
+    );
+    data.gender = normalizeGender(genderMatch?.[1] || null);
+
+    const nationalityMatch = normalizedText.match(
+      /(?:nacionalidad|nationality)\s*[:\-]?\s*([A-Za-zÁÉÍÓÚáéíóúñÑ\s]+)/i
+    );
+    data.nationality = nationalityMatch?.[1]?.trim() || "Argentina";
+
+    data.hasDriverLicense =
+      /licencia de conducir|registro de conducir|driver(?:'s)? license/i.test(
+        normalizedText
+      ) || null;
+    data.hasOwnVehicle =
+      /veh[ií]culo propio|movilidad propia|auto propio|own vehicle/i.test(
+        normalizedText
+      ) || null;
+
     // Extraer teléfono
     const phonePatterns = [
       /(\+?\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g,
@@ -296,16 +381,16 @@ CV:
     // Retornar datos básicos (sin educación/experiencias en fallback)
     return {
       ...data,
-      fullName: null,
-      address: null,
-      city: null,
-      province: null,
-      country: null,
-      postalCode: null,
+      address: data.address || null,
+      city: data.city || null,
+      province: data.province || null,
+      country: data.country || data.nationality || null,
+      postalCode: data.postalCode || null,
       portfolioUrl: null,
       websiteUrl: null,
       resumeTitle: null,
       professionalDescription: null,
+      maritalStatus: data.maritalStatus || null,
       education: [],
       experiences: [],
     };

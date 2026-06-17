@@ -10,6 +10,14 @@ import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UpdateNotificationPreferencesDto } from "./dto/update-notification-preferences.dto";
+import {
+  normalizeBirthDate,
+  normalizeDocumentNumber,
+  normalizeDocumentType,
+  normalizeGender,
+  normalizeMaritalStatus,
+  splitFullName,
+} from "../cv/personal-data-normalizer";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -890,12 +898,68 @@ export class PostulantesService {
 
     // Actualizar información personal (solo si no existe)
     // Nota: El schema de Prisma tiene fullName, y getByUser lo separa en firstName/lastName para el frontend
+    const extractedFirstName = extractedData.firstName?.trim();
+    const extractedLastName = extractedData.lastName?.trim();
+    const extractedFullName = extractedData.fullName?.trim();
+    const splitName = splitFullName(extractedFullName);
+    const firstNameToUse = extractedFirstName || splitName.firstName;
+    const lastNameToUse = extractedLastName || splitName.lastName;
+
     if (
-      extractedData.fullName &&
-      (!profile.fullName || profile.fullName.trim().length === 0)
+      (!profile.fullName || profile.fullName.trim().length === 0) &&
+      (firstNameToUse || lastNameToUse)
     ) {
-      updateData.fullName = extractedData.fullName.trim();
+      updateData.fullName = `${firstNameToUse || ""} ${lastNameToUse || ""}`.trim();
+    } else if (
+      (!profile.fullName || profile.fullName.trim().length === 0) &&
+      extractedFullName
+    ) {
+      updateData.fullName = extractedFullName;
     }
+
+    const birthDate = normalizeBirthDate(extractedData.birthDate);
+    if (birthDate && !profile.birthDate) {
+      updateData.birthDate = new Date(birthDate);
+    }
+
+    const gender = normalizeGender(extractedData.gender);
+    if (gender && !profile.gender) {
+      updateData.gender = gender;
+    }
+
+    if (extractedData.nationality && !profile.nationality) {
+      updateData.nationality = extractedData.nationality;
+    }
+
+    const maritalStatus = normalizeMaritalStatus(extractedData.maritalStatus);
+    if (maritalStatus && !profile.maritalStatus) {
+      updateData.maritalStatus = maritalStatus;
+    }
+
+    const documentType = normalizeDocumentType(extractedData.documentType);
+    if (documentType && !profile.documentType) {
+      updateData.documentType = documentType;
+    }
+
+    const documentNumber = normalizeDocumentNumber(extractedData.documentNumber);
+    if (documentNumber && !profile.documentNumber) {
+      updateData.documentNumber = documentNumber;
+    }
+
+    if (
+      extractedData.hasOwnVehicle === true &&
+      profile.hasOwnVehicle !== true
+    ) {
+      updateData.hasOwnVehicle = true;
+    }
+
+    if (
+      extractedData.hasDriverLicense === true &&
+      profile.hasDriverLicense !== true
+    ) {
+      updateData.hasDriverLicense = true;
+    }
+
     if (extractedData.phone && !profile.phone) {
       updateData.phone = extractedData.phone;
     }

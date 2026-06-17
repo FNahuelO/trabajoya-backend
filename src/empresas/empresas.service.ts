@@ -9,12 +9,14 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ContentModerationService } from "../common/services/content-moderation.service";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PaymentsService } from "../payments/payments.service";
+import { MercadoPagoService } from "../payments/mercadopago.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 import { PromotionsService } from "../promotions/promotions.service";
 import { MailService } from "../mail/mail.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { getArgentinaLocalNow } from "../common/services/timezone-date.service";
+import { enrichJobDataWithCoordinates } from "../jobs/geo.utils";
 import { PaymentMethod, PaymentStatus } from "@prisma/client";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
@@ -30,6 +32,7 @@ export class EmpresasService {
     private contentModeration: ContentModerationService,
     private subscriptionsService: SubscriptionsService,
     private paymentsService: PaymentsService,
+    private mercadoPagoService: MercadoPagoService,
     private gcpCdnService: GcpCdnService,
     private gcsUploadService: GCSUploadService,
     private configService: ConfigService,
@@ -303,10 +306,11 @@ export class EmpresasService {
 
       // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
       const { planId, ...jobData } = dto;
+      const geoJobData = await enrichJobDataWithCoordinates(jobData);
       
       const job = await this.prisma.job.create({
         data: {
-          ...jobData,
+          ...geoJobData,
           title: dto.title.trim(), // Asegurar que el título original se preserve
           empresaId: profile.id,
           moderationStatus: moderationStatus as any,
@@ -431,10 +435,11 @@ export class EmpresasService {
       
       // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
       const { planId, ...jobData } = dto;
+      const geoJobData = await enrichJobDataWithCoordinates(jobData);
       
       const job = await this.prisma.job.create({
         data: {
-          ...jobData,
+          ...geoJobData,
           title: dto.title.trim(), // Asegurar que el título original se preserve
           empresaId: profile.id,
           moderationStatus: "PENDING_PAYMENT" as any,
@@ -517,10 +522,11 @@ export class EmpresasService {
     
     // Filtrar planId ya que no existe en el modelo Job (se maneja con JobPostEntitlement)
     const { planId, ...jobData } = dto;
+    const geoJobData = await enrichJobDataWithCoordinates(jobData);
     
     const job = await this.prisma.job.create({
       data: {
-        ...jobData,
+        ...geoJobData,
         title: dto.title.trim(), // Asegurar que el título original se preserve
         empresaId: profile.id,
         moderationStatus: moderationStatus as any,
@@ -718,9 +724,23 @@ export class EmpresasService {
     // Remover campos que no existen en el modelo Prisma
     const { ciudad, provincia, ...cleanDto } = dto;
 
+    const locationChanged =
+      (cleanDto.location !== undefined && cleanDto.location !== job.location) ||
+      (cleanDto.city !== undefined && cleanDto.city !== job.city) ||
+      (cleanDto.state !== undefined && cleanDto.state !== job.state);
+
+    const updateData = locationChanged
+      ? await enrichJobDataWithCoordinates({
+          ...cleanDto,
+          city: cleanDto.city ?? job.city,
+          state: cleanDto.state ?? job.state,
+          location: cleanDto.location ?? job.location,
+        })
+      : cleanDto;
+
     return this.prisma.job.update({
       where: { id: jobId },
-      data: cleanDto,
+      data: updateData,
       include: {
         entitlements: {
           where: { status: "ACTIVE" },

@@ -7,6 +7,12 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
+import {
+  enrichJobDataWithCoordinates,
+  haversineDistanceKm,
+  isRemoteJob,
+  resolveJobCoordinates,
+} from "./geo.utils";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
 
 @Injectable()
@@ -210,11 +216,43 @@ export class JobsService {
     const page = Number(q.page || 1);
     const pageSize = Number(q.pageSize || 20);
     const skip = (page - 1) * pageSize;
+    const isProximitySearch =
+      q.lat != null &&
+      q.lng != null &&
+      !Number.isNaN(Number(q.lat)) &&
+      !Number.isNaN(Number(q.lng));
+    const userLat = isProximitySearch ? Number(q.lat) : null;
+    const userLng = isProximitySearch ? Number(q.lng) : null;
+    const radiusKm = Math.min(
+      Math.max(Number(q.radiusKm || 50), 1),
+      200
+    );
+    const paginationArgs: { take?: number; skip?: number } = isProximitySearch
+      ? {}
+      : { take: pageSize, skip };
 
     console.log('[JobsService] Query WHERE:', JSON.stringify(where, null, 2));
 
     let jobs: any[] = [];
     let total = 0;
+
+    const jobInclude = {
+      empresa: {
+        select: {
+          id: true,
+          companyName: true,
+          ciudad: true,
+          provincia: true,
+          pais: true,
+          localidad: true,
+          logo: true,
+          beneficiosEmpresa: true,
+        } as any,
+      },
+      _count: {
+        select: { applications: true },
+      },
+    };
 
     // Si hay búsqueda por texto, intentar primero búsqueda exacta (todas las palabras)
     // Si no hay resultados, usar búsqueda flexible (al menos una palabra)
@@ -254,25 +292,9 @@ export class JobsService {
         const [exactJobs, exactTotal] = await Promise.all([
           this.prisma.job.findMany({
             where: exactWhere,
-            take: pageSize,
-            skip,
+            ...paginationArgs,
             orderBy: { publishedAt: "desc" },
-            include: {
-              empresa: {
-                select: {
-                  id: true,
-                  companyName: true,
-                  ciudad: true,
-                  provincia: true,
-                  pais: true,
-                  logo: true,
-                  beneficiosEmpresa: true,
-                } as any,
-              },
-              _count: {
-                select: { applications: true },
-              },
-            },
+            include: jobInclude,
           }),
           this.prisma.job.count({ where: exactWhere }),
         ]);
@@ -286,25 +308,9 @@ export class JobsService {
           const [flexibleJobs, flexibleTotal] = await Promise.all([
             this.prisma.job.findMany({
               where,
-              take: pageSize,
-              skip,
+              ...paginationArgs,
               orderBy: { publishedAt: "desc" },
-              include: {
-                empresa: {
-                  select: {
-                    id: true,
-                    companyName: true,
-                    ciudad: true,
-                    provincia: true,
-                    pais: true,
-                    logo: true,
-                    beneficiosEmpresa: true,
-                  } as any,
-                },
-                _count: {
-                  select: { applications: true },
-                },
-              },
+              include: jobInclude,
             }),
             this.prisma.job.count({ where }),
           ]);
@@ -317,25 +323,9 @@ export class JobsService {
         const [normalJobs, normalTotal] = await Promise.all([
           this.prisma.job.findMany({
             where,
-            take: pageSize,
-            skip,
+            ...paginationArgs,
             orderBy: { publishedAt: "desc" },
-            include: {
-              empresa: {
-                select: {
-                  id: true,
-                  companyName: true,
-                  ciudad: true,
-                  provincia: true,
-                  pais: true,
-                  logo: true,
-                  beneficiosEmpresa: true,
-                } as any,
-              },
-              _count: {
-                select: { applications: true },
-              },
-            },
+            include: jobInclude,
           }),
           this.prisma.job.count({ where }),
         ]);
@@ -348,25 +338,9 @@ export class JobsService {
       const [normalJobs, normalTotal] = await Promise.all([
         this.prisma.job.findMany({
           where,
-          take: pageSize,
-          skip,
+          ...paginationArgs,
           orderBy: { publishedAt: "desc" },
-          include: {
-            empresa: {
-              select: {
-                id: true,
-                companyName: true,
-                ciudad: true,
-                provincia: true,
-                pais: true,
-                logo: true,
-                beneficiosEmpresa: true,
-              } as any,
-            },
-            _count: {
-              select: { applications: true },
-            },
-          },
+          include: jobInclude,
         }),
         this.prisma.job.count({ where }),
       ]);
@@ -403,6 +377,25 @@ export class JobsService {
       })
     );
 
+    if (isProximitySearch && userLat != null && userLng != null) {
+      const jobsWithDistance = await this.applyProximitySearch(
+        jobsWithProcessedLogos,
+        userLat,
+        userLng,
+        radiusKm
+      );
+      total = jobsWithDistance.length;
+      const paginatedJobs = jobsWithDistance.slice(skip, skip + pageSize);
+
+      return {
+        data: paginatedJobs,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      };
+    }
+
     return {
       data: jobsWithProcessedLogos,
       total,
@@ -410,6 +403,73 @@ export class JobsService {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
     };
+  }
+
+  private async applyProximitySearch(
+    jobs: any[],
+    userLat: number,
+    userLng: number,
+    radiusKm: number
+  ) {
+    const jobsWithDistance: Array<any & { distanceKm: number }> = [];
+
+    for (const job of jobs) {
+      if (isRemoteJob(job)) {
+        jobsWithDistance.push({
+          ...job,
+          distanceKm: -1,
+        });
+        continue;
+      }
+
+      const coords = await resolveJobCoordinates(job);
+      if (!coords) {
+        continue;
+      }
+
+      if (
+        job.latitude == null ||
+        job.longitude == null
+      ) {
+        this.prisma.job
+          .update({
+            where: { id: job.id },
+            data: {
+              latitude: coords.lat,
+              longitude: coords.lng,
+            } as any,
+          })
+          .catch((error) => {
+            console.warn(
+              `[JobsService] No se pudieron guardar coordenadas para job ${job.id}:`,
+              error
+            );
+          });
+      }
+
+      const distanceKm = haversineDistanceKm(
+        userLat,
+        userLng,
+        coords.lat,
+        coords.lng
+      );
+
+      if (distanceKm <= radiusKm) {
+        jobsWithDistance.push({
+          ...job,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          distanceKm: Math.round(distanceKm * 10) / 10,
+        });
+      }
+    }
+
+    return jobsWithDistance.sort((a, b) => {
+      if (a.distanceKm < 0 && b.distanceKm < 0) return 0;
+      if (a.distanceKm < 0) return 1;
+      if (b.distanceKm < 0) return -1;
+      return a.distanceKm - b.distanceKm;
+    });
   }
 
   async findById(id: string) {
@@ -464,7 +524,8 @@ export class JobsService {
   }
 
   async create(dto: any) {
-    return this.prisma.job.create({ data: dto });
+    const data = await enrichJobDataWithCoordinates(dto);
+    return this.prisma.job.create({ data });
   }
 
   async update(id: string, userId: string, dto: any) {

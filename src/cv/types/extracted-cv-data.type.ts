@@ -32,6 +32,8 @@ export interface ExtractedExperience {
 
 export interface ExtractedCVData {
   fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   phone?: string | null;
   email?: string | null;
   address?: string | null;
@@ -39,6 +41,14 @@ export interface ExtractedCVData {
   province?: string | null;
   country?: string | null;
   postalCode?: string | null;
+  birthDate?: string | null;
+  gender?: string | null;
+  nationality?: string | null;
+  maritalStatus?: string | null;
+  documentType?: string | null;
+  documentNumber?: string | null;
+  hasOwnVehicle?: boolean | null;
+  hasDriverLicense?: boolean | null;
 
   linkedInUrl?: string | null;
   githubUrl?: string | null;

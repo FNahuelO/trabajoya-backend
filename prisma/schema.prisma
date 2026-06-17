@@ -236,6 +236,8 @@ model Job {
   location            String
   city                String?
   state               String?
+  latitude            Float?
+  longitude           Float?
   jobType             JobType
   workMode            String?
   category            String?
