@@ -1,5 +1,12 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import { GcpConfigService } from "../config/gcp-config.service";
+import { normalizeDatabaseUrl } from "./database-url.util";
 
 @Injectable()
 export class PrismaService
@@ -7,22 +14,21 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+  private databaseUrl: string;
 
-  constructor() {
-    // CRÍTICO: Pasar la URL explícitamente para que se evalúe en runtime
-    // Usamos PRISMA_DATABASE_URL primero, luego DATABASE_URL como fallback
-    const databaseUrl = process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL;
-    
+  constructor(private readonly gcpConfigService: GcpConfigService) {
+    const databaseUrl = normalizeDatabaseUrl(
+      process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL
+    );
+
     if (!databaseUrl) {
-      // Log de error detallado para debugging
       const availableEnvVars = Object.keys(process.env)
-        .filter(key => key.includes('DATABASE') || key.includes('PRISMA'))
-        .join(', ');
-      
+        .filter((key) => key.includes("DATABASE") || key.includes("PRISMA"))
+        .join(", ");
+
       throw new Error(
         `❌ PRISMA_DATABASE_URL ni DATABASE_URL están definidas.\n` +
-        `Variables relacionadas disponibles: ${availableEnvVars || 'ninguna'}\n` +
-        `Esto puede indicar que Cloud Run no está montando los secretos correctamente.`
+          `Variables relacionadas disponibles: ${availableEnvVars || "ninguna"}`
       );
     }
 
@@ -32,79 +38,95 @@ export class PrismaService
           url: databaseUrl,
         },
       },
-      // Opciones adicionales para Cloud Run
-      log: process.env.NODE_ENV === 'production' 
-        ? ['error', 'warn']
-        : ['query', 'error', 'warn'],
+      log:
+        process.env.NODE_ENV === "production"
+          ? ["error", "warn"]
+          : ["query", "error", "warn"],
     });
 
-    const sourceVar = process.env.PRISMA_DATABASE_URL ? 'PRISMA_DATABASE_URL' : 'DATABASE_URL';
-    this.logger.log(`✅ PrismaClient inicializado con ${sourceVar} desde variables de entorno`);
+    this.databaseUrl = databaseUrl;
+    const host = databaseUrl.split("@")[1]?.split("/")[0] || "desconocido";
+    this.logger.log(`✅ PrismaClient inicializado (host: ${host})`);
   }
 
   async onModuleInit() {
-    // Conectar a la BD de forma asíncrona sin bloquear el inicio del servidor
-    // En Cloud Run, es crítico que el servidor escuche en el puerto rápidamente
+    await this.gcpConfigService.whenReady();
+
+    const refreshedUrl = normalizeDatabaseUrl(
+      process.env.PRISMA_DATABASE_URL || process.env.DATABASE_URL
+    );
+    if (refreshedUrl && refreshedUrl !== this.databaseUrl) {
+      this.databaseUrl = refreshedUrl;
+      this.logger.log("ℹ️  DATABASE_URL actualizada después de cargar secretos");
+    }
+
     this.connectWithRetry().catch((error) => {
       this.logger.error("Error crítico conectando a la base de datos:", error);
-      // No lanzar el error para permitir que el servidor inicie
-      // Las queries fallarán pero el servidor estará disponible
     });
   }
 
   private async connectWithRetry() {
     const maxRetries = 5;
-    const retryDelay = 2000; // 2 segundos
-    
+    const retryDelay = 3000;
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        this.logger.log(`🔌 Conectando a la base de datos... (intento ${attempt}/${maxRetries})`);
+        this.logger.log(
+          `🔌 Conectando a la base de datos... (intento ${attempt}/${maxRetries})`
+        );
         await this.$connect();
         this.logger.log("✅ Conexión a la base de datos establecida");
-        
-        // Verificar estado de migraciones (en background, no crítico)
+
         this.checkMigrations().catch((error) => {
           this.logger.debug("No se pudo verificar migraciones:", error);
         });
-        
-        return; // Éxito, salir del bucle
+
+        return;
       } catch (error: any) {
+        try {
+          await this.$disconnect();
+        } catch {
+          // Ignorar errores al desconectar un pool colgado
+        }
+
         if (attempt === maxRetries) {
           this.logger.error(
             `❌ Error al conectar con la base de datos después de ${maxRetries} intentos:`,
             error?.message || error
           );
-          // No lanzar el error, permitir que el servidor continúe
-          // La conexión se reintentará en la primera query
           return;
         }
+
         this.logger.warn(
           `⚠️  Intento ${attempt} fallido, reintentando en ${retryDelay}ms... ` +
-          `(${error?.message || "Error desconocido"})`
+            `(${error?.message || "Error desconocido"})`
         );
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
       }
     }
   }
 
   private async checkMigrations() {
     try {
-      const result = await this.$queryRawUnsafe<Array<{ migration_name: string }>>(
+      const result = await this.$queryRawUnsafe<
+        Array<{ migration_name: string }>
+      >(
         `SELECT migration_name FROM _prisma_migrations 
          WHERE finished_at IS NOT NULL
          ORDER BY finished_at DESC 
          LIMIT 5`
       );
-      this.logger.log(`📦 Últimas migraciones aplicadas: ${result.length} encontradas`);
+      this.logger.log(
+        `📦 Últimas migraciones aplicadas: ${result.length} encontradas`
+      );
       if (result.length > 0) {
         this.logger.log(`   Última migración: ${result[0].migration_name}`);
       }
     } catch (error: any) {
-      // Ignorar errores si la tabla no existe aún (primera vez)
       if (error?.code !== "42P01") {
         this.logger.warn(
           `⚠️  No se pudo verificar el estado de las migraciones: ` +
-          `${error?.message || "Error desconocido"}`
+            `${error?.message || "Error desconocido"}`
         );
       }
     }
