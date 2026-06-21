@@ -15,13 +15,18 @@ import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { AdminGuard } from "../common/guards/admin.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
 import { AdminService } from "./admin.service";
+import { NotificationCampaignsService } from "../notifications/notification-campaigns.service";
+import { SendCampaignDto } from "../notifications/dto/send-campaign.dto";
 
 @ApiTags("admin")
 @Controller("api/admin")
 @UseGuards(JwtAuthGuard, AdminGuard)
 @ApiBearerAuth()
 export class AdminController {
-  constructor(private adminService: AdminService) {}
+  constructor(
+    private adminService: AdminService,
+    private notificationCampaignsService: NotificationCampaignsService
+  ) {}
 
   @Get("users")
   async getUsers(@Query() query: any) {
@@ -210,6 +215,46 @@ export class AdminController {
     return createResponse({
       success: true,
       message: "Promociones obtenidas correctamente",
+      data,
+    });
+  }
+
+  @Get("notification-campaigns")
+  async getNotificationCampaigns(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 20;
+    const data = await this.notificationCampaignsService.listCampaigns(
+      page,
+      pageSize
+    );
+    return createResponse({
+      success: true,
+      message: "Campañas de notificaciones obtenidas correctamente",
+      data,
+    });
+  }
+
+  @Get("notification-campaigns/audience-stats")
+  async getNotificationCampaignAudienceStats() {
+    const data = await this.notificationCampaignsService.getAudienceStats();
+    return createResponse({
+      success: true,
+      message: "Estadísticas de audiencia obtenidas correctamente",
+      data,
+    });
+  }
+
+  @Post("notification-campaigns/send")
+  async sendNotificationCampaign(@Req() req: any, @Body() body: SendCampaignDto) {
+    const data = await this.notificationCampaignsService.sendCampaign(
+      req.user?.sub,
+      body.title,
+      body.body,
+      body.targetAudience
+    );
+    return createResponse({
+      success: true,
+      message: "Campaña de notificaciones enviada correctamente",
       data,
     });
   }

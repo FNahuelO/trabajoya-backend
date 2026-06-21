@@ -117,7 +117,7 @@ export class ExpoPushService {
       priority?: "default" | "normal" | "high";
       channelId?: string;
     }
-  ): Promise<void> {
+  ): Promise<{ tokensTargeted: number }> {
     // Validar tokens
     const validTokens = expoPushTokens.filter((token) =>
       this.isValidExpoPushToken(token)
@@ -125,7 +125,7 @@ export class ExpoPushService {
 
     if (validTokens.length === 0) {
       this.logger.warn("No valid Expo push tokens provided");
-      return;
+      return { tokensTargeted: 0 };
     }
 
     // Dividir en lotes si es necesario
@@ -138,6 +138,8 @@ export class ExpoPushService {
         this.logger.error("Error sending push notification batch:", error);
       }
     }
+
+    return { tokensTargeted: validTokens.length };
   }
 
   /**

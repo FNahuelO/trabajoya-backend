@@ -680,6 +680,35 @@ model PushToken {
   @@index([isActive])
 }
 
+enum NotificationCampaignTarget {
+  ALL
+  POSTULANTE
+  EMPRESA
+}
+
+enum NotificationCampaignStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model NotificationCampaign {
+  id             String                     @id @default(uuid())
+  title          String
+  body           String
+  targetAudience NotificationCampaignTarget @default(ALL)
+  status         NotificationCampaignStatus @default(PENDING)
+  sentByUserId   String?
+  tokensTargeted Int                        @default(0)
+  uniqueUsers    Int                        @default(0)
+  errorMessage   String?
+  createdAt      DateTime                   @default(now())
+  sentAt         DateTime?
+
+  @@index([createdAt])
+  @@index([status])
+}
+
 // Definición de promociones disponibles
 model Promotion {
   id          String    @id @default(uuid())
