@@ -693,6 +693,42 @@ enum NotificationCampaignStatus {
   FAILED
 }
 
+enum NotificationCampaignScheduleType {
+  ONCE
+  RECURRING
+}
+
+enum NotificationCampaignScheduleStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+model NotificationCampaignSchedule {
+  id              String                             @id @default(uuid())
+  title           String
+  body            String
+  targetAudience  NotificationCampaignTarget         @default(ALL)
+  targetUserIds   String[]                           @default([])
+  scheduleType    NotificationCampaignScheduleType
+  scheduledAt     DateTime?
+  recurrenceDays  Int[]                              @default([])
+  recurrenceTime  String?
+  timezone        String                             @default("America/Argentina/Buenos_Aires")
+  status          NotificationCampaignScheduleStatus @default(ACTIVE)
+  nextRunAt       DateTime?
+  lastRunAt       DateTime?
+  lastCampaignId  String?
+  maxRuns         Int?
+  runsCompleted   Int                                @default(0)
+  createdByUserId String?
+  createdAt       DateTime                           @default(now())
+  updatedAt       DateTime                           @updatedAt
+
+  @@index([status, nextRunAt])
+  @@index([createdAt])
+}
+
 model NotificationCampaign {
   id             String                     @id @default(uuid())
   title          String

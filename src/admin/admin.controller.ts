@@ -17,6 +17,11 @@ import { createResponse } from "../common/mapper/api-response.mapper";
 import { AdminService } from "./admin.service";
 import { NotificationCampaignsService } from "../notifications/notification-campaigns.service";
 import { SendCampaignDto } from "../notifications/dto/send-campaign.dto";
+import {
+  ScheduleCampaignDto,
+  UpdateCampaignScheduleDto,
+  UpdateCampaignScheduleStatusDto,
+} from "../notifications/dto/schedule-campaign.dto";
 
 @ApiTags("admin")
 @Controller("api/admin")
@@ -271,6 +276,79 @@ export class AdminController {
     return createResponse({
       success: true,
       message: "Campaña de notificaciones enviada correctamente",
+      data,
+    });
+  }
+
+  @Get("notification-campaigns/schedules")
+  async getNotificationCampaignSchedules(@Query() query: any) {
+    const page = parseInt(query.page) || 1;
+    const pageSize = parseInt(query.pageSize) || 20;
+    const data = await this.notificationCampaignsService.listSchedules(
+      page,
+      pageSize
+    );
+    return createResponse({
+      success: true,
+      message: "Programaciones de campañas obtenidas correctamente",
+      data,
+    });
+  }
+
+  @Post("notification-campaigns/schedule")
+  async scheduleNotificationCampaign(
+    @Req() req: any,
+    @Body() body: ScheduleCampaignDto
+  ) {
+    const data = await this.notificationCampaignsService.scheduleCampaign(
+      req.user?.sub,
+      body
+    );
+    return createResponse({
+      success: true,
+      message: "Campaña programada correctamente",
+      data,
+    });
+  }
+
+  @Patch("notification-campaigns/schedules/:id")
+  async updateNotificationCampaignSchedule(
+    @Param("id") id: string,
+    @Body() body: UpdateCampaignScheduleDto
+  ) {
+    const data = await this.notificationCampaignsService.updateSchedule(
+      id,
+      body
+    );
+    return createResponse({
+      success: true,
+      message: "Programación actualizada correctamente",
+      data,
+    });
+  }
+
+  @Patch("notification-campaigns/schedules/:id/status")
+  async updateNotificationCampaignScheduleStatus(
+    @Param("id") id: string,
+    @Body() body: UpdateCampaignScheduleStatusDto
+  ) {
+    const data = await this.notificationCampaignsService.updateScheduleStatus(
+      id,
+      body.status
+    );
+    return createResponse({
+      success: true,
+      message: "Estado de programación actualizado correctamente",
+      data,
+    });
+  }
+
+  @Delete("notification-campaigns/schedules/:id")
+  async deleteNotificationCampaignSchedule(@Param("id") id: string) {
+    const data = await this.notificationCampaignsService.deleteSchedule(id);
+    return createResponse({
+      success: true,
+      message: "Programación eliminada correctamente",
       data,
     });
   }

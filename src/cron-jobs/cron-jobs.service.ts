@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationCampaignsService } from '../notifications/notification-campaigns.service';
 
 @Injectable()
 export class CronJobsService {
   private readonly logger = new Logger(CronJobsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationCampaignsService: NotificationCampaignsService,
+  ) {}
 
   /**
    * Job que se ejecuta diariamente a las 2:00 AM
@@ -173,6 +177,28 @@ export class CronJobsService {
     } catch (error: any) {
       this.logger.error(
         `❌ Error al expirar entitlements y desactivar publicaciones: ${error?.message}`,
+        error?.stack,
+      );
+    }
+  }
+
+  /**
+   * Job que se ejecuta cada minuto
+   * Procesa campañas de notificaciones programadas o recurrentes
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async processScheduledNotificationCampaigns() {
+    try {
+      const result = await this.notificationCampaignsService.processDueSchedules();
+
+      if (result.processed > 0) {
+        this.logger.log(
+          `✅ ${result.processed} campaña(s) programada(s) procesada(s)`,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `❌ Error al procesar campañas programadas: ${error?.message}`,
         error?.stack,
       );
     }

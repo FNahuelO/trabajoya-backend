@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import {
+  NotificationCampaignScheduleStatus,
+  NotificationCampaignScheduleType,
   NotificationCampaignStatus,
   NotificationCampaignTarget,
   UserType,
@@ -12,6 +14,16 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { ExpoPushService } from "./expo-push.service";
 import { CampaignTargetAudience } from "./dto/send-campaign.dto";
+import {
+  CampaignScheduleType,
+  ScheduleCampaignDto,
+  UpdateCampaignScheduleDto,
+} from "./dto/schedule-campaign.dto";
+import {
+  computeNextRecurringRunAt,
+  DEFAULT_CAMPAIGN_TIMEZONE,
+  formatScheduleSummary,
+} from "./campaign-schedule.utils";
 
 type AudienceStats = {
   totalActiveTokens: number;
@@ -173,6 +185,364 @@ export class NotificationCampaignsService {
       tokensTargeted,
       users: previewUsers,
     };
+  }
+
+  async listSchedules(page: number, pageSize: number) {
+    const skip = (page - 1) * pageSize;
+
+    const [items, total] = await Promise.all([
+      this.prisma.notificationCampaignSchedule.findMany({
+        skip,
+        take: pageSize,
+        orderBy: [{ status: "asc" }, { nextRunAt: "asc" }, { createdAt: "desc" }],
+      }),
+      this.prisma.notificationCampaignSchedule.count(),
+    ]);
+
+    return {
+      items: items.map((schedule) => ({
+        ...schedule,
+        scheduleSummary: formatScheduleSummary(
+          schedule.scheduleType,
+          schedule.scheduledAt,
+          schedule.recurrenceDays,
+          schedule.recurrenceTime,
+          schedule.timezone,
+          schedule.maxRuns,
+          schedule.runsCompleted
+        ),
+      })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize) || 1,
+    };
+  }
+
+  private resolveSchedulePayload(
+    dto: ScheduleCampaignDto,
+    runsCompleted = 0
+  ) {
+    const normalizedUserIds = this.normalizeUserIds(dto.userIds);
+    const isSpecific =
+      dto.targetAudience === CampaignTargetAudience.SPECIFIC ||
+      normalizedUserIds.length > 0;
+
+    if (isSpecific && normalizedUserIds.length === 0) {
+      throw new BadRequestException(
+        "Debes seleccionar al menos un usuario para envíos específicos"
+      );
+    }
+
+    const timezone = dto.timezone?.trim() || DEFAULT_CAMPAIGN_TIMEZONE;
+    const nextRunAt = this.computeNextRunAtFromDto(dto, timezone);
+
+    if (
+      dto.scheduleType === CampaignScheduleType.RECURRING &&
+      dto.maxRuns != null &&
+      dto.maxRuns <= runsCompleted
+    ) {
+      throw new BadRequestException(
+        "El límite de repeticiones debe ser mayor a los envíos ya realizados"
+      );
+    }
+
+    return {
+      normalizedUserIds,
+      isSpecific,
+      timezone,
+      nextRunAt,
+      maxRuns:
+        dto.scheduleType === CampaignScheduleType.RECURRING
+          ? dto.maxRuns ?? null
+          : null,
+    };
+  }
+
+  private computeNextRunAtFromDto(
+    dto: ScheduleCampaignDto,
+    timezone: string,
+    after?: Date
+  ): Date {
+    if (dto.scheduleType === CampaignScheduleType.ONCE) {
+      if (!dto.scheduledAt) {
+        throw new BadRequestException(
+          "scheduledAt es requerido para campañas programadas únicas"
+        );
+      }
+
+      const nextRunAt = new Date(dto.scheduledAt);
+      if (Number.isNaN(nextRunAt.getTime())) {
+        throw new BadRequestException("Fecha programada inválida");
+      }
+      if (nextRunAt <= new Date()) {
+        throw new BadRequestException(
+          "La fecha programada debe ser posterior al momento actual"
+        );
+      }
+
+      return nextRunAt;
+    }
+
+    if (!dto.recurrenceDays?.length || !dto.recurrenceTime) {
+      throw new BadRequestException(
+        "recurrenceDays y recurrenceTime son requeridos para campañas recurrentes"
+      );
+    }
+
+    return computeNextRecurringRunAt(
+      dto.recurrenceDays,
+      dto.recurrenceTime,
+      timezone,
+      after
+    );
+  }
+
+  async scheduleCampaign(adminUserId: string, dto: ScheduleCampaignDto) {
+    const payload = this.resolveSchedulePayload(dto);
+
+    return this.prisma.notificationCampaignSchedule.create({
+      data: {
+        title: dto.title,
+        body: dto.body,
+        targetAudience: payload.isSpecific
+          ? NotificationCampaignTarget.SPECIFIC
+          : this.mapTargetAudience(dto.targetAudience),
+        targetUserIds: payload.isSpecific ? payload.normalizedUserIds : [],
+        scheduleType:
+          dto.scheduleType === CampaignScheduleType.ONCE
+            ? NotificationCampaignScheduleType.ONCE
+            : NotificationCampaignScheduleType.RECURRING,
+        scheduledAt:
+          dto.scheduleType === CampaignScheduleType.ONCE
+            ? payload.nextRunAt
+            : null,
+        recurrenceDays:
+          dto.scheduleType === CampaignScheduleType.RECURRING
+            ? dto.recurrenceDays || []
+            : [],
+        recurrenceTime:
+          dto.scheduleType === CampaignScheduleType.RECURRING
+            ? dto.recurrenceTime
+            : null,
+        timezone: payload.timezone,
+        maxRuns: payload.maxRuns,
+        status: NotificationCampaignScheduleStatus.ACTIVE,
+        nextRunAt: payload.nextRunAt,
+        createdByUserId: adminUserId,
+      },
+    });
+  }
+
+  async updateSchedule(scheduleId: string, dto: UpdateCampaignScheduleDto) {
+    const schedule = await this.prisma.notificationCampaignSchedule.findUnique({
+      where: { id: scheduleId },
+    });
+
+    if (!schedule) {
+      throw new NotFoundException("Programación no encontrada");
+    }
+
+    if (schedule.status === NotificationCampaignScheduleStatus.COMPLETED) {
+      throw new BadRequestException(
+        "No se puede editar una programación completada"
+      );
+    }
+
+    const payload = this.resolveSchedulePayload(dto, schedule.runsCompleted);
+
+    if (schedule.runsCompleted > 0 && dto.scheduleType === CampaignScheduleType.ONCE) {
+      throw new BadRequestException(
+        "No se puede cambiar a envío único después de haber ejecutado envíos"
+      );
+    }
+
+    return this.prisma.notificationCampaignSchedule.update({
+      where: { id: scheduleId },
+      data: {
+        title: dto.title,
+        body: dto.body,
+        targetAudience: payload.isSpecific
+          ? NotificationCampaignTarget.SPECIFIC
+          : this.mapTargetAudience(dto.targetAudience),
+        targetUserIds: payload.isSpecific ? payload.normalizedUserIds : [],
+        scheduleType:
+          dto.scheduleType === CampaignScheduleType.ONCE
+            ? NotificationCampaignScheduleType.ONCE
+            : NotificationCampaignScheduleType.RECURRING,
+        scheduledAt:
+          dto.scheduleType === CampaignScheduleType.ONCE
+            ? payload.nextRunAt
+            : null,
+        recurrenceDays:
+          dto.scheduleType === CampaignScheduleType.RECURRING
+            ? dto.recurrenceDays || []
+            : [],
+        recurrenceTime:
+          dto.scheduleType === CampaignScheduleType.RECURRING
+            ? dto.recurrenceTime
+            : null,
+        timezone: payload.timezone,
+        maxRuns: payload.maxRuns,
+        nextRunAt: payload.nextRunAt,
+        status: NotificationCampaignScheduleStatus.ACTIVE,
+      },
+    });
+  }
+
+  async updateScheduleStatus(
+    scheduleId: string,
+    status: "ACTIVE" | "PAUSED"
+  ) {
+    const schedule = await this.prisma.notificationCampaignSchedule.findUnique({
+      where: { id: scheduleId },
+    });
+
+    if (!schedule) {
+      throw new NotFoundException("Programación no encontrada");
+    }
+
+    if (schedule.status === NotificationCampaignScheduleStatus.COMPLETED) {
+      throw new BadRequestException(
+        "No se puede modificar una programación completada"
+      );
+    }
+
+    if (status === "ACTIVE") {
+      if (
+        schedule.maxRuns != null &&
+        schedule.runsCompleted >= schedule.maxRuns
+      ) {
+        throw new BadRequestException(
+          "La programación ya alcanzó el límite de repeticiones"
+        );
+      }
+
+      if (schedule.scheduleType === NotificationCampaignScheduleType.RECURRING) {
+        const nextRunAt = computeNextRecurringRunAt(
+          schedule.recurrenceDays,
+          schedule.recurrenceTime || "00:00",
+          schedule.timezone
+        );
+
+        return this.prisma.notificationCampaignSchedule.update({
+          where: { id: scheduleId },
+          data: {
+            status: NotificationCampaignScheduleStatus.ACTIVE,
+            nextRunAt,
+          },
+        });
+      }
+    }
+
+    return this.prisma.notificationCampaignSchedule.update({
+      where: { id: scheduleId },
+      data: {
+        status:
+          status === "ACTIVE"
+            ? NotificationCampaignScheduleStatus.ACTIVE
+            : NotificationCampaignScheduleStatus.PAUSED,
+      },
+    });
+  }
+
+  async deleteSchedule(scheduleId: string) {
+    const schedule = await this.prisma.notificationCampaignSchedule.findUnique({
+      where: { id: scheduleId },
+    });
+
+    if (!schedule) {
+      throw new NotFoundException("Programación no encontrada");
+    }
+
+    await this.prisma.notificationCampaignSchedule.delete({
+      where: { id: scheduleId },
+    });
+
+    return { deleted: true };
+  }
+
+  async processDueSchedules() {
+    const now = new Date();
+    const dueSchedules = await this.prisma.notificationCampaignSchedule.findMany({
+      where: {
+        status: NotificationCampaignScheduleStatus.ACTIVE,
+        nextRunAt: { lte: now },
+      },
+      orderBy: { nextRunAt: "asc" },
+      take: 20,
+    });
+
+    if (dueSchedules.length === 0) {
+      return { processed: 0 };
+    }
+
+    let processed = 0;
+
+    for (const schedule of dueSchedules) {
+      try {
+        const targetAudience = this.mapScheduleTargetAudience(schedule);
+        const campaign = await this.sendCampaign(
+          schedule.createdByUserId || "system",
+          schedule.title,
+          schedule.body,
+          targetAudience,
+          schedule.targetUserIds
+        );
+
+        const updateData: {
+          lastRunAt: Date;
+          lastCampaignId: string;
+          runsCompleted: number;
+          status?: NotificationCampaignScheduleStatus;
+          nextRunAt?: Date | null;
+        } = {
+          lastRunAt: now,
+          lastCampaignId: campaign.id,
+          runsCompleted: schedule.runsCompleted + 1,
+        };
+
+        const reachedLimit =
+          schedule.scheduleType === NotificationCampaignScheduleType.ONCE ||
+          (schedule.maxRuns != null &&
+            updateData.runsCompleted >= schedule.maxRuns);
+
+        if (reachedLimit) {
+          updateData.status = NotificationCampaignScheduleStatus.COMPLETED;
+          updateData.nextRunAt = null;
+        } else {
+          updateData.nextRunAt = computeNextRecurringRunAt(
+            schedule.recurrenceDays,
+            schedule.recurrenceTime || "00:00",
+            schedule.timezone,
+            now
+          );
+        }
+
+        await this.prisma.notificationCampaignSchedule.update({
+          where: { id: schedule.id },
+          data: updateData,
+        });
+
+        processed += 1;
+        this.logger.log(
+          `[NotificationCampaignsService] Schedule ${schedule.id} executed (campaign ${campaign.id})`
+        );
+      } catch (error) {
+        this.logger.error(
+          `[NotificationCampaignsService] Schedule ${schedule.id} failed:`,
+          error
+        );
+      }
+    }
+
+    return { processed };
+  }
+
+  private mapScheduleTargetAudience(schedule: {
+    targetAudience: NotificationCampaignTarget;
+  }): CampaignTargetAudience {
+    return schedule.targetAudience as CampaignTargetAudience;
   }
 
   async listCampaigns(page: number, pageSize: number) {
