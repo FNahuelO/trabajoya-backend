@@ -244,13 +244,29 @@ export class AdminController {
     });
   }
 
+  @Get("notification-campaigns/preview-reach")
+  async previewNotificationCampaignReach(@Query("userIds") userIds?: string) {
+    const parsedUserIds = (userIds || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const data =
+      await this.notificationCampaignsService.getReachForUsers(parsedUserIds);
+    return createResponse({
+      success: true,
+      message: "Alcance estimado obtenido correctamente",
+      data,
+    });
+  }
+
   @Post("notification-campaigns/send")
   async sendNotificationCampaign(@Req() req: any, @Body() body: SendCampaignDto) {
     const data = await this.notificationCampaignsService.sendCampaign(
       req.user?.sub,
       body.title,
       body.body,
-      body.targetAudience
+      body.targetAudience,
+      body.userIds
     );
     return createResponse({
       success: true,

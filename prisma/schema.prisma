@@ -684,6 +684,7 @@ enum NotificationCampaignTarget {
   ALL
   POSTULANTE
   EMPRESA
+  SPECIFIC
 }
 
 enum NotificationCampaignStatus {
@@ -697,6 +698,7 @@ model NotificationCampaign {
   title          String
   body           String
   targetAudience NotificationCampaignTarget @default(ALL)
+  targetUserIds  String[]                   @default([])
   status         NotificationCampaignStatus @default(PENDING)
   sentByUserId   String?
   tokensTargeted Int                        @default(0)

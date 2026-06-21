@@ -1,10 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsEnum, IsNotEmpty, IsString, MaxLength } from "class-validator";
+import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsString,
+  IsUUID,
+  MaxLength,
+  ValidateIf,
+} from "class-validator";
 
 export enum CampaignTargetAudience {
   ALL = "ALL",
   POSTULANTE = "POSTULANTE",
   EMPRESA = "EMPRESA",
+  SPECIFIC = "SPECIFIC",
 }
 
 export class SendCampaignDto {
@@ -28,4 +39,15 @@ export class SendCampaignDto {
   })
   @IsEnum(CampaignTargetAudience)
   targetAudience: CampaignTargetAudience = CampaignTargetAudience.ALL;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: "IDs de usuarios destinatarios (requerido si targetAudience es SPECIFIC)",
+  })
+  @ValidateIf((dto) => dto.targetAudience === CampaignTargetAudience.SPECIFIC)
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(50)
+  @IsUUID("4", { each: true })
+  userIds?: string[];
 }
