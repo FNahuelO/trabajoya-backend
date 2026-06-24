@@ -166,19 +166,10 @@ export class MercadoPagoService {
   }
 
   private buildTestPaymentMethods() {
-    // En sandbox, pagar con "dinero en cuenta" dispara invalid_users_types_error
-    // aunque comprador y vendedor sean de prueba. Forzar solo tarjetas.
+    // MP no permite excluir account_money (la API responde "account_money cannot be excluded").
+    // En sandbox, el comprador debe elegir tarjeta de prueba y no "dinero en cuenta".
     return {
-      excluded_payment_types: [
-        { id: "account_money" },
-        { id: "ticket" },
-        { id: "atm" },
-      ],
-      excluded_payment_methods: [
-        { id: "account_money_black" },
-        { id: "account_money_row" },
-        { id: "account_money" },
-      ],
+      excluded_payment_types: [{ id: "ticket" }, { id: "atm" }],
       installments: 1,
       default_installments: 1,
     };
