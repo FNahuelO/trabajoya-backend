@@ -12,12 +12,15 @@ import {
 } from "@nestjs/common";
 import { PaymentsService } from "./payments.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
+import { CreateMercadoPagoPreferenceDto } from "./dto/create-mercadopago-preference.dto";
 import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { PaymentMethod, PaymentStatus, SubscriptionPlan } from "@prisma/client";
+import { JobPaymentCompletionService } from "./job-payment-completion.service";
+import { MercadoPagoCheckoutService } from "./mercadopago-checkout.service";
 
 @ApiTags("payments")
 @Controller("api/payments")
@@ -25,7 +28,9 @@ export class PaymentsController {
   constructor(
     private paymentsService: PaymentsService,
     private subscriptionsService: SubscriptionsService,
-    private prisma: PrismaService
+    private prisma: PrismaService,
+    private jobPaymentCompletion: JobPaymentCompletionService,
+    private mercadoPagoCheckout: MercadoPagoCheckoutService
   ) { }
 
   private validateIpnSecretOrThrow(secretFromHeader?: string) {
@@ -136,182 +141,93 @@ export class PaymentsController {
     return null;
   }
 
-  private async resolvePlanForIpn(job: any, orderId: string | null) {
-    const reservedEntitlement = await this.prisma.jobPostEntitlement.findUnique({
-      where: { jobPostId: job.id },
-    });
-
-    if (reservedEntitlement?.planKey) {
-      const reservedPlan = await this.prisma.plan.findFirst({
-        where: {
-          code: reservedEntitlement.planKey,
-          isActive: true,
-        },
-      });
-      if (reservedPlan) {
-        return { plan: reservedPlan, reservedEntitlement };
-      }
-    }
-
-    if (orderId) {
-      const tx = await this.prisma.paymentTransaction.findUnique({
-        where: { orderId },
-      });
-      if (tx?.planId) {
-        const byPlanId = await this.prisma.plan.findFirst({
-          where: {
-            id: tx.planId,
-            isActive: true,
-          },
-        });
-        if (byPlanId) {
-          return { plan: byPlanId, reservedEntitlement };
-        }
-      }
-    }
-
-    const activePlans = await this.prisma.plan.findMany({
-      where: { isActive: true },
-    });
-    const amount = Number(job.paymentAmount);
-    const currency = String(job.paymentCurrency || "USD").toUpperCase();
-    if (Number.isFinite(amount) && amount > 0) {
-      const byAmount =
-        activePlans.find((item: any) => {
-          const expected =
-            currency === "ARS"
-              ? Number((item as any).priceArs ?? 0)
-              : Number((item as any).priceUsd ?? item.price);
-          return Number.isFinite(expected) && Math.abs(expected - amount) < 0.01;
-        }) || null;
-      if (byAmount) {
-        return { plan: byAmount, reservedEntitlement };
-      }
-    }
-
-    return { plan: null, reservedEntitlement };
-  }
-
   private async markJobPaymentCompletedFromIpn(
     orderId: string | null,
     jobId: string | null,
     payload: any
   ) {
-    const whereCandidates: any[] = [];
-    if (orderId) whereCandidates.push({ paymentOrderId: orderId });
-    if (jobId) whereCandidates.push({ id: jobId });
-
-    if (!whereCandidates.length) {
-      return { updatedJobs: 0, activatedEntitlements: 0, jobId: null };
-    }
-
-    const job = await this.prisma.job.findFirst({
-      where: {
-        OR: whereCandidates,
-      },
+    return this.jobPaymentCompletion.completeJobPayment(orderId, jobId, payload, {
+      activationSource: "ipn",
     });
-
-    if (!job) {
-      return { updatedJobs: 0, activatedEntitlements: 0, jobId: null };
-    }
-
-    const now = new Date();
-
-    await this.prisma.job.update({
-      where: { id: job.id },
-      data: {
-        isPaid: true,
-        paymentStatus: "COMPLETED",
-        paidAt: now,
-        // En flujo COIN, al confirmar pago la publicación debe quedar visible.
-        moderationStatus: "APPROVED" as any,
-        status: "active",
-      },
-    });
-
-    const { plan, reservedEntitlement } = await this.resolvePlanForIpn(job, orderId);
-    if (!plan || !reservedEntitlement) {
-      return { updatedJobs: 1, activatedEntitlements: 0, jobId: job.id };
-    }
-
-    const expiresAt = new Date(now);
-    expiresAt.setDate(expiresAt.getDate() + Number(plan.durationDays || 30));
-
-    const currentRawPayload =
-      reservedEntitlement.rawPayload && typeof reservedEntitlement.rawPayload === "object"
-        ? (reservedEntitlement.rawPayload as Record<string, any>)
-        : {};
-
-    await this.prisma.jobPostEntitlement.update({
-      where: { id: reservedEntitlement.id },
-      data: {
-        source: "MANUAL",
-        planKey: plan.code,
-        expiresAt,
-        status: "ACTIVE",
-        maxEdits: plan.allowedModifications || 0,
-        editsUsed: 0,
-        allowCategoryChange: plan.canModifyCategory || false,
-        maxCategoryChanges: plan.categoryModifications || 0,
-        categoryChangesUsed: 0,
-        rawPayload: {
-          ...currentRawPayload,
-          activatedFromPayment: true,
-          activatedFromIpn: true,
-          orderId: orderId || null,
-          ipnPayload: payload,
-        },
-      },
-    });
-
-    return { updatedJobs: 1, activatedEntitlements: 1, jobId: job.id };
   }
 
   private async markJobPaymentFailedFromIpn(orderId: string | null, jobId: string | null) {
-    const whereCandidates: any[] = [];
-    if (orderId) whereCandidates.push({ paymentOrderId: orderId });
-    if (jobId) whereCandidates.push({ id: jobId });
+    return this.jobPaymentCompletion.failJobPayment(orderId, jobId);
+  }
 
-    if (!whereCandidates.length) {
-      return { updatedJobs: 0, revokedEntitlements: 0, jobId: null };
-    }
+  /**
+   * Configuración pública de proveedores de pago
+   */
+  @Get("config")
+  async getPaymentConfig() {
+    return createResponse({
+      success: true,
+      message: "Configuración de pagos",
+      data: this.mercadoPagoCheckout.getPaymentConfig(),
+    });
+  }
 
-    const job = await this.prisma.job.findFirst({
-      where: {
-        OR: whereCandidates,
-      },
+  /**
+   * Crear preferencia de Mercado Pago para publicación de empleo
+   */
+  @Post("mercadopago/create-preference")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async createMercadoPagoPreference(
+    @Body() body: CreateMercadoPagoPreferenceDto,
+    @Req() req: any
+  ) {
+    const preference = await this.mercadoPagoCheckout.createJobPreference(req.user?.sub, {
+      jobId: body.jobId,
+      planId: body.planId,
+      platform: body.platform || "mobile",
+      fromApp: body.fromApp === true,
     });
 
-    if (!job) {
-      return { updatedJobs: 0, revokedEntitlements: 0, jobId: null };
-    }
-
-    await this.prisma.job.update({
-      where: { id: job.id },
-      data: {
-        isPaid: false,
-        paymentStatus: "FAILED",
-        moderationStatus: "PENDING_PAYMENT" as any,
-        status: "inactive",
-      },
+    return createResponse({
+      success: true,
+      message: "Preferencia de Mercado Pago creada",
+      data: preference,
     });
+  }
 
-    const reservedEntitlement = await this.prisma.jobPostEntitlement.findUnique({
-      where: { jobPostId: job.id },
+  /**
+   * Estado de una orden Mercado Pago (polling desde cliente)
+   */
+  @Get("mercadopago/status/:orderId")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getMercadoPagoOrderStatus(@Param("orderId") orderId: string, @Req() req: any) {
+    const status = await this.mercadoPagoCheckout.getOrderStatus(req.user?.sub, orderId);
+
+    return createResponse({
+      success: true,
+      message: "Estado de pago obtenido",
+      data: status,
     });
+  }
 
-    if (!reservedEntitlement) {
-      return { updatedJobs: 1, revokedEntitlements: 0, jobId: job.id };
-    }
+  /**
+   * Webhook de Mercado Pago (sin autenticación JWT)
+   */
+  @Post("mercadopago/webhook")
+  @HttpCode(200)
+  async handleMercadoPagoWebhook(@Body() body: any, @Req() req: any) {
+    const queryPaymentId = req?.query?.["data.id"] || req?.query?.id;
+    const payload =
+      body && Object.keys(body).length > 0
+        ? body
+        : queryPaymentId
+          ? { type: "payment", data: { id: queryPaymentId } }
+          : body;
 
-    await this.prisma.jobPostEntitlement.update({
-      where: { id: reservedEntitlement.id },
-      data: {
-        status: "REVOKED",
-      },
+    const result = await this.mercadoPagoCheckout.handleWebhookNotification(payload);
+
+    return createResponse({
+      success: true,
+      message: "Webhook Mercado Pago procesado",
+      data: result,
     });
-
-    return { updatedJobs: 1, revokedEntitlements: 1, jobId: job.id };
   }
 
   /**

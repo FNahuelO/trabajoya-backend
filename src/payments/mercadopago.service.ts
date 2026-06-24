@@ -42,21 +42,62 @@ export class MercadoPagoService {
     }
   }
 
+  private buildBackUrls(
+    jobId: string,
+    orderId: string,
+    platform: "mobile" | "web",
+    fromApp?: boolean
+  ): { success: string; failure: string; pending: string } {
+    const queryParts = [
+      `jobId=${encodeURIComponent(jobId)}`,
+      `orderId=${encodeURIComponent(orderId)}`,
+    ];
+    if (fromApp) {
+      queryParts.push("fromApp=1");
+    }
+    const query = queryParts.join("&");
+
+    if (platform === "web") {
+      const webBase = (
+        this.configService.get<string>("WEB_EMPRESAS_URL") ||
+        this.configService.get<string>("FRONTEND_URL") ||
+        ""
+      ).replace(/\/$/, "");
+      const prefix = webBase ? `${webBase}/payment` : "/payment";
+      return {
+        success: `${prefix}/success?${query}`,
+        failure: `${prefix}/failure?${query}`,
+        pending: `${prefix}/pending?${query}`,
+      };
+    }
+
+    const appScheme = this.configService.get<string>("APP_DEEP_LINK_SCHEME") || "trabajoya";
+    return {
+      success: `${appScheme}://payment/success?${query}`,
+      failure: `${appScheme}://payment/failure?${query}`,
+      pending: `${appScheme}://payment/pending?${query}`,
+    };
+  }
+
   async createPreference(params: {
     amount: number;
     title: string;
     jobId: string;
     orderId?: string;
     planId?: string | null;
+    userId?: string;
+    platform?: "mobile" | "web";
+    fromApp?: boolean;
   }): Promise<MercadoPagoPreferenceResult> {
     this.ensureConfigured();
 
     const orderId = params.orderId || randomUUID();
+    const platform = params.platform || "mobile";
     const backendUrl =
       this.configService.get<string>("BACKEND_URL") ||
       this.configService.get<string>("API_URL") ||
       "";
-    const appScheme = this.configService.get<string>("APP_DEEP_LINK_SCHEME") || "trabajoya";
+    const backUrls = this.buildBackUrls(params.jobId, orderId, platform, params.fromApp);
 
     const notificationUrl = backendUrl
       ? `${backendUrl.replace(/\/$/, "")}/api/payments/mercadopago/webhook`
@@ -80,13 +121,10 @@ export class MercadoPagoService {
           jobId: params.jobId,
           orderId,
           planId: params.planId || null,
+          userId: params.userId || null,
           concept,
         },
-        back_urls: {
-          success: `${appScheme}://payment/success?jobId=${params.jobId}&orderId=${orderId}`,
-          failure: `${appScheme}://payment/failure?jobId=${params.jobId}&orderId=${orderId}`,
-          pending: `${appScheme}://payment/pending?jobId=${params.jobId}&orderId=${orderId}`,
-        },
+        back_urls: backUrls,
         auto_return: "approved",
         ...(notificationUrl ? { notification_url: notificationUrl } : {}),
       },

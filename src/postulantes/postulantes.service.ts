@@ -11,11 +11,13 @@ import { GCSUploadService } from "../upload/gcs-upload.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UpdateNotificationPreferencesDto } from "./dto/update-notification-preferences.dto";
 import {
+  formatBirthDateFromDb,
   normalizeBirthDate,
   normalizeDocumentNumber,
   normalizeDocumentType,
   normalizeGender,
   normalizeMaritalStatus,
+  parseBirthDateToUtcDate,
   splitFullName,
 } from "../cv/personal-data-normalizer";
 // import { I18nService } from "nestjs-i18n"; // Temporalmente deshabilitado
@@ -53,7 +55,7 @@ export class PostulantesService {
       depto: dto.depto || null,
       province: dto.province || null,
       postalCode: dto.postalCode || null,
-      birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
+      birthDate: parseBirthDateToUtcDate(dto.birthDate),
       gender: dto.gender || null,
       nationality: dto.nationality || null,
       maritalStatus: dto.maritalStatus || null,
@@ -189,7 +191,9 @@ export class PostulantesService {
       experiences: (profile as any).experiences || [],
       education: (profile as any).education || [],
       // Personal data
-      birthDate: profile.birthDate?.toISOString(),
+      birthDate: profile.birthDate
+        ? formatBirthDateFromDb(profile.birthDate)
+        : undefined,
       gender: profile.gender,
       nationality: profile.nationality,
       maritalStatus: profile.maritalStatus,
@@ -348,7 +352,7 @@ export class PostulantesService {
       if (dto[field] !== undefined) {
         // Convertir birthDate a Date si es necesario
         if (field === "birthDate" && dto[field]) {
-          updateData[field] = new Date(dto[field]);
+          updateData[field] = parseBirthDateToUtcDate(dto[field]);
         } else {
           updateData[field] = dto[field];
         }
@@ -919,7 +923,7 @@ export class PostulantesService {
 
     const birthDate = normalizeBirthDate(extractedData.birthDate);
     if (birthDate && !profile.birthDate) {
-      updateData.birthDate = new Date(birthDate);
+      updateData.birthDate = parseBirthDateToUtcDate(birthDate);
     }
 
     const gender = normalizeGender(extractedData.gender);

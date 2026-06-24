@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import * as bcrypt from "bcryptjs";
@@ -16,6 +17,11 @@ import { MailService } from "../mail/mail.service";
 import { RegisterEmpresaDto } from "./dto/register-empresa.dto";
 import { TermsService } from "../terms/terms.service";
 import { TermsType } from "@prisma/client";
+import {
+  generateWebHandoffCode,
+  hashWebHandoffCode,
+  sanitizeWebHandoffReturnPath,
+} from "./web-handoff.util";
 
 @Injectable()
 export class AuthService {
@@ -1914,6 +1920,118 @@ export class AuthService {
       isVerified: user.isVerified,
       hasPassword,
       authProvider,
+    };
+  }
+
+  /** Código de un solo uso para abrir el portal web con la sesión de la app (pago externo). */
+  async createWebHandoff(userId: string, returnPath: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, userType: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        await this.getTranslation("users.userNotFound", "Usuario no encontrado")
+      );
+    }
+
+    if (user.userType !== "EMPRESA") {
+      throw new ForbiddenException(
+        await this.getTranslation(
+          "auth.unauthorizedSourceWebEmpresas",
+          "Acceso denegado. Solo empresas pueden acceder a este portal"
+        )
+      );
+    }
+
+    const safeReturnPath = sanitizeWebHandoffReturnPath(returnPath);
+    const code = generateWebHandoffCode();
+    const codeHash = hashWebHandoffCode(code);
+    const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
+
+    await this.prisma.webAuthHandoff.deleteMany({
+      where: {
+        OR: [{ expiresAt: { lt: new Date() } }, { usedAt: { not: null } }],
+      },
+    });
+
+    await this.prisma.webAuthHandoff.create({
+      data: {
+        userId,
+        codeHash,
+        returnPath: safeReturnPath,
+        expiresAt,
+      },
+    });
+
+    return {
+      code,
+      expiresAt: expiresAt.toISOString(),
+      returnPath: safeReturnPath,
+    };
+  }
+
+  /** Intercambia un código de handoff por tokens de sesión web. */
+  async exchangeWebHandoff(code: string) {
+    const trimmedCode = code?.trim();
+    if (!trimmedCode) {
+      throw new BadRequestException("Código de handoff requerido");
+    }
+
+    const codeHash = hashWebHandoffCode(trimmedCode);
+    const handoff = await this.prisma.webAuthHandoff.findUnique({
+      where: { codeHash },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            userType: true,
+            isVerified: true,
+          },
+        },
+      },
+    });
+
+    if (!handoff || handoff.usedAt) {
+      throw new UnauthorizedException("Código de handoff inválido o ya utilizado");
+    }
+
+    if (handoff.expiresAt < new Date()) {
+      throw new UnauthorizedException("El código de handoff expiró. Volvé a la app e intentá de nuevo.");
+    }
+
+    if (handoff.user.userType !== "EMPRESA") {
+      throw new ForbiddenException("Solo empresas pueden usar este flujo");
+    }
+
+    if (!handoff.user.isVerified) {
+      throw new ForbiddenException(
+        await this.getTranslation(
+          "auth.emailNotVerified",
+          "Debés verificar tu email antes de continuar"
+        )
+      );
+    }
+
+    await this.prisma.webAuthHandoff.update({
+      where: { id: handoff.id },
+      data: { usedAt: new Date() },
+    });
+
+    const tokens = await this.issueTokens(handoff.userId);
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      returnPath: handoff.returnPath,
+      user: {
+        id: handoff.user.id,
+        email: handoff.user.email,
+        tipo: handoff.user.userType.toLowerCase(),
+        verificado: handoff.user.isVerified,
+      },
     };
   }
 }

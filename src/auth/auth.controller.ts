@@ -9,6 +9,8 @@ import { SetPasswordDto } from "./dto/set-password.dto";
 import { ResendVerificationDto } from "./dto/resend-verification.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
+import { CreateWebHandoffDto } from "./dto/create-web-handoff.dto";
+import { ExchangeWebHandoffDto } from "./dto/exchange-web-handoff.dto";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { Public } from "../common/decorators/public.decorator";
 import { createResponse } from "../common/mapper/api-response.mapper";
@@ -147,6 +149,27 @@ export class AuthController {
         dto.password,
         dto.passwordConfirm
       ),
+    });
+  }
+
+  @Post("web-handoff")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async createWebHandoff(@Req() req: any, @Body() dto: CreateWebHandoffDto) {
+    return createResponse({
+      success: true,
+      message: "Código de acceso web generado",
+      data: await this.service.createWebHandoff(req.user?.sub, dto.returnPath),
+    });
+  }
+
+  @Public()
+  @Post("web-handoff/exchange")
+  async exchangeWebHandoff(@Body() dto: ExchangeWebHandoffDto) {
+    return createResponse({
+      success: true,
+      message: "Sesión web iniciada",
+      data: await this.service.exchangeWebHandoff(dto.code),
     });
   }
 }
