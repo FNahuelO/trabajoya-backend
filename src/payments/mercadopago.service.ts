@@ -267,4 +267,31 @@ export class MercadoPagoService {
     this.ensureConfigured();
     return this.paymentApi!.get({ id: paymentId });
   }
+
+  async searchPaymentsByExternalReference(externalReference: string) {
+    this.ensureConfigured();
+    const accessToken = this.configService.get<string>("MERCADOPAGO_ACCESS_TOKEN")?.trim();
+    if (!accessToken) {
+      return [];
+    }
+
+    const url = new URL("https://api.mercadopago.com/v1/payments/search");
+    url.searchParams.set("external_reference", externalReference);
+    url.searchParams.set("sort", "date_created");
+    url.searchParams.set("criteria", "desc");
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      this.logger.warn(
+        `MP payments/search falló external_reference=${externalReference} status=${response.status}`
+      );
+      return [];
+    }
+
+    const payload = (await response.json()) as { results?: Array<{ id?: number | string; status?: string }> };
+    return payload.results ?? [];
+  }
 }

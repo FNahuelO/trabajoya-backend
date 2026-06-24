@@ -235,12 +235,25 @@ export class MercadoPagoCheckoutService {
   }
 
   async getOrderStatus(userId: string, orderId: string) {
-    const transaction = await this.prisma.paymentTransaction.findUnique({
+    let transaction = await this.prisma.paymentTransaction.findUnique({
       where: { orderId },
     });
 
     if (!transaction || transaction.userId !== userId) {
       throw new NotFoundException("Orden de pago no encontrada");
+    }
+
+    if (
+      transaction.status === PaymentStatus.PENDING &&
+      transaction.paymentMethod === PaymentMethod.MERCADOPAGO
+    ) {
+      await this.syncPendingMercadoPagoOrder(orderId);
+      transaction = await this.prisma.paymentTransaction.findUnique({
+        where: { orderId },
+      });
+      if (!transaction || transaction.userId !== userId) {
+        throw new NotFoundException("Orden de pago no encontrada");
+      }
     }
 
     const job = await this.prisma.job.findFirst({
@@ -262,6 +275,23 @@ export class MercadoPagoCheckoutService {
       currency: transaction.currency,
       job,
     };
+  }
+
+  private async syncPendingMercadoPagoOrder(orderId: string) {
+    try {
+      const payments = await this.mercadoPagoService.searchPaymentsByExternalReference(orderId);
+      const approved = payments.find((payment) => String(payment.status || "").toLowerCase() === "approved");
+      if (!approved?.id) {
+        return;
+      }
+
+      await this.handleWebhookNotification({
+        type: "payment",
+        data: { id: approved.id },
+      });
+    } catch (error) {
+      this.logger.warn(`No se pudo sincronizar orden MP pendiente orderId=${orderId}`, error);
+    }
   }
 
   async handleWebhookNotification(body: {
