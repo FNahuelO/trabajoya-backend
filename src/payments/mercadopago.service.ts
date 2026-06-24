@@ -6,8 +6,10 @@ import { randomUUID } from "crypto";
 export interface MercadoPagoPreferenceResult {
   orderId: string;
   preferenceId: string;
+  /** URL de checkout a abrir (sandbox o producción según el token) */
   initPoint: string;
   sandboxInitPoint?: string;
+  testMode: boolean;
   amount: number;
   currency: string;
 }
@@ -18,9 +20,12 @@ export class MercadoPagoService {
   private readonly client: MercadoPagoConfig | null;
   private readonly preferenceApi: Preference | null;
   private readonly paymentApi: Payment | null;
+  private readonly testMode: boolean;
 
   constructor(private readonly configService: ConfigService) {
     const accessToken = this.configService.get<string>("MERCADOPAGO_ACCESS_TOKEN");
+    this.testMode = accessToken ? MercadoPagoService.isTestAccessToken(accessToken) : false;
+
     if (!accessToken) {
       this.logger.warn("MERCADOPAGO_ACCESS_TOKEN no configurado");
       this.client = null;
@@ -29,9 +34,53 @@ export class MercadoPagoService {
       return;
     }
 
+    if (this.testMode) {
+      this.logger.log("Mercado Pago configurado en modo prueba (TEST access token)");
+    }
+
     this.client = new MercadoPagoConfig({ accessToken });
     this.preferenceApi = new Preference(this.client);
     this.paymentApi = new Payment(this.client);
+  }
+
+  isTestMode(): boolean {
+    return this.testMode;
+  }
+
+  private static isTestAccessToken(token: string): boolean {
+    return token.trim().startsWith("TEST-");
+  }
+
+  private static checkoutHost(url: string | undefined): string | null {
+    if (!url) return null;
+    try {
+      return new URL(url).host;
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveCheckoutUrl(
+    productionInitPoint: string | undefined,
+    sandboxInitPoint: string | undefined
+  ): string {
+    if (this.testMode) {
+      if (sandboxInitPoint) {
+        return sandboxInitPoint;
+      }
+      if (productionInitPoint?.includes("sandbox.")) {
+        return productionInitPoint;
+      }
+      this.logger.warn(
+        "Token TEST sin sandbox_init_point de MP; usando init_point (puede mezclar entornos)"
+      );
+    }
+
+    if (!productionInitPoint) {
+      throw new Error("Mercado Pago no devolvió URL de checkout");
+    }
+
+    return productionInitPoint;
   }
 
   private ensureConfigured() {
@@ -130,16 +179,35 @@ export class MercadoPagoService {
       },
     });
 
-    const initPoint = response.init_point;
-    if (!initPoint) {
-      throw new Error("Mercado Pago no devolvió URL de checkout");
-    }
+    const preferenceId = String(response.id);
+    const productionInitPoint = response.init_point;
+    const sandboxInitPoint = response.sandbox_init_point;
+    const initPoint = this.resolveCheckoutUrl(productionInitPoint, sandboxInitPoint);
+
+    this.logger.log(
+      JSON.stringify({
+        event: "mercadopago_preference_created",
+        preferenceId,
+        orderId,
+        jobId: params.jobId,
+        planId: params.planId ?? null,
+        platform,
+        amount: params.amount,
+        currency: "ARS",
+        testMode: this.testMode,
+        checkoutHost: MercadoPagoService.checkoutHost(initPoint),
+        productionHost: MercadoPagoService.checkoutHost(productionInitPoint),
+        sandboxHost: MercadoPagoService.checkoutHost(sandboxInitPoint),
+        notificationUrl: notificationUrl ?? null,
+      })
+    );
 
     return {
       orderId,
-      preferenceId: String(response.id),
+      preferenceId,
       initPoint,
-      sandboxInitPoint: response.sandbox_init_point,
+      sandboxInitPoint,
+      testMode: this.testMode,
       amount: params.amount,
       currency: "ARS",
     };

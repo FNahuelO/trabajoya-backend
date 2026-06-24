@@ -9,7 +9,9 @@ import {
   Req,
   HttpCode,
   UnauthorizedException,
+  Logger,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PaymentsService } from "./payments.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { CreateMercadoPagoPreferenceDto } from "./dto/create-mercadopago-preference.dto";
@@ -21,16 +23,25 @@ import { PrismaService } from "../prisma/prisma.service";
 import { PaymentMethod, PaymentStatus, SubscriptionPlan } from "@prisma/client";
 import { JobPaymentCompletionService } from "./job-payment-completion.service";
 import { MercadoPagoCheckoutService } from "./mercadopago-checkout.service";
+import {
+  MercadoPagoWebhookSignatureError,
+  resolveMercadoPagoWebhookDataId,
+  validateMercadoPagoWebhookSignature,
+} from "./mercadopago-webhook.util";
+import { Public } from "../common/decorators/public.decorator";
 
 @ApiTags("payments")
 @Controller("api/payments")
 export class PaymentsController {
+  private readonly logger = new Logger(PaymentsController.name);
+
   constructor(
     private paymentsService: PaymentsService,
     private subscriptionsService: SubscriptionsService,
     private prisma: PrismaService,
     private jobPaymentCompletion: JobPaymentCompletionService,
-    private mercadoPagoCheckout: MercadoPagoCheckoutService
+    private mercadoPagoCheckout: MercadoPagoCheckoutService,
+    private configService: ConfigService
   ) { }
 
   private validateIpnSecretOrThrow(secretFromHeader?: string) {
@@ -208,12 +219,37 @@ export class PaymentsController {
   }
 
   /**
-   * Webhook de Mercado Pago (sin autenticación JWT)
+   * Webhook de Mercado Pago (sin autenticación JWT; validación por firma HMAC)
    */
+  @Public()
   @Post("mercadopago/webhook")
   @HttpCode(200)
   async handleMercadoPagoWebhook(@Body() body: any, @Req() req: any) {
-    const queryPaymentId = req?.query?.["data.id"] || req?.query?.id;
+    const webhookSecret = this.configService.get<string>("MERCADOPAGO_WEBHOOK_SECRET");
+    const dataId = resolveMercadoPagoWebhookDataId(req?.query, body);
+
+    if (webhookSecret?.trim()) {
+      try {
+        validateMercadoPagoWebhookSignature({
+          xSignature: req?.headers?.["x-signature"],
+          xRequestId: req?.headers?.["x-request-id"],
+          dataId,
+          secret: webhookSecret,
+        });
+      } catch (error) {
+        if (error instanceof MercadoPagoWebhookSignatureError) {
+          this.logger.warn(`Webhook MP rechazado: ${error.reason}`);
+          throw new UnauthorizedException("Firma de webhook inválida");
+        }
+        throw error;
+      }
+    } else {
+      this.logger.warn(
+        "MERCADOPAGO_WEBHOOK_SECRET no configurado: el webhook acepta notificaciones sin validar firma"
+      );
+    }
+
+    const queryPaymentId = dataId || req?.query?.["data.id"] || req?.query?.id;
     const payload =
       body && Object.keys(body).length > 0
         ? body

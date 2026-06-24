@@ -56,6 +56,7 @@ export class MercadoPagoCheckoutService {
       defaultProvider,
       enableIapFallback,
       mercadoPagoConfigured: !!this.configService.get<string>("MERCADOPAGO_ACCESS_TOKEN"),
+      mercadoPagoTestMode: this.mercadoPagoService.isTestMode(),
       webEmpresasUrl,
       iosMobileProvider,
       androidMobileProvider,
@@ -214,6 +215,10 @@ export class MercadoPagoCheckoutService {
       platform: params.platform || "mobile",
       fromApp: params.fromApp,
     });
+
+    this.logger.log(
+      `Checkout MP listo jobId=${params.jobId} orderId=${orderId} preferenceId=${preference.preferenceId} testMode=${preference.testMode}`
+    );
 
     return preference;
   }
