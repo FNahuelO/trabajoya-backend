@@ -225,8 +225,25 @@ export class PaymentsController {
   @Post("mercadopago/webhook")
   @HttpCode(200)
   async handleMercadoPagoWebhook(@Body() body: any, @Req() req: any) {
-    const webhookSecret = this.configService.get<string>("MERCADOPAGO_WEBHOOK_SECRET");
+    const isTestMode = this.mercadoPagoCheckout.isMercadoPagoTestMode();
+    const webhookSecret =
+      (isTestMode
+        ? this.configService.get<string>("MERCADOPAGO_TEST_WEBHOOK_SECRET")
+        : undefined) ||
+      this.configService.get<string>("MERCADOPAGO_WEBHOOK_SECRET");
     const dataId = resolveMercadoPagoWebhookDataId(req?.query, body);
+
+    this.logger.log(
+      JSON.stringify({
+        event: "mercadopago_webhook_received",
+        testMode: isTestMode,
+        dataId: dataId ?? null,
+        topic: body?.type || body?.topic || null,
+        action: body?.action || null,
+        hasBody: !!body && Object.keys(body).length > 0,
+        userAgent: req?.headers?.["user-agent"] || null,
+      })
+    );
 
     if (webhookSecret?.trim()) {
       try {
@@ -238,10 +255,17 @@ export class PaymentsController {
         });
       } catch (error) {
         if (error instanceof MercadoPagoWebhookSignatureError) {
-          this.logger.warn(`Webhook MP rechazado: ${error.reason}`);
-          throw new UnauthorizedException("Firma de webhook inválida");
+          if (isTestMode) {
+            this.logger.warn(
+              `Webhook MP test: firma inválida (${error.reason}); se procesa igual en modo prueba`
+            );
+          } else {
+            this.logger.warn(`Webhook MP rechazado: ${error.reason}`);
+            throw new UnauthorizedException("Firma de webhook inválida");
+          }
+        } else {
+          throw error;
         }
-        throw error;
       }
     } else {
       this.logger.warn(
@@ -258,6 +282,15 @@ export class PaymentsController {
           : body;
 
     const result = await this.mercadoPagoCheckout.handleWebhookNotification(payload);
+
+    this.logger.log(
+      JSON.stringify({
+        event: "mercadopago_webhook_processed",
+        testMode: isTestMode,
+        dataId: dataId ?? null,
+        result,
+      })
+    );
 
     return createResponse({
       success: true,

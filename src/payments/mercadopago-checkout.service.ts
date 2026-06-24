@@ -22,6 +22,10 @@ export class MercadoPagoCheckoutService {
     private readonly configService: ConfigService
   ) {}
 
+  isMercadoPagoTestMode(): boolean {
+    return this.mercadoPagoService.isTestMode();
+  }
+
   getPaymentConfig() {
     const defaultProvider =
       this.configService.get<string>("PAYMENT_DEFAULT_PROVIDER") || "mercadopago";
@@ -57,6 +61,7 @@ export class MercadoPagoCheckoutService {
       enableIapFallback,
       mercadoPagoConfigured: !!this.configService.get<string>("MERCADOPAGO_ACCESS_TOKEN"),
       mercadoPagoTestMode: this.mercadoPagoService.isTestMode(),
+      mercadoPagoTestPayerConfigured: this.mercadoPagoService.hasTestPayerEmail(),
       webEmpresasUrl,
       iosMobileProvider,
       androidMobileProvider,
@@ -114,6 +119,12 @@ export class MercadoPagoCheckoutService {
 
     if (!selectedPlan) {
       throw new BadRequestException("El plan seleccionado no es válido");
+    }
+
+    if (this.mercadoPagoService.isTestMode() && !this.mercadoPagoService.hasTestPayerEmail()) {
+      throw new BadRequestException(
+        "Mercado Pago en modo prueba: configurá MERCADOPAGO_TEST_PAYER_EMAIL con el email del comprador de prueba del panel de MP."
+      );
     }
 
     const amount = Number((selectedPlan as any).priceArs ?? 0);

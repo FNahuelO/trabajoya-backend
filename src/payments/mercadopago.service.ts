@@ -64,23 +64,64 @@ export class MercadoPagoService {
     productionInitPoint: string | undefined,
     sandboxInitPoint: string | undefined
   ): string {
+    // MP docs: en integración de prueba usar init_point (el token TEST enruta al sandbox).
+    // sandbox_init_point usa otro flujo (/checkout/v1/redirect/.../login) que suele buclear.
+    if (productionInitPoint) {
+      return productionInitPoint;
+    }
+
+    if (this.testMode && sandboxInitPoint) {
+      this.logger.warn("init_point ausente; usando sandbox_init_point como fallback");
+      return sandboxInitPoint;
+    }
+
+    throw new Error("Mercado Pago no devolvió URL de checkout");
+  }
+
+  private getTestPayerEmail(): string | undefined {
+    if (!this.testMode) return undefined;
+    const email = this.configService.get<string>("MERCADOPAGO_TEST_PAYER_EMAIL")?.trim();
+    return email || undefined;
+  }
+
+  hasTestPayerEmail(): boolean {
+    return !!this.getTestPayerEmail();
+  }
+
+  private getNotificationUrl(): string | undefined {
+    const explicitUrl = this.configService.get<string>("MERCADOPAGO_NOTIFICATION_URL")?.trim();
+    if (explicitUrl) {
+      return explicitUrl.replace(/\/$/, "");
+    }
+
+    const backendUrl = this.testMode
+      ? this.configService.get<string>("MERCADOPAGO_TEST_BACKEND_URL")?.trim() ||
+        this.configService.get<string>("BACKEND_URL") ||
+        this.configService.get<string>("API_URL") ||
+        ""
+      : this.configService.get<string>("BACKEND_URL") ||
+        this.configService.get<string>("API_URL") ||
+        "";
+
+    if (!backendUrl) return undefined;
+    return `${backendUrl.replace(/\/$/, "")}/api/payments/mercadopago/webhook`;
+  }
+
+  private getWebEmpresasBaseUrl(): string {
     if (this.testMode) {
-      if (sandboxInitPoint) {
-        return sandboxInitPoint;
-      }
-      if (productionInitPoint?.includes("sandbox.")) {
-        return productionInitPoint;
-      }
-      this.logger.warn(
-        "Token TEST sin sandbox_init_point de MP; usando init_point (puede mezclar entornos)"
-      );
+      return (
+        this.configService.get<string>("MERCADOPAGO_TEST_WEB_EMPRESAS_URL") ||
+        this.configService.get<string>("WEB_EMPRESAS_URL") ||
+        this.configService.get<string>("FRONTEND_URL") ||
+        ""
+      ).replace(/\/$/, "");
     }
 
-    if (!productionInitPoint) {
-      throw new Error("Mercado Pago no devolvió URL de checkout");
-    }
-
-    return productionInitPoint;
+    return (
+      this.configService.get<string>("WEB_EMPRESAS_URL") ||
+      this.configService.get<string>("FRONTEND_URL") ||
+      ""
+    ).replace(/\/$/, "");
   }
 
   private ensureConfigured() {
@@ -107,11 +148,7 @@ export class MercadoPagoService {
     const query = queryParts.join("&");
 
     if (platform === "web") {
-      const webBase = (
-        this.configService.get<string>("WEB_EMPRESAS_URL") ||
-        this.configService.get<string>("FRONTEND_URL") ||
-        ""
-      ).replace(/\/$/, "");
+      const webBase = this.getWebEmpresasBaseUrl();
       const prefix = webBase ? `${webBase}/payment` : "/payment";
       return {
         success: `${prefix}/success?${query}`,
@@ -125,6 +162,25 @@ export class MercadoPagoService {
       success: `${appScheme}://payment/success?${query}`,
       failure: `${appScheme}://payment/failure?${query}`,
       pending: `${appScheme}://payment/pending?${query}`,
+    };
+  }
+
+  private buildTestPaymentMethods() {
+    // En sandbox, pagar con "dinero en cuenta" dispara invalid_users_types_error
+    // aunque comprador y vendedor sean de prueba. Forzar solo tarjetas.
+    return {
+      excluded_payment_types: [
+        { id: "account_money" },
+        { id: "ticket" },
+        { id: "atm" },
+      ],
+      excluded_payment_methods: [
+        { id: "account_money_black" },
+        { id: "account_money_row" },
+        { id: "account_money" },
+      ],
+      installments: 1,
+      default_installments: 1,
     };
   }
 
@@ -142,17 +198,10 @@ export class MercadoPagoService {
 
     const orderId = params.orderId || randomUUID();
     const platform = params.platform || "mobile";
-    const backendUrl =
-      this.configService.get<string>("BACKEND_URL") ||
-      this.configService.get<string>("API_URL") ||
-      "";
     const backUrls = this.buildBackUrls(params.jobId, orderId, platform, params.fromApp);
-
-    const notificationUrl = backendUrl
-      ? `${backendUrl.replace(/\/$/, "")}/api/payments/mercadopago/webhook`
-      : undefined;
-
+    const notificationUrl = this.getNotificationUrl();
     const concept = `JOB:${params.jobId} | ORDER:${orderId}`;
+    const testPayerEmail = this.getTestPayerEmail();
 
     const response = await this.preferenceApi!.create({
       body: {
@@ -174,7 +223,13 @@ export class MercadoPagoService {
           concept,
         },
         back_urls: backUrls,
-        auto_return: "approved",
+        ...(this.testMode
+          ? {}
+          : { auto_return: "approved" as const }),
+        ...(testPayerEmail ? { payer: { email: testPayerEmail } } : {}),
+        ...(this.testMode
+          ? { payment_methods: this.buildTestPaymentMethods() }
+          : {}),
         ...(notificationUrl ? { notification_url: notificationUrl } : {}),
       },
     });
@@ -195,9 +250,13 @@ export class MercadoPagoService {
         amount: params.amount,
         currency: "ARS",
         testMode: this.testMode,
+        checkoutUrlKind: productionInitPoint ? "init_point" : "sandbox_init_point_fallback",
         checkoutHost: MercadoPagoService.checkoutHost(initPoint),
         productionHost: MercadoPagoService.checkoutHost(productionInitPoint),
         sandboxHost: MercadoPagoService.checkoutHost(sandboxInitPoint),
+        backUrls,
+        testPayerEmail: testPayerEmail ?? null,
+        paymentMethods: this.testMode ? this.buildTestPaymentMethods() : null,
         notificationUrl: notificationUrl ?? null,
       })
     );
