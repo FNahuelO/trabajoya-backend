@@ -120,35 +120,43 @@ export class UsersService {
 
     // Eliminar datos de la base de datos usando transacción
     await this.prisma.$transaction(async (tx) => {
-      // Eliminar aplicaciones
-      await tx.application.deleteMany({
-        where: { postulanteId: user.postulante?.id },
-      });
+      // IMPORTANTE: estos borrados están acotados al perfil de postulante.
+      // Si user.postulante es undefined (p. ej. al borrar una cuenta de EMPRESA),
+      // Prisma ignora un `where` con valor undefined y deleteMany borraría TODA
+      // la tabla. Por eso solo se ejecutan cuando existe el perfil de postulante.
+      if (user.postulante) {
+        const postulanteId = user.postulante.id;
 
-      // Eliminar favoritos de trabajos
-      await tx.jobFavorite.deleteMany({
-        where: { postulanteId: user.postulante?.id },
-      });
+        // Eliminar aplicaciones
+        await tx.application.deleteMany({
+          where: { postulanteId },
+        });
 
-      // Eliminar favoritos de empresas
-      await tx.companyFavorite.deleteMany({
-        where: { postulanteId: user.postulante?.id },
-      });
+        // Eliminar favoritos de trabajos
+        await tx.jobFavorite.deleteMany({
+          where: { postulanteId },
+        });
 
-      // Eliminar educación
-      await tx.education.deleteMany({
-        where: { postulanteId: user.postulante?.id },
-      });
+        // Eliminar favoritos de empresas
+        await tx.companyFavorite.deleteMany({
+          where: { postulanteId },
+        });
 
-      // Eliminar experiencias
-      await tx.experience.deleteMany({
-        where: { postulanteId: user.postulante?.id },
-      });
+        // Eliminar educación
+        await tx.education.deleteMany({
+          where: { postulanteId },
+        });
 
-      // Eliminar certificaciones
-      await tx.certification.deleteMany({
-        where: { postulanteId: user.postulante?.id },
-      });
+        // Eliminar experiencias
+        await tx.experience.deleteMany({
+          where: { postulanteId },
+        });
+
+        // Eliminar certificaciones
+        await tx.certification.deleteMany({
+          where: { postulanteId },
+        });
+      }
 
       // Anonimizar mensajes (mantener para integridad de conversaciones)
       await tx.message.updateMany({
