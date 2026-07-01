@@ -20,6 +20,142 @@ export class IapService {
     private configService: ConfigService,
   ) {}
 
+  private async markJobAsPaid(jobPostId: string): Promise<void> {
+    try {
+      await this.prisma.job.update({
+        where: { id: jobPostId },
+        data: {
+          moderationStatus: 'APPROVED',
+          paymentStatus: 'PAID',
+          paidAt: getArgentinaLocalNow(),
+          isPaid: true,
+          status: 'active',
+          publishedAt: getArgentinaLocalNow(),
+        },
+      });
+      console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED');
+    } catch (updateError: any) {
+      console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
+    }
+  }
+
+  private async recordIapPaymentTransaction(params: {
+    userId: string;
+    plan: { id: string; name: string; price: any; currency: string | null; subscriptionPlan: any };
+    productId: string;
+    transactionId: string;
+    jobPostId: string;
+    entitlementId: string;
+    paymentMethod: PaymentMethod;
+    sourceLabel: string;
+    extraData?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      const empresa = await this.prisma.empresaProfile.findFirst({
+        where: { userId: params.userId },
+      });
+
+      await this.prisma.paymentTransaction.create({
+        data: {
+          userId: params.userId,
+          empresaId: empresa?.id || null,
+          orderId: `${params.sourceLabel}_${params.transactionId}`,
+          amount: params.plan.price,
+          currency: params.plan.currency || 'USD',
+          status: PaymentStatus.COMPLETED,
+          paymentMethod: params.paymentMethod,
+          description: `Compra IAP ${params.sourceLabel}: ${params.plan.name} (${params.productId})`,
+          planType: params.plan.subscriptionPlan,
+          planId: params.plan.id,
+          paypalData: {
+            source: params.paymentMethod,
+            productId: params.productId,
+            transactionId: params.transactionId,
+            jobPostId: params.jobPostId,
+            entitlementId: params.entitlementId,
+            ...params.extraData,
+          } as any,
+        },
+      });
+      console.log(`[IAP] ✅ PaymentTransaction registrada para ${params.sourceLabel}`);
+    } catch (ptError: any) {
+      console.error('[IAP] ⚠️ Error al registrar PaymentTransaction (no crítico):', ptError?.message);
+    }
+  }
+
+  /**
+   * Crea o actualiza el entitlement de un job tras IAP.
+   * Un job solo puede tener un entitlement (unique jobPostId); si ya existe uno
+   * reservado (p. ej. Mercado Pago) se actualiza en lugar de fallar.
+   */
+  private async upsertEntitlementForIapPurchase(params: {
+    userId: string;
+    jobPostId: string;
+    plan: {
+      allowedModifications: number;
+      canModifyCategory: boolean;
+      categoryModifications: number | null;
+    };
+    planKey: string;
+    expiresAt: Date;
+    source: 'APPLE_IAP' | 'GOOGLE_PLAY';
+    transactionId: string;
+    originalTransactionId: string | null;
+    rawPayload: Record<string, unknown>;
+  }) {
+    const existingByJob = await this.prisma.jobPostEntitlement.findUnique({
+      where: { jobPostId: params.jobPostId },
+    });
+
+    if (
+      existingByJob &&
+      existingByJob.status === 'ACTIVE' &&
+      existingByJob.transactionId === params.transactionId
+    ) {
+      console.log('[IAP] Entitlement ya activo para esta transacción (idempotente):', existingByJob.id);
+      return existingByJob;
+    }
+
+    if (
+      existingByJob &&
+      existingByJob.status === 'ACTIVE' &&
+      existingByJob.transactionId &&
+      existingByJob.transactionId !== params.transactionId
+    ) {
+      throw new BadRequestException('Esta publicación ya tiene un plan activo.');
+    }
+
+    const entitlementData = {
+      userId: params.userId,
+      jobPostId: params.jobPostId,
+      source: params.source,
+      planKey: params.planKey,
+      expiresAt: params.expiresAt,
+      status: 'ACTIVE' as const,
+      maxEdits: params.plan.allowedModifications,
+      editsUsed: 0,
+      allowCategoryChange: params.plan.canModifyCategory,
+      maxCategoryChanges: params.plan.categoryModifications || 0,
+      categoryChangesUsed: 0,
+      transactionId: params.transactionId,
+      originalTransactionId: params.originalTransactionId,
+      rawPayload: params.rawPayload as any,
+    };
+
+    if (existingByJob) {
+      console.log('[IAP] Actualizando entitlement existente para jobPostId:', params.jobPostId);
+      return this.prisma.jobPostEntitlement.update({
+        where: { id: existingByJob.id },
+        data: entitlementData,
+      });
+    }
+
+    console.log('[IAP] Creando entitlement para jobPostId:', params.jobPostId);
+    return this.prisma.jobPostEntitlement.create({
+      data: entitlementData,
+    });
+  }
+
   /**
    * Mapea productId a planKey
    */
@@ -145,18 +281,27 @@ export class IapService {
       });
 
       if (existingForThisJob) {
-        // Verificar si el entitlement es válido (tiene un job válido)
         const jobExists = existingForThisJob.job && existingForThisJob.job.id;
-        
-        if (jobExists) {
-          console.warn('[IAP] Transacción duplicada detectada para esta publicación:', {
+
+        if (jobExists && existingForThisJob.status === 'ACTIVE') {
+          console.log('[IAP] Transacción ya procesada, retornando entitlement existente:', {
             transactionId: dto.transactionId,
             entitlementId: existingForThisJob.id,
             jobId: existingForThisJob.jobPostId,
           });
-          throw new BadRequestException(
-            'Esta transacción ya ha sido procesada para esta publicación (replay attack prevenido)',
-          );
+          return {
+            ok: true,
+            entitlement: existingForThisJob,
+            expiresAt: existingForThisJob.expiresAt,
+          };
+        }
+
+        if (jobExists) {
+          console.log('[IAP] Entitlement previo no activo para este job, se actualizará con la compra IAP:', {
+            transactionId: dto.transactionId,
+            entitlementId: existingForThisJob.id,
+            status: existingForThisJob.status,
+          });
         } else {
           // El entitlement existe pero el job no existe (probablemente fue eliminado)
           // Eliminar el entitlement inválido y permitir reprocesar
@@ -248,88 +393,44 @@ export class IapService {
 
       console.log('[IAP] ✅ Job verificado, existe en la base de datos:', verifyJobExists.id);
 
-      // Crear entitlement
-      console.log('[IAP] Creando entitlement con jobPostId:', jobPostId);
       let entitlement;
       try {
-        entitlement = await this.prisma.jobPostEntitlement.create({
-          data: {
-            userId,
-            jobPostId: jobPostId, // Ahora siempre tiene un valor válido
-            source: 'APPLE_IAP',
-            planKey,
-            expiresAt,
-            status: 'ACTIVE',
-            maxEdits: plan.allowedModifications,
-            editsUsed: 0,
-            allowCategoryChange: plan.canModifyCategory,
-            maxCategoryChanges: plan.categoryModifications || 0,
-            categoryChangesUsed: 0,
-            transactionId: dto.transactionId,
-            originalTransactionId: dto.transactionId, // En producción, obtener de Apple
-            rawPayload: {
-              productId: dto.productId,
-              signedTransactionInfo: dto.signedTransactionInfo,
-              signedRenewalInfo: dto.signedRenewalInfo,
-            },
+        entitlement = await this.upsertEntitlementForIapPurchase({
+          userId,
+          jobPostId,
+          plan,
+          planKey,
+          expiresAt,
+          source: 'APPLE_IAP',
+          transactionId: dto.transactionId,
+          originalTransactionId: dto.transactionId,
+          rawPayload: {
+            productId: dto.productId,
+            signedTransactionInfo: dto.signedTransactionInfo,
+            signedRenewalInfo: dto.signedRenewalInfo,
           },
         });
 
-        console.log('[IAP] ✅ Entitlement creado exitosamente:', entitlement.id);
-        
-        // Registrar PaymentTransaction para Apple IAP
-        try {
-          const empresa = await this.prisma.empresaProfile.findFirst({
-            where: { userId },
-          });
+        console.log('[IAP] ✅ Entitlement listo:', entitlement.id);
 
-          await this.prisma.paymentTransaction.create({
-            data: {
-              userId,
-              empresaId: empresa?.id || null,
-              orderId: `apple_${dto.transactionId}`,
-              amount: plan.price,
-              currency: plan.currency || 'USD',
-              status: PaymentStatus.COMPLETED,
-              paymentMethod: PaymentMethod.APPLE_IAP,
-              description: `Compra IAP Apple: ${plan.name} (${dto.productId})`,
-              planType: plan.subscriptionPlan,
-              planId: plan.id,
-              paypalData: {
-                source: 'APPLE_IAP',
-                productId: dto.productId,
-                transactionId: dto.transactionId,
-                jobPostId,
-                entitlementId: entitlement.id,
-              } as any,
-            },
-          });
-          console.log('[IAP] ✅ PaymentTransaction registrada para Apple IAP');
-        } catch (ptError: any) {
-          console.error('[IAP] ⚠️ Error al registrar PaymentTransaction (no crítico):', ptError?.message);
-        }
+        await this.recordIapPaymentTransaction({
+          userId,
+          plan,
+          productId: dto.productId,
+          transactionId: dto.transactionId,
+          jobPostId,
+          entitlementId: entitlement.id,
+          paymentMethod: PaymentMethod.APPLE_IAP,
+          sourceLabel: 'apple',
+        });
 
-        // Actualizar el estado del job después de crear el entitlement exitosamente
-        // La publicación se aprueba inmediatamente para que sea visible, pero estará bajo revisión 48-72hs
-        try {
-          await this.prisma.job.update({
-            where: { id: jobPostId },
-            data: {
-              moderationStatus: 'APPROVED',
-              paymentStatus: 'PAID',
-              paidAt: getArgentinaLocalNow(),
-              isPaid: true,
-              status: 'active',
-              publishedAt: getArgentinaLocalNow(), // Actualizar fecha de publicación al momento del pago
-            },
-          });
-          console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs)');
-        } catch (updateError: any) {
-          console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
-          // No lanzar error, el entitlement ya fue creado
-        }
+        await this.markJobAsPaid(jobPostId);
       } catch (createError: any) {
-        console.error('[IAP] ❌ Error al crear entitlement:', {
+        if (createError instanceof BadRequestException) {
+          throw createError;
+        }
+
+        console.error('[IAP] ❌ Error al crear/actualizar entitlement:', {
           message: createError?.message,
           code: createError?.code,
           meta: createError?.meta,
@@ -338,181 +439,35 @@ export class IapService {
           planKey,
           transactionId: dto.transactionId,
         });
-        
-        // Si el error es de unique constraint en transactionId, verificar si realmente existe
+
         if (
-          createError?.code === 'P2002' && 
-          createError?.meta?.target?.includes('transactionId')
+          createError?.code === 'P2002' &&
+          createError?.meta?.target?.includes('jobPostId')
         ) {
-          console.error('[IAP] ⚠️ Error de constraint único en transactionId detectado');
-          console.error('[IAP] Verificando si el constraint realmente existe en la BD...');
-          
-          try {
-            // Verificar si existe un entitlement con esta transacción para este job específico
-            const existingForThisJob = await this.prisma.jobPostEntitlement.findFirst({
-              where: {
-                transactionId: dto.transactionId,
-                jobPostId: jobPostId,
-              },
-            });
-            
-            if (existingForThisJob) {
-              console.error('[IAP] ⚠️ Entitlement existente encontrado para esta transacción y este job:', existingForThisJob.id);
-              throw new BadRequestException(
-                'Esta transacción ya ha sido procesada para esta publicación (replay attack prevenido)',
-              );
-            }
-            
-            // Verificar si existe para otro job (esto es válido)
-            const existingForOtherJob = await this.prisma.jobPostEntitlement.findFirst({
-              where: {
-                transactionId: dto.transactionId,
-                jobPostId: { not: jobPostId },
-              },
-            });
-            
-            if (existingForOtherJob) {
-              console.log('[IAP] ✅ Transacción ya usada para otro job, pero esto es válido.');
-              console.error('[IAP] ⚠️ ERROR: El constraint único de transactionId todavía existe en la base de datos.');
-              console.error('[IAP] ⚠️ Intentando eliminar el constraint automáticamente...');
-              
-              try {
-                // Intentar eliminar el constraint o índice único automáticamente
-                // Primero intentar como constraint
-                try {
-                  await this.prisma.$executeRawUnsafe(`
-                    ALTER TABLE "JobPostEntitlement" 
-                    DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key";
-                  `);
-                  console.log('[IAP] ✅ Constraint eliminado exitosamente');
-                } catch (constraintError: any) {
-                  // Si falla como constraint, intentar como índice único
-                  console.log('[IAP] Intentando eliminar como índice único...');
-                  try {
-                    await this.prisma.$executeRawUnsafe(`
-                      DROP INDEX IF EXISTS "JobPostEntitlement_transactionId_key";
-                    `);
-                    console.log('[IAP] ✅ Índice único eliminado exitosamente');
-                  } catch (indexError: any) {
-                    // Si ambos fallan, verificar si realmente existe
-                    console.log('[IAP] Verificando si el constraint/índice realmente existe...');
-                    const constraintExists = await this.prisma.$queryRawUnsafe<Array<{conname: string}>>(`
-                      SELECT conname 
-                      FROM pg_constraint 
-                      WHERE conname = 'JobPostEntitlement_transactionId_key'
-                      UNION ALL
-                      SELECT indexname::text as conname
-                      FROM pg_indexes 
-                      WHERE indexname = 'JobPostEntitlement_transactionId_key';
-                    `);
-                    
-                    if (constraintExists && constraintExists.length > 0) {
-                      // Intentar con el nombre exacto encontrado
-                      for (const constraint of constraintExists) {
-                        try {
-                          await this.prisma.$executeRawUnsafe(`
-                            ALTER TABLE "JobPostEntitlement" 
-                            DROP CONSTRAINT IF EXISTS "${constraint.conname}";
-                          `);
-                          console.log(`[IAP] ✅ Constraint ${constraint.conname} eliminado`);
-                        } catch (e) {
-                          try {
-                            await this.prisma.$executeRawUnsafe(`
-                              DROP INDEX IF EXISTS "${constraint.conname}";
-                            `);
-                            console.log(`[IAP] ✅ Índice ${constraint.conname} eliminado`);
-                          } catch (e2) {
-                            console.error(`[IAP] ⚠️ No se pudo eliminar ${constraint.conname}`);
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-                
-                console.log('[IAP] Reintentando crear entitlement...');
-                
-                // Reintentar crear el entitlement
-                entitlement = await this.prisma.jobPostEntitlement.create({
-                  data: {
-                    userId,
-                    jobPostId: jobPostId,
-                    source: 'APPLE_IAP',
-                    planKey,
-                    expiresAt,
-                    status: 'ACTIVE',
-                    maxEdits: plan.allowedModifications,
-                    editsUsed: 0,
-                    allowCategoryChange: plan.canModifyCategory,
-                    maxCategoryChanges: plan.categoryModifications || 0,
-                    categoryChangesUsed: 0,
-                    transactionId: dto.transactionId,
-                    originalTransactionId: dto.transactionId,
-                    rawPayload: {
-                      productId: dto.productId,
-                      signedTransactionInfo: dto.signedTransactionInfo,
-                      signedRenewalInfo: dto.signedRenewalInfo,
-                    },
-                  },
-                });
-                
-                console.log('[IAP] ✅ Entitlement creado exitosamente después de eliminar constraint:', entitlement.id);
-                
-                // Actualizar el estado del job
-                // La publicación se aprueba inmediatamente para que sea visible, pero estará bajo revisión 48-72hs
-                try {
-                  await this.prisma.job.update({
-                    where: { id: jobPostId },
-                    data: {
-                      moderationStatus: 'APPROVED',
-                      paymentStatus: 'PAID',
-                      paidAt: getArgentinaLocalNow(),
-                      isPaid: true,
-                      status: 'active',
-                      publishedAt: getArgentinaLocalNow(),
-                    },
-                  });
-                  console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs)');
-                } catch (updateError: any) {
-                  console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
-                }
-                
-                // Salir del catch y retornar el entitlement
-                return {
-                  ok: true,
-                  entitlement,
-                  expiresAt,
-                };
-              } catch (dropError: any) {
-                console.error('[IAP] ❌ Error al eliminar constraint automáticamente:', dropError?.message);
-                console.error('[IAP] ❌ Stack:', dropError?.stack);
-                throw new InternalServerErrorException(
-                  `Error al crear entitlement: El constraint único de transactionId todavía existe en la base de datos. ` +
-                  `Por favor, ejecuta la migración manualmente: ` +
-                  `ALTER TABLE "JobPostEntitlement" DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key"; ` +
-                  `DROP INDEX IF EXISTS "JobPostEntitlement_transactionId_key";`
-                );
-              }
-            }
-          } catch (checkError: any) {
-            console.error('[IAP] Error al verificar entitlements existentes:', checkError);
+          const existing = await this.prisma.jobPostEntitlement.findUnique({
+            where: { jobPostId },
+          });
+          if (
+            existing &&
+            existing.transactionId === dto.transactionId &&
+            existing.status === 'ACTIVE'
+          ) {
+            await this.markJobAsPaid(jobPostId);
+            return {
+              ok: true,
+              entitlement: existing,
+              expiresAt: existing.expiresAt,
+            };
           }
-          
-          throw new InternalServerErrorException(
-            `Error al crear entitlement: El constraint único de transactionId todavía existe en la base de datos. ` +
-            `Por favor, ejecuta la migración para eliminarlo: ` +
-            `ALTER TABLE "JobPostEntitlement" DROP CONSTRAINT IF EXISTS "JobPostEntitlement_transactionId_key";`
-          );
         }
-        
-        // Si el error es de foreign key, dar un mensaje más específico
+
         if (createError?.code === 'P2003' || createError?.message?.includes('Foreign key constraint')) {
           throw new InternalServerErrorException(
             `Error de foreign key: El job con id ${jobPostId} no existe en la base de datos. ` +
-            `Esto puede ocurrir si el job fue eliminado o no se creó correctamente.`
+              `Esto puede ocurrir si el job fue eliminado o no se creó correctamente.`,
           );
         }
-        
+
         throw createError;
       }
 
@@ -600,14 +555,22 @@ export class IapService {
     });
 
     if (existingForThisJob) {
-      console.warn('[IAP] Purchase token duplicado detectado para esta publicación (Google):', {
-        purchaseToken: dto.purchaseToken,
+      if (existingForThisJob.status === 'ACTIVE') {
+        console.log('[IAP] Purchase token ya procesado (Google), retornando entitlement existente:', {
+          purchaseToken: dto.purchaseToken,
+          entitlementId: existingForThisJob.id,
+        });
+        return {
+          ok: true,
+          entitlement: existingForThisJob,
+          expiresAt: existingForThisJob.expiresAt,
+        };
+      }
+
+      console.log('[IAP] Entitlement previo no activo (Google), se actualizará:', {
         entitlementId: existingForThisJob.id,
-        jobId: existingForThisJob.jobPostId,
+        status: existingForThisJob.status,
       });
-      throw new BadRequestException(
-        'Este purchase token ya ha sido procesado para esta publicación (replay attack prevenido)',
-      );
     } else {
       // El purchaseToken no fue usado para esta publicación
       // Verificar si fue usado para otra publicación (esto es válido y permitido)
@@ -672,85 +635,41 @@ export class IapService {
 
     console.log('[IAP] ✅ Job verificado, existe en la base de datos (Google):', verifyJobExists.id);
 
-    // Crear entitlement
-    console.log('[IAP] Creando entitlement con jobPostId (Google):', jobPostId);
-    const entitlement = await this.prisma.jobPostEntitlement.create({
-      data: {
-        userId,
-        jobPostId: jobPostId, // Ahora siempre tiene un valor válido
-        source: 'GOOGLE_PLAY',
-        planKey,
-        expiresAt,
-        status: 'ACTIVE',
-        maxEdits: plan.allowedModifications,
-        editsUsed: 0,
-        allowCategoryChange: plan.canModifyCategory,
-        maxCategoryChanges: plan.categoryModifications || 0,
-        categoryChangesUsed: 0,
-        transactionId: dto.orderId || dto.purchaseToken, // Usar orderId si existe
-        originalTransactionId: dto.orderId,
-        rawPayload: {
-          productId: dto.productId,
-          purchaseToken: dto.purchaseToken,
-          orderId: dto.orderId,
-        },
+    const googleTransactionId = dto.orderId || dto.purchaseToken;
+    const entitlement = await this.upsertEntitlementForIapPurchase({
+      userId,
+      jobPostId,
+      plan,
+      planKey,
+      expiresAt,
+      source: 'GOOGLE_PLAY',
+      transactionId: googleTransactionId,
+      originalTransactionId: dto.orderId || null,
+      rawPayload: {
+        productId: dto.productId,
+        purchaseToken: dto.purchaseToken,
+        orderId: dto.orderId,
       },
     });
 
-    console.log('[IAP] ✅ Entitlement creado exitosamente (Google):', entitlement.id);
+    console.log('[IAP] ✅ Entitlement listo (Google):', entitlement.id);
 
-    // Registrar PaymentTransaction para Google Play
-    try {
-      const empresa = await this.prisma.empresaProfile.findFirst({
-        where: { userId },
-      });
+    await this.recordIapPaymentTransaction({
+      userId,
+      plan,
+      productId: dto.productId,
+      transactionId: googleTransactionId,
+      jobPostId,
+      entitlementId: entitlement.id,
+      paymentMethod: PaymentMethod.GOOGLE_PLAY,
+      sourceLabel: 'google',
+      extraData: {
+        purchaseToken: dto.purchaseToken,
+        orderId: dto.orderId,
+      },
+    });
 
-      await this.prisma.paymentTransaction.create({
-        data: {
-          userId,
-          empresaId: empresa?.id || null,
-          orderId: `google_${dto.orderId || dto.purchaseToken}`,
-          amount: plan.price,
-          currency: plan.currency || 'USD',
-          status: PaymentStatus.COMPLETED,
-          paymentMethod: PaymentMethod.GOOGLE_PLAY,
-          description: `Compra Google Play: ${plan.name} (${dto.productId})`,
-          planType: plan.subscriptionPlan,
-          planId: plan.id,
-          paypalData: {
-            source: 'GOOGLE_PLAY',
-            productId: dto.productId,
-            purchaseToken: dto.purchaseToken,
-            orderId: dto.orderId,
-            jobPostId,
-            entitlementId: entitlement.id,
-          } as any,
-        },
-      });
-      console.log('[IAP] ✅ PaymentTransaction registrada para Google Play');
-    } catch (ptError: any) {
-      console.error('[IAP] ⚠️ Error al registrar PaymentTransaction (no crítico):', ptError?.message);
-    }
-
-    // Actualizar el estado del job después de crear el entitlement exitosamente
-    // La publicación se aprueba inmediatamente para que sea visible, pero estará bajo revisión 48-72hs
-    try {
-      await this.prisma.job.update({
-        where: { id: jobPostId },
-        data: {
-          moderationStatus: 'APPROVED',
-          paymentStatus: 'PAID',
-          paidAt: getArgentinaLocalNow(),
-          isPaid: true,
-          status: 'active',
-          publishedAt: getArgentinaLocalNow(),
-        },
-      });
-      console.log('[IAP] ✅ Estado del job actualizado a PAID y APPROVED (publicado, bajo revisión 48-72hs) (Google)');
-    } catch (updateError: any) {
-      console.error('[IAP] ⚠️ Error al actualizar estado del job (no crítico):', updateError?.message);
-      // No lanzar error, el entitlement ya fue creado
-    }
+    await this.markJobAsPaid(jobPostId);
 
     return {
       ok: true,

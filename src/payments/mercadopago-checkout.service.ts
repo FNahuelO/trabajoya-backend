@@ -34,7 +34,7 @@ export class MercadoPagoCheckoutService {
       "false";
 
     const iosMobileRaw =
-      this.configService.get<string>("IOS_MOBILE_PAYMENT_PROVIDER") || "mercadopago_web";
+      this.configService.get<string>("IOS_MOBILE_PAYMENT_PROVIDER") || "iap";
     const iosMobileProvider: "iap" | "mercadopago" | "mercadopago_web" =
       iosMobileRaw === "iap"
         ? "iap"
