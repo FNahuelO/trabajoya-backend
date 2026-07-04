@@ -13,6 +13,14 @@ type FaqItem = {
   answer: string;
 };
 
+type SupportConfig = {
+  whatsappNumber: string;
+  email: string;
+};
+
+const DEFAULT_SUPPORT_WHATSAPP_NUMBER = "5491133902772";
+const DEFAULT_SUPPORT_EMAIL = "soporte@trabajo-ya.com";
+
 @ApiTags("public")
 @Controller("api/public")
 export class PublicController {
@@ -168,6 +176,28 @@ export class PublicController {
       status: "ok",
       timestamp: new Date().toISOString(),
     };
+  }
+
+  @Get("support-config")
+  @Public()
+  getSupportConfig(): ApiResponse<SupportConfig> {
+    // Se leen de variables de entorno para poder cambiarlas sin recompilar la app.
+    // Si no están definidas, se usan los valores por defecto.
+    const whatsappNumber = (
+      process.env.SUPPORT_WHATSAPP_NUMBER ?? DEFAULT_SUPPORT_WHATSAPP_NUMBER
+    ).trim();
+    const email = (
+      process.env.SUPPORT_EMAIL ?? DEFAULT_SUPPORT_EMAIL
+    ).trim();
+
+    return createResponse({
+      success: true,
+      message: "Configuración de soporte obtenida correctamente",
+      data: {
+        whatsappNumber,
+        email,
+      },
+    });
   }
 
   @Get("references/company-activities")
