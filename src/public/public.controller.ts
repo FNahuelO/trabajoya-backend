@@ -7,24 +7,20 @@ import {
   ApiResponse,
   createResponse,
 } from "src/common/mapper/api-response.mapper";
+import { SettingsService, SupportConfig } from "../settings/settings.service";
 
 type FaqItem = {
   question: string;
   answer: string;
 };
 
-type SupportConfig = {
-  whatsappNumber: string;
-  email: string;
-};
-
-const DEFAULT_SUPPORT_WHATSAPP_NUMBER = "5491133902772";
-const DEFAULT_SUPPORT_EMAIL = "soporte@trabajo-ya.com";
-
 @ApiTags("public")
 @Controller("api/public")
 export class PublicController {
-  constructor(private readonly locationService: LocationService) {}
+  constructor(
+    private readonly locationService: LocationService,
+    private readonly settingsService: SettingsService
+  ) {}
 
   @Get("faqs")
   @Public()
@@ -180,15 +176,10 @@ export class PublicController {
 
   @Get("support-config")
   @Public()
-  getSupportConfig(): ApiResponse<SupportConfig> {
-    // Se leen de variables de entorno para poder cambiarlas sin recompilar la app.
-    // Si no están definidas, se usan los valores por defecto.
-    const whatsappNumber = (
-      process.env.SUPPORT_WHATSAPP_NUMBER ?? DEFAULT_SUPPORT_WHATSAPP_NUMBER
-    ).trim();
-    const email = (
-      process.env.SUPPORT_EMAIL ?? DEFAULT_SUPPORT_EMAIL
-    ).trim();
+  async getSupportConfig(): Promise<ApiResponse<SupportConfig>> {
+    // Los valores se editan desde el backoffice (DB). Fallback a env/defaults.
+    const { whatsappNumber, email } =
+      await this.settingsService.getSupportConfig();
 
     return createResponse({
       success: true,

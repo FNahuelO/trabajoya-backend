@@ -28,6 +28,7 @@ import { IapModule } from "./iap/iap.module";
 import { BlockedUsersModule } from "./blocked-users/blocked-users.module";
 import { ReportsModule } from "./reports/reports.module";
 import { CronJobsModule } from "./cron-jobs/cron-jobs.module";
+import { SettingsModule } from "./settings/settings.module";
 import { AuditInterceptor } from "./common/interceptors/audit.interceptor";
 
 @Module({
@@ -60,6 +61,7 @@ import { AuditInterceptor } from "./common/interceptors/audit.interceptor";
     BlockedUsersModule,
     ReportsModule,
     CronJobsModule,
+    SettingsModule,
   ],
   providers: [
     {
