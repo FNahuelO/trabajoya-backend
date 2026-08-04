@@ -79,9 +79,11 @@ export class GoogleMeetService {
         description: description,
         start: {
           dateTime: startTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
         },
         end: {
           dateTime: endTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
         },
         attendees: attendees.map((email) => ({ email })),
         conferenceData: {
@@ -188,9 +190,11 @@ export class GoogleMeetService {
         description: finalDescription,
         start: {
           dateTime: startTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
         },
         end: {
           dateTime: endTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
         },
         attendees: attendees.map((email) => ({ email })),
         location: meetingUrl,
@@ -448,9 +452,11 @@ export class GoogleMeetService {
         description: description,
         start: {
           dateTime: startTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
         },
         end: {
           dateTime: endTime.toISOString(),
+          timeZone: "America/Argentina/Buenos_Aires",
         },
         attendees: attendees.map((email) => ({ email })),
         // Preservar el conferenceData existente si existe

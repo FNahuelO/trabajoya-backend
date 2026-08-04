@@ -1,4 +1,8 @@
 import { Injectable } from "@nestjs/common";
+import {
+  ARGENTINA_TIME_ZONE,
+  formatDateInTimeZone,
+} from "./timezone-date.service";
 
 /**
  * Servicio para generar archivos .ics (iCalendar) compatibles con Google Calendar,
@@ -27,7 +31,7 @@ export class ICalendarService {
     location?: string,
     organizerEmail?: string,
     attendeeEmails: string[] = [],
-    timeZone: string = "America/Argentina/Buenos_Aires"
+    timeZone: string = ARGENTINA_TIME_ZONE
   ): string {
     // Formatear fechas en formato iCalendar
     // Para DTSTAMP (siempre UTC con Z)
@@ -41,16 +45,9 @@ export class ICalendarService {
       return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
     };
 
-    // Para DTSTART/DTEND con TZID (hora local sin Z)
-    const formatDateLocal = (date: Date): string => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      const hours = String(date.getHours()).padStart(2, "0");
-      const minutes = String(date.getMinutes()).padStart(2, "0");
-      const seconds = String(date.getSeconds()).padStart(2, "0");
-      return `${year}${month}${day}T${hours}${minutes}${seconds}`;
-    };
+    // DTSTART/DTEND con TZID: hora de pared en la zona pedida (no la del servidor)
+    const formatDateLocal = (date: Date): string =>
+      formatDateInTimeZone(date, timeZone);
 
     // Generar UID único para el evento
     const uid = `videollamada-${Date.now()}-${Math.random().toString(36).substring(2, 15)}@trabajoya.com`;

@@ -17,6 +17,7 @@ import {
 import { MessagesService } from "../messages/messages.service";
 import { GoogleMeetService } from "./google-meet.service";
 import { ICalendarService } from "../common/services/icalendar.service";
+import { formatArgentinaDateTime } from "../common/services/timezone-date.service";
 
 @Injectable()
 export class VideoMeetingsService {
@@ -248,10 +249,7 @@ export class VideoMeetingsService {
 
     // Enviar mensaje de invitación automáticamente
     try {
-      const formattedDate = scheduledDate.toLocaleString("es-ES", {
-        dateStyle: "full",
-        timeStyle: "short",
-      });
+      const formattedDate = formatArgentinaDateTime(scheduledDate);
       const invitationMessage = `📹 Te invito a una videollamada${
         title ? `: ${title}` : ""
       }${
@@ -505,10 +503,7 @@ export class VideoMeetingsService {
 
     // Enviar mensaje de confirmación al creador
     try {
-      const formattedDate = new Date(meeting.scheduledAt).toLocaleString("es-ES", {
-        dateStyle: "full",
-        timeStyle: "short",
-      });
+      const formattedDate = formatArgentinaDateTime(new Date(meeting.scheduledAt));
       const confirmationMessage = `✅ Tu videollamada${
         meeting.title ? ` "${meeting.title}"` : ""
       } ha sido aceptada.\n\n📅 Fecha: ${formattedDate}${

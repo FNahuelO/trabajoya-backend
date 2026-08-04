@@ -909,6 +909,30 @@ export class EmpresasService {
       },
     });
 
+    // Contactado = existe al menos un mensaje entre la empresa y el postulante
+    const postulanteUserIds = applications
+      .map((app) => app.postulante?.userId)
+      .filter((id): id is string => Boolean(id));
+
+    const contactedUserIds = new Set<string>();
+    if (postulanteUserIds.length > 0) {
+      const [sentTo, receivedFrom] = await Promise.all([
+        this.prisma.message.findMany({
+          where: { fromUserId: userId, toUserId: { in: postulanteUserIds } },
+          select: { toUserId: true },
+          distinct: ["toUserId"],
+        }),
+        this.prisma.message.findMany({
+          where: { toUserId: userId, fromUserId: { in: postulanteUserIds } },
+          select: { fromUserId: true },
+          distinct: ["fromUserId"],
+        }),
+      ]);
+
+      for (const msg of sentTo) contactedUserIds.add(msg.toUserId);
+      for (const msg of receivedFrom) contactedUserIds.add(msg.fromUserId);
+    }
+
     // Transformar URLs de postulantes (avatar, CV, video) a URLs completas/firmadas
     const applicationsWithUrls = await Promise.all(
       applications.map(async (application) => {
@@ -977,7 +1001,14 @@ export class EmpresasService {
             application.postulante.videoUrl = videoSignedUrl;
           }
         }
-        return application;
+
+        const postulanteUserId = application.postulante?.userId;
+        return {
+          ...application,
+          isContacted: postulanteUserId
+            ? contactedUserIds.has(postulanteUserId)
+            : false,
+        };
       })
     );
 
