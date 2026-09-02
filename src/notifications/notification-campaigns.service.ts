@@ -84,38 +84,62 @@ export class NotificationCampaignsService {
   async getAudienceStats(): Promise<AudienceStats> {
     const appUserTypes = [UserType.POSTULANTE, UserType.EMPRESA];
 
-    const [allTokens, postulanteTokens, empresaTokens] = await Promise.all([
-      this.prisma.pushToken.findMany({
+    const [
+      totalActiveTokens,
+      postulanteTokens,
+      empresaTokens,
+      uniqueUsersGroups,
+      postulanteUsersGroups,
+      empresaUsersGroups,
+    ] = await Promise.all([
+      this.prisma.pushToken.count({
         where: {
           isActive: true,
           user: { userType: { in: appUserTypes } },
         },
-        select: { token: true, userId: true },
       }),
-      this.prisma.pushToken.findMany({
+      this.prisma.pushToken.count({
         where: {
           isActive: true,
           user: { userType: UserType.POSTULANTE },
         },
-        select: { token: true, userId: true },
       }),
-      this.prisma.pushToken.findMany({
+      this.prisma.pushToken.count({
         where: {
           isActive: true,
           user: { userType: UserType.EMPRESA },
         },
-        select: { token: true, userId: true },
+      }),
+      this.prisma.pushToken.groupBy({
+        by: ["userId"],
+        where: {
+          isActive: true,
+          user: { userType: { in: appUserTypes } },
+        },
+      }),
+      this.prisma.pushToken.groupBy({
+        by: ["userId"],
+        where: {
+          isActive: true,
+          user: { userType: UserType.POSTULANTE },
+        },
+      }),
+      this.prisma.pushToken.groupBy({
+        by: ["userId"],
+        where: {
+          isActive: true,
+          user: { userType: UserType.EMPRESA },
+        },
       }),
     ]);
 
     return {
-      totalActiveTokens: allTokens.length,
-      uniqueUsers: new Set(allTokens.map((token) => token.userId)).size,
-      postulanteTokens: postulanteTokens.length,
-      postulanteUsers: new Set(postulanteTokens.map((token) => token.userId))
-        .size,
-      empresaTokens: empresaTokens.length,
-      empresaUsers: new Set(empresaTokens.map((token) => token.userId)).size,
+      totalActiveTokens,
+      uniqueUsers: uniqueUsersGroups.length,
+      postulanteTokens,
+      postulanteUsers: postulanteUsersGroups.length,
+      empresaTokens,
+      empresaUsers: empresaUsersGroups.length,
     };
   }
 

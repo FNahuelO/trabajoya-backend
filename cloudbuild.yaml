@@ -254,7 +254,7 @@ substitutions:
   _MEMORY: "2Gi"
   _CPU: "2"
   _MIN_INSTANCES: "1"
-  _MAX_INSTANCES: "10"
-  _CONCURRENCY: "80"
+  _MAX_INSTANCES: "5"
+  _CONCURRENCY: "20"
 
 timeout: "900s"

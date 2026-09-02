@@ -31,6 +31,10 @@ export function normalizeDatabaseUrl(rawUrl?: string | null): string | null {
       params.set("pool_timeout", "30");
     }
 
+    if (!params.has("connection_limit")) {
+      params.set("connection_limit", "3");
+    }
+
   const query = params.toString();
     const auth =
       parsed.username || parsed.password
