@@ -380,6 +380,8 @@ enum ExperienceLevel {
   JUNIOR
   SEMISENIOR
   SENIOR
+  SIN_EXPERIENCIA
+  TRAINEE
 }
 
 enum ModerationStatus {
