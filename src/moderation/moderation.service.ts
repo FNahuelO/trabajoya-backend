@@ -159,6 +159,7 @@ export class ModerationService {
         moderatedBy: moderatorId,
         moderatedAt: getArgentinaLocalNow(),
         moderationReason: null,
+        autoRejectionReason: null,
         // Si está aprobado, activar el empleo
         status: "active",
       },
