@@ -251,10 +251,10 @@ options:
 
 substitutions:
   _REGION: "us-central1"
-  _MEMORY: "2Gi"
-  _CPU: "2"
-  _MIN_INSTANCES: "1"
+  _MEMORY: "1Gi"
+  _CPU: "1"
+  _MIN_INSTANCES: "0"
   _MAX_INSTANCES: "5"
-  _CONCURRENCY: "20"
+  _CONCURRENCY: "80"
 
 timeout: "900s"
