@@ -268,6 +268,8 @@ model Job {
   // Additional fields
   benefits            String?
   company             String?
+  // Teléfono opcional para que los postulantes envíen el CV (WhatsApp / llamada)
+  contactPhone        String?
   // Payment fields
   isPaid              Boolean              @default(false)
   paymentOrderId      String?
@@ -817,6 +819,26 @@ enum PromotionStatus {
   CLAIMED
   USED
   EXPIRED
+}
+
+enum ModerationTermCategory {
+  SCAM
+  EXPLOITATION
+  DISCRIMINATION
+  OFFENSIVE
+  INAPPROPRIATE
+}
+
+// Palabras/frases que rechazan automáticamente un aviso (editables desde el backoffice)
+model ModerationTerm {
+  id        String                 @id @default(uuid())
+  term      String                 @unique
+  category  ModerationTermCategory
+  active    Boolean                @default(true)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  @@index([active])
 }
 
 // Entitlements por job post

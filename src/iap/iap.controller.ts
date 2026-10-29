@@ -11,6 +11,8 @@ import {
   Param,
   ValidationPipe,
   UnauthorizedException,
+  Logger,
+  HttpCode,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -24,7 +26,27 @@ import { createResponse } from '../common/mapper/api-response.mapper';
 @ApiTags('iap')
 @Controller('api/iap')
 export class IapController {
+  private readonly clientLogger = new Logger('IapClient');
+
   constructor(private readonly iapService: IapService) {}
+
+  @Post('client-log')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Registrar eventos/errores de compra reportados por la app' })
+  clientLog(@Req() req: any, @Body() body: any) {
+    const entry: Record<string, any> = {
+      userId: req.user?.sub,
+      ...sanitizeClientLog(body),
+    };
+    const line = `[IAP_CLIENT] ${JSON.stringify(entry)}`;
+    if (typeof entry.event === 'string' && entry.event.endsWith('_failed')) {
+      this.clientLogger.warn(line);
+    } else {
+      this.clientLogger.log(line);
+    }
+  }
 
   @Post('apple/verify')
   @UseGuards(JwtAuthGuard)
@@ -197,5 +219,25 @@ export class IapController {
       message: 'Producto IAP eliminado correctamente',
     });
   }
+}
+
+const CLIENT_LOG_MAX_KEYS = 30;
+const CLIENT_LOG_MAX_STRING = 500;
+
+function sanitizeClientLog(body: any): Record<string, any> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return {};
+  }
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(body).slice(0, CLIENT_LOG_MAX_KEYS)) {
+    if (value === null || typeof value === 'number' || typeof value === 'boolean') {
+      result[key] = value;
+    } else if (typeof value === 'string') {
+      result[key] = value.slice(0, CLIENT_LOG_MAX_STRING);
+    } else {
+      result[key] = JSON.stringify(value).slice(0, CLIENT_LOG_MAX_STRING);
+    }
+  }
+  return result;
 }
 

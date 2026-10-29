@@ -120,6 +120,7 @@ export class PromotionsService {
     const freePublicationsUsed = await this.prisma.job.count({
       where: {
         empresaId: user.empresa.id,
+        moderationStatus: { not: "AUTO_REJECTED" as any },
         entitlements: {
           some: {
             source: "PROMO",

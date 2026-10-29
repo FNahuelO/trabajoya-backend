@@ -1,4 +1,13 @@
-import { Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from "@nestjs/common";
+import { ModerationTermCategory } from "@prisma/client";
+import { PrismaService } from "../../prisma/prisma.service";
 
 export enum ModerationSeverity {
   LOW = "low",
@@ -17,119 +26,129 @@ export interface ModerationResult {
   suggestions?: string[];
 }
 
+interface CategoryRule {
+  score: number;
+  severity: ModerationSeverity;
+  reason: string;
+  suggestion?: string;
+}
+
+const CATEGORY_RULES: Record<ModerationTermCategory, CategoryRule> = {
+  SCAM: {
+    score: 40,
+    severity: ModerationSeverity.CRITICAL,
+    reason: "Posible contenido de estafa o fraude detectado",
+    suggestion: "Evita promesas de ganancias o menciones de esquemas de inversión",
+  },
+  EXPLOITATION: {
+    score: 35,
+    severity: ModerationSeverity.HIGH,
+    reason: "Posible explotación laboral detectada",
+    suggestion: "Especifica claramente el salario y las condiciones laborales",
+  },
+  DISCRIMINATION: {
+    score: 30,
+    severity: ModerationSeverity.HIGH,
+    reason: "Contenido discriminatorio detectado",
+    suggestion: "Evita mencionar género, edad, estado civil o apariencia física",
+  },
+  OFFENSIVE: {
+    score: 45,
+    severity: ModerationSeverity.CRITICAL,
+    reason: "Lenguaje ofensivo o inapropiado detectado",
+  },
+  INAPPROPRIATE: {
+    score: 50,
+    severity: ModerationSeverity.CRITICAL,
+    reason: "Oferta laboral inapropiada o ilegal detectada",
+  },
+};
+
+const CATEGORY_ORDER: ModerationTermCategory[] = [
+  "SCAM",
+  "EXPLOITATION",
+  "DISCRIMINATION",
+  "OFFENSIVE",
+  "INAPPROPRIATE",
+];
+
+// Se usa solo si la tabla ModerationTerm todavía no se pudo leer.
+const FALLBACK_TERMS: Array<{ term: string; category: ModerationTermCategory }> = [
+  ...["dinero fácil", "gana dinero rápido", "inversión inicial", "multinivel", "piramidal",
+    "ganancias garantizadas", "mlm", "ganar dinero sin trabajar", "negocio propio sin inversión",
+    "ingresos pasivos fáciles", "hazte rico"].map((term) => ({ term, category: "SCAM" as const })),
+  ...["sin pago", "trabajo gratis", "sin sueldo", "trabajo voluntario obligatorio",
+    "trabajo sin remuneración", "pago en especie", "trabajo informal", "sin contrato"]
+    .map((term) => ({ term, category: "EXPLOITATION" as const })),
+  ...["solo hombres", "solo mujeres", "edad máxima", "solo jóvenes", "no mayores de",
+    "preferentemente hombres", "preferentemente mujeres", "buena presencia", "físico agradable",
+    "estado civil", "sin hijos", "soltera", "soltero"]
+    .map((term) => ({ term, category: "DISCRIMINATION" as const })),
+  ...["idiota", "imbécil", "estúpido", "tonto", "retrasado", "inútil", "pendejo", "hijo de puta",
+    "mierda", "carajo"].map((term) => ({ term, category: "OFFENSIVE" as const })),
+  ...["envía dinero", "modelo webcam", "trabajo sexual", "acompañante vip", "dama de compañía",
+    "masajista sensual", "servicios para adultos", "entretenimiento adulto", "contenido adulto"]
+    .map((term) => ({ term, category: "INAPPROPRIATE" as const })),
+];
+
+interface CompiledTerm {
+  term: string;
+  category: ModerationTermCategory;
+  regex: RegExp;
+}
+
+const TERMS_TTL_MS = 60_000;
+
+// Compartido entre todas las instancias del servicio (cada módulo crea la suya).
+let termsCache: { terms: CompiledTerm[]; loadedAt: number } | null = null;
+let termsLoading: Promise<void> | null = null;
+
+/** Minúsculas, sin tildes y con espacios simples, para comparar texto. */
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compileTerm(term: string, category: ModerationTermCategory): CompiledTerm {
+  const escaped = normalizeText(term)
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/ /g, "\\s+");
+  return {
+    term,
+    category,
+    regex: new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u"),
+  };
+}
+
 @Injectable()
-export class ContentModerationService {
-  // Palabras prohibidas por categoría
-  private readonly scamWords = [
-    "dinero fácil",
-    "gana dinero rápido",
-    "trabajo desde casa sin experiencia",
-    "inversión inicial",
-    "multinivel",
-    "piramidal",
-    "esquema piramidal",
-    "ganancias garantizadas",
-    "marketing multinivel",
-    "mlm",
-    "ganar dinero sin trabajar",
-    "negocio propio sin inversión",
-    "ingresos pasivos fáciles",
-    "hazte rico",
-  ];
+export class ContentModerationService implements OnModuleInit {
+  private readonly logger = new Logger(ContentModerationService.name);
 
-  private readonly exploitationWords = [
-    "sin pago",
-    "trabajo gratis",
-    "solo experiencia",
-    "sin sueldo",
-    "trabajo voluntario obligatorio",
-    "trabajo sin remuneración",
-    "solo comisión",
-    "pago en especie",
-    "sin contrato",
-    "trabajo informal",
-  ];
-
-  private readonly discriminationWords = [
-    "solo hombres",
-    "solo mujeres",
-    "edad máxima",
-    "solo jóvenes",
-    "no mayores de",
-    "preferentemente hombres",
-    "preferentemente mujeres",
-    "buena presencia",
-    "físico agradable",
-    "estado civil",
-    "sin hijos",
-    "soltera",
-    "soltero",
-  ];
-
-  private readonly offensiveWords = [
-    "idiota",
-    "imbécil",
-    "estúpido",
-    "tonto",
-    "retrasado",
-    "inútil",
-    "pendejo",
-    "hijo de",
-    "mierda",
-    "carajo",
-  ];
-
-  private readonly inappropriateOffers = [
-    "envía dinero",
-    "deposita",
-    "crypto",
-    "bitcoin",
-    "criptomoneda",
-    "modelo webcam",
-    "trabajo sexual",
-    "acompañante",
-    "masajista sensual",
-    "servicios para adultos",
-    "entretenimiento adulto",
-    "contenido adulto",
-  ];
-
-  // Patrones sospechosos con severidad
+  // Patrones sospechosos: suman puntaje pero por sí solos no rechazan
   private readonly patterns = [
     {
-      pattern: /\$\d{3,}/g,
-      severity: ModerationSeverity.MEDIUM,
-      reason: "Mención de grandes cantidades de dinero",
-    },
-    {
-      pattern: /gana\s+\$?\d+/gi,
+      pattern: /gana(?:s|r|)\s+(?:hasta\s+)?\$?\s?\d+/gi,
       severity: ModerationSeverity.MEDIUM,
       reason: "Promesa de ganancias específicas",
     },
     {
-      pattern: /inversión\s+de\s+\$?\d+/gi,
+      pattern: /inversion\s+de\s+\$?\s?\d+/gi,
       severity: ModerationSeverity.HIGH,
       reason: "Solicitud de inversión inicial",
     },
     {
-      pattern: /deposita\s+\$?\d+/gi,
+      pattern: /deposit(?:a|ar|e|es)\s+\$?\s?\d+/gi,
       severity: ModerationSeverity.HIGH,
       reason: "Solicitud de depósito",
     },
     {
-      pattern: /\d+\s*%\s*de\s+comisión/gi,
-      severity: ModerationSeverity.MEDIUM,
-      reason: "Solo trabajo por comisión",
-    },
-    {
-      pattern: /sin\s+experiencia\s+necesaria/gi,
+      pattern: /whatsapp\s*:?\s*\+?\d{6,}/gi,
       severity: ModerationSeverity.LOW,
-      reason: "Frase común en estafas",
-    },
-    {
-      pattern: /whatsapp\s*:?\s*\d+/gi,
-      severity: ModerationSeverity.MEDIUM,
-      reason: "Contacto directo por WhatsApp (posible fraude)",
+      reason: "Contacto directo por WhatsApp en el texto",
     },
     {
       pattern: /(urgente|inmediato).*contrata/gi,
@@ -138,7 +157,7 @@ export class ContentModerationService {
     },
     {
       pattern: /\b(https?:\/\/|www\.)[^\s]+/gi,
-      severity: ModerationSeverity.MEDIUM,
+      severity: ModerationSeverity.LOW,
       reason: "Enlaces externos detectados",
     },
     {
@@ -148,8 +167,48 @@ export class ContentModerationService {
     },
   ];
 
+  constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    await this.refreshTerms();
+  }
+
+  /** Recarga los términos desde la base. Si falla, se mantienen los anteriores. */
+  async refreshTerms(): Promise<void> {
+    if (termsLoading) return termsLoading;
+    termsLoading = (async () => {
+      try {
+        const rows = await this.prisma.moderationTerm.findMany({
+          where: { active: true },
+          select: { term: true, category: true },
+        });
+        termsCache = {
+          terms: rows.map((r) => compileTerm(r.term, r.category)),
+          loadedAt: Date.now(),
+        };
+      } catch (error: any) {
+        this.logger.warn(`No se pudieron cargar los términos de moderación: ${error?.message}`);
+        if (termsCache) {
+          termsCache.loadedAt = Date.now();
+        }
+      } finally {
+        termsLoading = null;
+      }
+    })();
+    return termsLoading;
+  }
+
+  private getTerms(): CompiledTerm[] {
+    if (!termsCache || Date.now() - termsCache.loadedAt > TERMS_TTL_MS) {
+      void this.refreshTerms();
+    }
+    return termsCache?.terms ?? FALLBACK_TERMS.map((t) => compileTerm(t.term, t.category));
+  }
+
   /**
-   * Analiza el contenido completo de un empleo
+   * Analiza el contenido completo de un empleo.
+   * Cualquier término prohibido rechaza el aviso; los patrones y el spam solo
+   * rechazan si juntos suman 50 puntos o más.
    */
   analyzeJobContent(jobData: {
     title: string;
@@ -158,9 +217,14 @@ export class ContentModerationService {
     salary?: string;
     companyName?: string;
   }): ModerationResult {
-    const content = `${jobData.title} ${jobData.description} ${
-      jobData.requirements
-    } ${jobData.salary || ""} ${jobData.companyName || ""}`.toLowerCase();
+    const rawContent = [
+      jobData.title,
+      jobData.description,
+      jobData.requirements,
+      jobData.salary || "",
+      jobData.companyName || "",
+    ].join(" ");
+    const content = normalizeText(rawContent);
 
     let score = 0;
     const reasons: string[] = [];
@@ -168,57 +232,28 @@ export class ContentModerationService {
     const suggestions: string[] = [];
     let highestSeverity = ModerationSeverity.LOW;
 
-    // 1. Verificar palabras prohibidas por categoría
-    const scamFound = this.checkWords(content, this.scamWords);
-    if (scamFound.length > 0) {
-      score += 40;
-      flaggedWords.push(...scamFound);
-      reasons.push("Posible contenido de estafa o fraude detectado");
-      highestSeverity = ModerationSeverity.CRITICAL;
+    // 1. Términos prohibidos (administrados desde el backoffice)
+    const found = new Map<ModerationTermCategory, string[]>();
+    for (const t of this.getTerms()) {
+      if (t.regex.test(content)) {
+        found.set(t.category, [...(found.get(t.category) || []), t.term]);
+      }
     }
-
-    const exploitationFound = this.checkWords(content, this.exploitationWords);
-    if (exploitationFound.length > 0) {
-      score += 35;
-      flaggedWords.push(...exploitationFound);
-      reasons.push("Posible explotación laboral detectada");
-      highestSeverity = ModerationSeverity.HIGH;
+    for (const category of CATEGORY_ORDER) {
+      const words = found.get(category);
+      if (!words?.length) continue;
+      const rule = CATEGORY_RULES[category];
+      score += rule.score;
+      flaggedWords.push(...words);
+      reasons.push(`${rule.reason} (${this.quoteWords(words)})`);
+      if (rule.suggestion) suggestions.push(rule.suggestion);
+      if (this.compareSeverity(rule.severity, highestSeverity) > 0) {
+        highestSeverity = rule.severity;
+      }
     }
+    const hasProhibitedTerms = flaggedWords.length > 0;
 
-    const discriminationFound = this.checkWords(
-      content,
-      this.discriminationWords
-    );
-    if (discriminationFound.length > 0) {
-      score += 30;
-      flaggedWords.push(...discriminationFound);
-      reasons.push("Contenido discriminatorio detectado");
-      highestSeverity = ModerationSeverity.HIGH;
-      suggestions.push(
-        "Evita mencionar género, edad, estado civil o apariencia física"
-      );
-    }
-
-    const offensiveFound = this.checkWords(content, this.offensiveWords);
-    if (offensiveFound.length > 0) {
-      score += 45;
-      flaggedWords.push(...offensiveFound);
-      reasons.push("Lenguaje ofensivo o inapropiado detectado");
-      highestSeverity = ModerationSeverity.CRITICAL;
-    }
-
-    const inappropriateFound = this.checkWords(
-      content,
-      this.inappropriateOffers
-    );
-    if (inappropriateFound.length > 0) {
-      score += 50;
-      flaggedWords.push(...inappropriateFound);
-      reasons.push("Oferta laboral inapropiada o ilegal detectada");
-      highestSeverity = ModerationSeverity.CRITICAL;
-    }
-
-    // 2. Verificar patrones sospechosos
+    // 2. Patrones sospechosos
     for (const patternObj of this.patterns) {
       const matches = content.match(patternObj.pattern);
       if (matches) {
@@ -231,29 +266,23 @@ export class ContentModerationService {
       }
     }
 
-    // 3. Validaciones de calidad del contenido
-    const qualityChecks = this.performQualityChecks(jobData);
-    score += qualityChecks.score;
-    reasons.push(...qualityChecks.reasons);
-    suggestions.push(...qualityChecks.suggestions);
-
-    // 4. Análisis de spam
-    const spamCheck = this.checkSpam(content);
+    // 3. Spam
+    const spamCheck = this.checkSpam(content, rawContent);
     if (spamCheck.isSpam) {
       score += 25;
       reasons.push(spamCheck.reason);
       suggestions.push("Evita repetir palabras o usar mayúsculas excesivas");
     }
 
-    // 5. Determinar resultado final
-    score = Math.min(score, 100);
+    // 4. Calidad: solo sugerencias, no penaliza
+    suggestions.push(...this.performQualityChecks(jobData));
 
-    const isApproved = score < 30;
-    const needsManualReview = score >= 30 && score < 50;
+    score = Math.min(score, 100);
+    const isApproved = !hasProhibitedTerms && score < 50;
 
     return {
       isApproved,
-      needsManualReview,
+      needsManualReview: isApproved && score >= 30,
       severity: highestSeverity,
       reasons,
       flaggedWords: [...new Set(flaggedWords)],
@@ -262,115 +291,136 @@ export class ContentModerationService {
     };
   }
 
-  /**
-   * Verifica palabras en una lista
-   */
-  private checkWords(content: string, wordList: string[]): string[] {
-    const found: string[] = [];
-    for (const word of wordList) {
-      if (content.includes(word.toLowerCase())) {
-        found.push(word);
-      }
-    }
-    return found;
+  // ---------- Administración de términos ----------
+
+  async listTerms() {
+    return this.prisma.moderationTerm.findMany({
+      orderBy: [{ category: "asc" }, { term: "asc" }],
+    });
   }
 
-  /**
-   * Realiza verificaciones de calidad del contenido
-   */
+  async createTerm(dto: { term?: string; category?: string; active?: boolean }) {
+    const term = this.validateTerm(dto.term);
+    const category = this.validateCategory(dto.category);
+    try {
+      const created = await this.prisma.moderationTerm.create({
+        data: { term, category, active: dto.active ?? true },
+      });
+      await this.forceRefresh();
+      return created;
+    } catch (error: any) {
+      if (error?.code === "P2002") {
+        throw new ConflictException(`El término "${term}" ya existe`);
+      }
+      throw error;
+    }
+  }
+
+  async updateTerm(
+    id: string,
+    dto: { term?: string; category?: string; active?: boolean },
+  ) {
+    const data: { term?: string; category?: ModerationTermCategory; active?: boolean } = {};
+    if (dto.term !== undefined) data.term = this.validateTerm(dto.term);
+    if (dto.category !== undefined) data.category = this.validateCategory(dto.category);
+    if (dto.active !== undefined) data.active = Boolean(dto.active);
+    try {
+      const updated = await this.prisma.moderationTerm.update({ where: { id }, data });
+      await this.forceRefresh();
+      return updated;
+    } catch (error: any) {
+      if (error?.code === "P2025") throw new NotFoundException("Término no encontrado");
+      if (error?.code === "P2002") {
+        throw new ConflictException(`El término "${data.term}" ya existe`);
+      }
+      throw error;
+    }
+  }
+
+  async deleteTerm(id: string) {
+    try {
+      await this.prisma.moderationTerm.delete({ where: { id } });
+      await this.forceRefresh();
+    } catch (error: any) {
+      if (error?.code === "P2025") throw new NotFoundException("Término no encontrado");
+      throw error;
+    }
+  }
+
+  private async forceRefresh() {
+    if (termsLoading) await termsLoading;
+    await this.refreshTerms();
+  }
+
+  private validateTerm(value: unknown): string {
+    const term = typeof value === "string" ? value.trim().replace(/\s+/g, " ").toLowerCase() : "";
+    if (term.length < 2 || term.length > 100) {
+      throw new BadRequestException("El término debe tener entre 2 y 100 caracteres");
+    }
+    return term;
+  }
+
+  private validateCategory(value: unknown): ModerationTermCategory {
+    if (typeof value !== "string" || !CATEGORY_ORDER.includes(value as ModerationTermCategory)) {
+      throw new BadRequestException(
+        `Categoría inválida. Valores posibles: ${CATEGORY_ORDER.join(", ")}`,
+      );
+    }
+    return value as ModerationTermCategory;
+  }
+
+  // ---------- Helpers ----------
+
+  private quoteWords(words: string[]): string {
+    return words.map((w) => `"${w}"`).join(", ");
+  }
+
   private performQualityChecks(jobData: {
     title: string;
     description: string;
     requirements: string;
-  }): { score: number; reasons: string[]; suggestions: string[] } {
-    let score = 0;
-    const reasons: string[] = [];
+  }): string[] {
     const suggestions: string[] = [];
-
-    // Verificar longitud de descripción
     if (jobData.description.trim().length < 50) {
-      score += 15;
-      reasons.push("Descripción demasiado corta");
-      suggestions.push("La descripción debe tener al menos 50 caracteres");
+      suggestions.push("La descripción debería tener al menos 50 caracteres");
     }
-
     if (jobData.description.trim().length > 5000) {
-      score += 10;
-      reasons.push("Descripción excesivamente larga");
       suggestions.push("Intenta ser más conciso en la descripción");
     }
-
-    // Verificar requisitos
     if (jobData.requirements.trim().length < 20) {
-      score += 15;
-      reasons.push("Requisitos insuficientes");
       suggestions.push("Especifica claramente los requisitos del puesto");
     }
-
-    // Verificar título
-    if (jobData.title.trim().length < 5) {
-      score += 20;
-      reasons.push("Título demasiado corto");
-      suggestions.push("El título debe describir claramente el puesto");
-    }
-
     if (jobData.title.trim().length > 100) {
-      score += 10;
-      reasons.push("Título demasiado largo");
       suggestions.push("Usa un título más conciso");
     }
-
-    return { score, reasons, suggestions };
+    return suggestions;
   }
 
-  /**
-   * Verifica contenido spam
-   */
-  private checkSpam(content: string): { isSpam: boolean; reason: string } {
-    // Verificar palabras repetitivas
-    const words = content.split(/\s+/);
+  private checkSpam(content: string, rawContent: string): { isSpam: boolean; reason: string } {
     const wordCounts: { [key: string]: number } = {};
-
-    for (const word of words) {
+    for (const word of content.split(/\s+/)) {
       if (word.length > 4) {
         wordCounts[word] = (wordCounts[word] || 0) + 1;
       }
     }
-
-    const repeatedWords = Object.entries(wordCounts).filter(
-      ([_, count]) => count > 5
-    );
+    const repeatedWords = Object.values(wordCounts).filter((count) => count > 5);
     if (repeatedWords.length > 2) {
-      return {
-        isSpam: true,
-        reason: "Contenido repetitivo detectado (posible spam)",
-      };
+      return { isSpam: true, reason: "Contenido repetitivo detectado (posible spam)" };
     }
 
-    // Verificar mayúsculas excesivas
-    const uppercaseRatio =
-      (content.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length / content.length;
-    if (uppercaseRatio > 0.5 && content.length > 50) {
-      return {
-        isSpam: true,
-        reason: "Uso excesivo de mayúsculas",
-      };
+    const letters = rawContent.match(/\p{L}/gu) || [];
+    const uppercase = rawContent.match(/\p{Lu}/gu) || [];
+    if (letters.length > 50 && uppercase.length / letters.length > 0.5) {
+      return { isSpam: true, reason: "Uso excesivo de mayúsculas" };
     }
 
-    // Verificar caracteres especiales repetidos
-    if (/(.)\1{4,}/.test(content)) {
-      return {
-        isSpam: true,
-        reason: "Caracteres especiales repetidos",
-      };
+    if (/([^\s\d])\1{4,}/u.test(content)) {
+      return { isSpam: true, reason: "Caracteres especiales repetidos" };
     }
 
     return { isSpam: false, reason: "" };
   }
 
-  /**
-   * Obtiene el score numérico según la severidad
-   */
   private getSeverityScore(severity: ModerationSeverity): number {
     switch (severity) {
       case ModerationSeverity.LOW:
@@ -386,13 +436,7 @@ export class ContentModerationService {
     }
   }
 
-  /**
-   * Compara severidades (-1, 0, 1)
-   */
-  private compareSeverity(
-    a: ModerationSeverity,
-    b: ModerationSeverity
-  ): number {
+  private compareSeverity(a: ModerationSeverity, b: ModerationSeverity): number {
     const order = [
       ModerationSeverity.LOW,
       ModerationSeverity.MEDIUM,
@@ -400,39 +444,5 @@ export class ContentModerationService {
       ModerationSeverity.CRITICAL,
     ];
     return order.indexOf(a) - order.indexOf(b);
-  }
-
-  /**
-   * Obtiene sugerencias para mejorar una publicación rechazada
-   */
-  getSuggestions(result: ModerationResult): string[] {
-    const suggestions: string[] = [];
-
-    if (result.flaggedWords.some((w) => this.scamWords.includes(w))) {
-      suggestions.push(
-        "Evita promesas de ganancias o menciones de esquemas de inversión"
-      );
-    }
-
-    if (result.flaggedWords.some((w) => this.discriminationWords.includes(w))) {
-      suggestions.push(
-        "Elimina cualquier mención de género, edad, estado civil o apariencia física"
-      );
-    }
-
-    if (result.flaggedWords.some((w) => this.exploitationWords.includes(w))) {
-      suggestions.push(
-        "Especifica claramente el salario y condiciones laborales"
-      );
-    }
-
-    suggestions.push(
-      "Usa lenguaje profesional y describe claramente las responsabilidades del puesto"
-    );
-    suggestions.push(
-      "Incluye información sobre tu empresa y beneficios ofrecidos"
-    );
-
-    return suggestions;
   }
 }

@@ -50,6 +50,59 @@ export class EmpresasService {
     return Math.floor(parsed);
   }
 
+  /**
+   * Quita del dto los campos de pago/moderación que solo puede definir el servidor.
+   */
+  private stripServerControlledJobFields(dto: any) {
+    if (!dto || typeof dto !== "object") return;
+    for (const field of [
+      "id",
+      "empresaId",
+      "status",
+      "publishedAt",
+      "isPaid",
+      "paymentOrderId",
+      "paymentAmount",
+      "paymentCurrency",
+      "paymentStatus",
+      "coinPaymentLinkUrl",
+      "paidAt",
+      "moderationStatus",
+      "moderationReason",
+      "moderatedBy",
+      "moderatedAt",
+      "autoRejectionReason",
+      "applications",
+      "empresa",
+      "favorites",
+      "entitlements",
+    ]) {
+      delete dto[field];
+    }
+  }
+
+  /**
+   * Normaliza el teléfono de contacto opcional del aviso (in-place sobre el dto).
+   */
+  private normalizeJobContactPhone(dto: any) {
+    if (!dto || dto.contactPhone === undefined) return;
+
+    const raw = dto.contactPhone === null ? "" : String(dto.contactPhone).trim();
+    if (!raw) {
+      dto.contactPhone = null;
+      return;
+    }
+
+    const digits = raw.replace(/\D/g, "");
+    if (!/^[+\d\s().-]+$/.test(raw) || digits.length < 8 || digits.length > 15) {
+      throw new BadRequestException(
+        "El teléfono de contacto no es válido. Usá solo números, con código de área (ej: 11 2345-6789)."
+      );
+    }
+
+    dto.contactPhone = raw.replace(/\s+/g, " ");
+  }
+
   private getFreePublicationDurationDays(): number {
     const raw = this.configService.get<string>("FREE_JOB_PUBLICATION_DAYS");
     const parsed = Number(raw);
@@ -257,6 +310,9 @@ export class EmpresasService {
       throw new NotFoundException("Mensaje de error");
     }
 
+    this.stripServerControlledJobFields(dto);
+    this.normalizeJobContactPhone(dto);
+
     // Verificar si se está usando el plan LAUNCH_TRIAL
     const planKey = dto.planKey || dto.plan_key;
     const isLaunchTrial = planKey === "LAUNCH_TRIAL";
@@ -285,7 +341,10 @@ export class EmpresasService {
       if (!moderationResult.isApproved) {
         moderationStatus = "AUTO_REJECTED";
         status = "inactive";
-        autoRejectionReason = moderationResult.reasons.join(". ");
+        autoRejectionReason = [
+          ...moderationResult.reasons,
+          ...(moderationResult.suggestions || []),
+        ].join(". ");
       } else {
         // Promoción LAUNCH_TRIAL: auto-aprobar si pasa la moderación automática
         moderationStatus = "APPROVED";
@@ -382,9 +441,11 @@ export class EmpresasService {
         : this.getFreePublicationsPerPromo();
 
     // Cupo de publicaciones gratis usadas dentro de la promoción.
+    // Los avisos rechazados por el filtro automático no consumen cupo.
     const freePublicationsUsed = await this.prisma.job.count({
       where: {
         empresaId: profile.id,
+        moderationStatus: { not: "AUTO_REJECTED" as any },
         entitlements: {
           some: {
             source: "PROMO",
@@ -502,7 +563,10 @@ export class EmpresasService {
       moderationStatus = "AUTO_REJECTED";
       status = "inactive";
       // Combinar todas las razones en un mensaje
-      autoRejectionReason = moderationResult.reasons.join(". ");
+      autoRejectionReason = [
+          ...moderationResult.reasons,
+          ...(moderationResult.suggestions || []),
+        ].join(". ");
     } else if (moderationResult.needsManualReview) {
       // Si necesita revisión manual (score >= 30 y < 50), va a PENDING
       moderationStatus = "PENDING";
@@ -570,7 +634,8 @@ export class EmpresasService {
 
       // Mantener CLAIMED mientras tenga cupo; marcar USED al consumir el último.
       if (userPromotion) {
-        const usedNow = freePublicationsUsed + 1;
+        const usedNow =
+          freePublicationsUsed + (moderationStatus === "AUTO_REJECTED" ? 0 : 1);
         const nextStatus = usedNow >= freePublicationsPerPromo ? "USED" : "CLAIMED";
         await this.prisma.userPromotion.update({
           where: { id: userPromotion.id },
@@ -639,6 +704,9 @@ export class EmpresasService {
       throw new NotFoundException("Mensaje de error");
     }
 
+    this.stripServerControlledJobFields(dto);
+    this.normalizeJobContactPhone(dto);
+
     // Verificar si hay cambios reales (excluyendo campos que no cuentan como modificación)
     const hasChanges =
       (dto.title && dto.title !== job.title) ||
@@ -702,7 +770,10 @@ export class EmpresasService {
       if (!moderationResult.isApproved) {
         dto.moderationStatus = "AUTO_REJECTED";
         dto.status = "inactive";
-        dto.autoRejectionReason = moderationResult.reasons.join(". ");
+        dto.autoRejectionReason = [
+          ...moderationResult.reasons,
+          ...(moderationResult.suggestions || []),
+        ].join(". ");
         // Limpiar campos de moderación manual si estaban aprobados
         dto.moderatedBy = null;
         dto.moderatedAt = null;
@@ -1566,7 +1637,10 @@ export class EmpresasService {
     if (!moderationResult.isApproved) {
       moderationStatus = "AUTO_REJECTED";
       status = "inactive";
-      autoRejectionReason = moderationResult.reasons.join(". ");
+      autoRejectionReason = [
+          ...moderationResult.reasons,
+          ...(moderationResult.suggestions || []),
+        ].join(". ");
     }
 
     // Actualizar el empleo con el pago confirmado y pasar a moderación

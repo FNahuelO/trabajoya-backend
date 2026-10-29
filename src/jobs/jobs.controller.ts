@@ -1,10 +1,7 @@
 import {
-  Body,
   Controller,
   Get,
   Param,
-  Post,
-  Put,
   Delete,
   Query,
   Req,
@@ -36,30 +33,6 @@ export class JobsController {
     return createResponse({
       success: true,
       message: "Trabajo obtenido correctamente",
-      data,
-    });
-  }
-
-  @Post()
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async create(@Body() dto: any, @Req() req: any) {
-    const data = await this.service.create(dto);
-    return createResponse({
-      success: true,
-      message: "Trabajo creado correctamente",
-      data,
-    });
-  }
-
-  @Put(":id")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  async update(@Param("id") id: string, @Body() dto: any, @Req() req: any) {
-    const data = await this.service.update(id, req.user?.sub, dto);
-    return createResponse({
-      success: true,
-      message: "Trabajo actualizado correctamente",
       data,
     });
   }

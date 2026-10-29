@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Param,
   Body,
   UseGuards,
@@ -12,6 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
 import { AdminGuard } from "../common/guards/admin.guard";
 import { createResponse } from "../common/mapper/api-response.mapper";
+import { ContentModerationService } from "../common/services/content-moderation.service";
 import { ModerationService } from "./moderation.service";
 
 @ApiTags("moderation")
@@ -19,7 +22,69 @@ import { ModerationService } from "./moderation.service";
 @UseGuards(JwtAuthGuard, AdminGuard)
 @ApiBearerAuth()
 export class ModerationController {
-  constructor(private moderationService: ModerationService) {}
+  constructor(
+    private moderationService: ModerationService,
+    private contentModeration: ContentModerationService
+  ) {}
+
+  @Get("terms")
+  @ApiOperation({ summary: "Listar términos del filtro automático de avisos" })
+  async listTerms() {
+    const data = await this.contentModeration.listTerms();
+    return createResponse({
+      success: true,
+      message: "Términos obtenidos correctamente",
+      data,
+    });
+  }
+
+  @Post("terms")
+  @ApiOperation({ summary: "Agregar un término al filtro automático" })
+  async createTerm(@Body() body: any) {
+    const data = await this.contentModeration.createTerm(body || {});
+    return createResponse({
+      success: true,
+      message: "Término agregado correctamente",
+      data,
+    });
+  }
+
+  @Post("terms/test")
+  @ApiOperation({ summary: "Probar un texto contra el filtro automático" })
+  async testContent(@Body() body: any) {
+    await this.contentModeration.refreshTerms();
+    const data = this.contentModeration.analyzeJobContent({
+      title: String(body?.title || ""),
+      description: String(body?.description || ""),
+      requirements: String(body?.requirements || ""),
+    });
+    return createResponse({
+      success: true,
+      message: "Análisis realizado",
+      data,
+    });
+  }
+
+  @Patch("terms/:id")
+  @ApiOperation({ summary: "Editar o activar/desactivar un término" })
+  async updateTerm(@Param("id") id: string, @Body() body: any) {
+    const data = await this.contentModeration.updateTerm(id, body || {});
+    return createResponse({
+      success: true,
+      message: "Término actualizado correctamente",
+      data,
+    });
+  }
+
+  @Delete("terms/:id")
+  @ApiOperation({ summary: "Eliminar un término" })
+  async deleteTerm(@Param("id") id: string) {
+    await this.contentModeration.deleteTerm(id);
+    return createResponse({
+      success: true,
+      message: "Término eliminado correctamente",
+    });
+  }
 
   @Get("jobs/pending")
   async getPendingJobs(@Query() query: any) {

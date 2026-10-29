@@ -8,7 +8,6 @@ import { PrismaService } from "../prisma/prisma.service";
 import { GcpCdnService } from "../upload/gcp-cdn.service";
 import { GCSUploadService } from "../upload/gcs-upload.service";
 import {
-  enrichJobDataWithCoordinates,
   haversineDistanceKm,
   isRemoteJob,
   resolveJobCoordinates,
@@ -521,31 +520,6 @@ export class JobsService {
     }
 
     return this.attachTranslatedSchedule(job);
-  }
-
-  async create(dto: any) {
-    const data = await enrichJobDataWithCoordinates(dto);
-    return this.prisma.job.create({ data });
-  }
-
-  async update(id: string, userId: string, dto: any) {
-    const job = await this.prisma.job.findUnique({
-      where: { id },
-      include: { empresa: true },
-    });
-
-    if (!job) {
-      throw new NotFoundException("Mensaje de error");
-    }
-
-    if (job.empresa.userId !== userId) {
-      throw new ForbiddenException("Mensaje de error");
-    }
-
-    return this.prisma.job.update({
-      where: { id },
-      data: dto,
-    });
   }
 
   async delete(id: string, userId: string) {
