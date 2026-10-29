@@ -99,6 +99,29 @@ export class AdminService {
     return sortMap[sortBy || ""] || { appliedAt: "desc" as const };
   }
 
+  private parseBooleanFilter(value?: string): boolean | undefined {
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return undefined;
+  }
+
+  private buildDateRange(from?: string, to?: string) {
+    const range: { gte?: Date; lte?: Date } = {};
+    if (from) {
+      const fromDate = new Date(`${from}T00:00:00`);
+      if (!isNaN(fromDate.getTime())) range.gte = fromDate;
+    }
+    if (to) {
+      const toDate = new Date(`${to}T23:59:59.999`);
+      if (!isNaN(toDate.getTime())) range.lte = toDate;
+    }
+    return range.gte || range.lte ? range : undefined;
+  }
+
+  private containsInsensitive(value: string) {
+    return { contains: value, mode: "insensitive" as const };
+  }
+
   async getUsers(
     page: number,
     pageSize: number,
@@ -198,13 +221,62 @@ export class AdminService {
     page: number,
     pageSize: number,
     sortBy?: string,
-    sortOrder?: string
+    sortOrder?: string,
+    filters: {
+      search?: string;
+      provincia?: string;
+      verified?: string;
+      hasActiveSubscription?: string;
+      createdFrom?: string;
+      createdTo?: string;
+    } = {}
   ) {
     const skip = (page - 1) * pageSize;
     const orderBy = this.getEmpresasOrderBy(sortBy, sortOrder);
 
+    const where: any = { AND: [] };
+    const searchTerm = filters.search?.trim();
+    if (searchTerm) {
+      const term = this.containsInsensitive(searchTerm);
+      where.AND.push({
+        OR: [
+          { companyName: term },
+          { razonSocial: term },
+          { cuit: term },
+          { email: term },
+          { phone: term },
+          { nombreContacto: term },
+          { apellidoContacto: term },
+          { user: { email: term } },
+        ],
+      });
+    }
+    const provincia = filters.provincia?.trim();
+    if (provincia) {
+      where.AND.push({ provincia: this.containsInsensitive(provincia) });
+    }
+    const verified = this.parseBooleanFilter(filters.verified);
+    if (verified !== undefined) {
+      where.AND.push({ user: { isVerified: verified } });
+    }
+    const hasActiveSubscription = this.parseBooleanFilter(
+      filters.hasActiveSubscription
+    );
+    if (hasActiveSubscription !== undefined) {
+      where.AND.push(
+        hasActiveSubscription
+          ? { subscriptions: { some: { status: "ACTIVE" } } }
+          : { subscriptions: { none: { status: "ACTIVE" } } }
+      );
+    }
+    const createdAt = this.buildDateRange(filters.createdFrom, filters.createdTo);
+    if (createdAt) {
+      where.AND.push({ user: { createdAt } });
+    }
+
     const [empresas, total] = await Promise.all([
       this.prisma.empresaProfile.findMany({
+        where,
         skip,
         take: pageSize,
         include: {
@@ -224,7 +296,7 @@ export class AdminService {
         },
         orderBy,
       }),
-      this.prisma.empresaProfile.count(),
+      this.prisma.empresaProfile.count({ where }),
     ]);
 
     return {
@@ -240,13 +312,78 @@ export class AdminService {
     page: number,
     pageSize: number,
     sortBy?: string,
-    sortOrder?: string
+    sortOrder?: string,
+    filters: {
+      search?: string;
+      province?: string;
+      city?: string;
+      verified?: string;
+      hasCv?: string;
+      hasVideo?: string;
+      searchingFirstJob?: string;
+      createdFrom?: string;
+      createdTo?: string;
+    } = {}
   ) {
     const skip = (page - 1) * pageSize;
     const orderBy = this.getPostulantesOrderBy(sortBy, sortOrder);
 
+    const where: any = { AND: [] };
+    const searchTerm = filters.search?.trim();
+    if (searchTerm) {
+      const term = this.containsInsensitive(searchTerm);
+      where.AND.push({
+        OR: [
+          { fullName: term },
+          { phone: term },
+          { alternatePhone: term },
+          { documentNumber: term },
+          { resumeTitle: term },
+          { user: { email: term } },
+          { skills: { has: searchTerm } },
+        ],
+      });
+    }
+    const province = filters.province?.trim();
+    if (province) {
+      where.AND.push({ province: this.containsInsensitive(province) });
+    }
+    const city = filters.city?.trim();
+    if (city) {
+      where.AND.push({ city: this.containsInsensitive(city) });
+    }
+    const verified = this.parseBooleanFilter(filters.verified);
+    if (verified !== undefined) {
+      where.AND.push({ user: { isVerified: verified } });
+    }
+    const hasCv = this.parseBooleanFilter(filters.hasCv);
+    if (hasCv !== undefined) {
+      where.AND.push(
+        hasCv
+          ? { AND: [{ cvUrl: { not: null } }, { cvUrl: { not: "" } }] }
+          : { OR: [{ cvUrl: null }, { cvUrl: "" }] }
+      );
+    }
+    const hasVideo = this.parseBooleanFilter(filters.hasVideo);
+    if (hasVideo !== undefined) {
+      where.AND.push(
+        hasVideo
+          ? { AND: [{ videoUrl: { not: null } }, { videoUrl: { not: "" } }] }
+          : { OR: [{ videoUrl: null }, { videoUrl: "" }] }
+      );
+    }
+    const searchingFirstJob = this.parseBooleanFilter(filters.searchingFirstJob);
+    if (searchingFirstJob !== undefined) {
+      where.AND.push({ searchingFirstJob });
+    }
+    const createdAt = this.buildDateRange(filters.createdFrom, filters.createdTo);
+    if (createdAt) {
+      where.AND.push({ user: { createdAt } });
+    }
+
     const [postulantes, total] = await Promise.all([
       this.prisma.postulanteProfile.findMany({
+        where,
         skip,
         take: pageSize,
         include: {
@@ -270,7 +407,7 @@ export class AdminService {
         },
         orderBy,
       }),
-      this.prisma.postulanteProfile.count(),
+      this.prisma.postulanteProfile.count({ where }),
     ]);
 
     const normalizedPostulantes = await Promise.all(
@@ -402,12 +539,36 @@ export class AdminService {
     pageSize: number,
     status?: string,
     sortBy?: string,
-    sortOrder?: string
+    sortOrder?: string,
+    filters: {
+      search?: string;
+      isRead?: string;
+      appliedFrom?: string;
+      appliedTo?: string;
+    } = {}
   ) {
     const skip = (page - 1) * pageSize;
     const where: any = {};
     if (status) {
       where.status = status;
+    }
+    const searchTerm = filters.search?.trim();
+    if (searchTerm) {
+      const term = this.containsInsensitive(searchTerm);
+      where.OR = [
+        { postulante: { fullName: term } },
+        { postulante: { user: { email: term } } },
+        { job: { title: term } },
+        { job: { empresa: { companyName: term } } },
+      ];
+    }
+    const isRead = this.parseBooleanFilter(filters.isRead);
+    if (isRead !== undefined) {
+      where.isRead = isRead;
+    }
+    const appliedAt = this.buildDateRange(filters.appliedFrom, filters.appliedTo);
+    if (appliedAt) {
+      where.appliedAt = appliedAt;
     }
 
     const orderBy = this.getApplicationsOrderBy(sortBy, sortOrder);

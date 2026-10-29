@@ -76,7 +76,15 @@ export class AdminController {
       page,
       pageSize,
       sortBy,
-      sortOrder
+      sortOrder,
+      {
+        search: query.search,
+        provincia: query.provincia,
+        verified: query.verified,
+        hasActiveSubscription: query.hasActiveSubscription,
+        createdFrom: query.createdFrom,
+        createdTo: query.createdTo,
+      }
     );
     return createResponse({
       success: true,
@@ -95,7 +103,18 @@ export class AdminController {
       page,
       pageSize,
       sortBy,
-      sortOrder
+      sortOrder,
+      {
+        search: query.search,
+        province: query.province,
+        city: query.city,
+        verified: query.verified,
+        hasCv: query.hasCv,
+        hasVideo: query.hasVideo,
+        searchingFirstJob: query.searchingFirstJob,
+        createdFrom: query.createdFrom,
+        createdTo: query.createdTo,
+      }
     );
     return createResponse({
       success: true,
@@ -151,7 +170,13 @@ export class AdminController {
       pageSize,
       status,
       sortBy,
-      sortOrder
+      sortOrder,
+      {
+        search: query.search,
+        isRead: query.isRead,
+        appliedFrom: query.appliedFrom,
+        appliedTo: query.appliedTo,
+      }
     );
     return createResponse({
       success: true,
